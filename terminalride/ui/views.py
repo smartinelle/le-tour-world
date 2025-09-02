@@ -474,6 +474,11 @@ class StatsView(BaseView):
 
     def __init__(self) -> None:
         super().__init__()
+        try:
+            from ..store.repository import TrainingRepository
+            self._repository = TrainingRepository()
+        except Exception:
+            self._repository = None
 
     def render(self, state: AppState) -> Layout:
         """Render statistics view."""
@@ -514,11 +519,8 @@ class StatsView(BaseView):
 
     def _render_session_list(self, state: AppState) -> Panel:
         """Render list of recent sessions."""
-        from ..store.repository import TrainingRepository
-        
-        # Get session data from repository
-        repository = TrainingRepository()
-        sessions = repository.list_sessions(limit=10)
+        repository = getattr(self, "_repository", None)
+        sessions = repository.list_sessions(limit=10) if repository else []
         
         if not sessions:
             content = Text("No training sessions found.\nComplete some workouts to see statistics here!", 
@@ -541,7 +543,7 @@ class StatsView(BaseView):
             distance_str = f"{(session.total_distance_m or 0) / 1000:.1f} km"
             
             # Get session summary for additional stats
-            summary = repository.get_session_summary(session.session_id)
+            summary = repository.get_session_summary(session.session_id) if repository else None
             avg_power = f"{summary.avg_power_w:.0f} W" if summary and summary.avg_power_w else "--- W"
             max_power = f"{summary.max_power_w} W" if summary and summary.max_power_w else "--- W"
             
@@ -612,14 +614,18 @@ class SettingsView(BaseView):
                 Layout(self._render_settings_header(), name="header", size=3),
                 Layout(self._render_settings_content(), name="settings"),
                 Layout(self._render_settings_controls(), name="controls", size=8),
-                Layout(StatusBar().render(
-                    state.status_message,
-                    self._get_connection_status(state),
-                    hints_line=condensed_line(
-                        state.current_view.value,
-                        state.devices.get("trainer", {}).get("connected", False),
+                Layout(
+                    StatusBar().render(
+                        state.status_message,
+                        "connected" if state.devices.get("trainer", {}).get("connected", False) else "disconnected",
+                        hints_line=condensed_line(
+                            state.current_view.value,
+                            state.devices.get("trainer", {}).get("connected", False),
+                        ),
                     ),
-                ), name="status", size=3),
+                    name="status",
+                    size=3,
+                ),
             )
         return self._with_legend(main, state)
 
@@ -633,142 +639,69 @@ class SettingsView(BaseView):
 
     def _render_settings_content(self) -> Panel:
         """Render settings content."""
+        import logging
         from ..config import get_config
-        
-        config = get_config()
+
+        cfg = get_config()
+        s = cfg.settings
+
         table = Table.grid(padding=1)
         table.add_column("Setting", style="bold")
         table.add_column("Value", justify="left")
 
-        # Display user profile
-        ftp_display = (
-            f"{config.settings.ftp_w} W" if config.settings.ftp_w is not None else "Not set"
-        )
-        table.add_row("Name", config.settings.name)
-        table.add_row("Age", f"{config.settings.age}")
-        table.add_row("Gender", config.settings.gender.title())
-        table.add_row("Weight", f"{config.user_mass_kg} kg")
-        table.add_row("FTP", ftp_display)
+        # File locations
+        table.add_row("Data Directory", str(cfg.get_data_dir()))
 
-        table.add_row("---", "---")
-        # Display other configuration
-        table.add_row("Data Directory", str(config.get_data_dir()))
-        table.add_row("Log Level", config.log_level.upper())
-        table.add_row("Connection Timeout", f"{config.connection_timeout_s} s")
+        # Logging (effective)
+        level_name = logging.getLevelName(
+            logging.getLogger("terminalride").getEffectiveLevel()
+        )
+        table.add_row("Log Level", str(level_name))
+
+        # User profile
+        table.add_row("Name", s.name)
+        table.add_row("Mass", f"{s.mass_kg:.1f} kg")
+        table.add_row("FTP", f"{s.ftp_w} W")
+
+        # Physics defaults
+        table.add_row("CdA", f"{s.cda_m2:.3f} m²")
+        table.add_row("Crr", f"{s.crr:.4f}")
+
+        # UI / behavior
+        table.add_row("Units", s.units)
+        table.add_row("Refresh Rate", f"{s.refresh_rate_hz} Hz")
+        table.add_row("Show Legend", "on" if s.show_legend else "off")
+        table.add_row("Speed Source", s.speed_source)
+
+        # Device prefs
+        table.add_row("Auto-connect Trainer", "on" if s.auto_connect_trainer else "off")
+        table.add_row("Auto-connect HR", "on" if s.auto_connect_hr else "off")
+        table.add_row("Reconnect Timeout", f"{s.reconnect_timeout_s} s")
+
+        # Training defaults
+        table.add_row("Default ERG Target", f"{s.default_erg_power_w} W")
+        table.add_row("Default SIM Grade", f"{s.default_sim_grade_pct:+.1f} %")
 
         return Panel(table, title="Current Settings", border_style="green")
 
     def _render_settings_controls(self) -> Panel:
         """Render settings controls."""
         controls_text = """
-[n] Modify name
-[a] Modify age
-[g] Modify gender (male/female)
-[m] Modify weight (kg)
-[f] Modify FTP (watts)
-[t] Modify connection timeout
-[l] Change log level
-[r] Reset to defaults
+[m] Modify mass (kg) — later
+[f] Modify FTP (watts) — later
+[t] Modify reconnect timeout — later
+[r] Reset to defaults — later
 [Esc] Back to home
         """
         return Panel(controls_text, title="Controls", border_style="cyan")
 
     def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
         """Handle settings view keys."""
-        if state.input_mode:
-            # Capture text for current input mode
-            if key == "enter":
-                from ..config import get_config
-                config = get_config()
-                val = state.input_buffer.strip()
-                mode = state.input_mode
-                state.input_mode = None
-                state.input_buffer = ""
-                if mode == "name":
-                    if val:
-                        config.settings.name = val
-                        config.save_settings()
-                        state.status_message = "Name updated"
-                    else:
-                        state.status_message = "Name not changed"
-                elif mode == "age":
-                    try:
-                        age = int(val)
-                        config.settings.age = age
-                        config.save_settings()
-                        state.status_message = "Age updated"
-                    except Exception:
-                        state.status_message = "Invalid age"
-                elif mode == "gender":
-                    gender = val.lower()
-                    if gender in ["male", "female"]:
-                        config.settings.gender = gender
-                        config.save_settings()
-                        state.status_message = "Gender updated"
-                    else:
-                        state.status_message = "Invalid gender"
-                elif mode == "mass":
-                    try:
-                        mass = float(val)
-                        config.settings.mass_kg = mass
-                        config.user_mass_kg = mass
-                        config.save_settings()
-                        state.status_message = "Weight updated"
-                    except Exception:
-                        state.status_message = "Invalid weight"
-                elif mode == "ftp":
-                    if val == "":
-                        config.settings.ftp_w = None
-                        config.user_ftp_w = 250
-                        config.save_settings()
-                        state.status_message = "FTP cleared"
-                    else:
-                        try:
-                            ftp = int(val)
-                            config.settings.ftp_w = ftp
-                            config.user_ftp_w = ftp
-                            config.save_settings()
-                            state.status_message = "FTP updated"
-                        except Exception:
-                            state.status_message = "Invalid FTP"
-                return None
-            elif key == "escape":
-                state.status_message = f"{state.input_mode.capitalize()} edit cancelled"
-                state.input_mode = None
-                state.input_buffer = ""
-                return None
-            elif key == "backspace":
-                state.input_buffer = state.input_buffer[:-1]
-            else:
-                if len(key) == 1 and key.isprintable():
-                    state.input_buffer += key
-            state.status_message = f"Enter {state.input_mode}: {state.input_buffer}"
-            return None
-
         if key == "escape":
             return ViewState.HOME
-
-        if key == "n":
-            state.input_mode = "name"
-            state.input_buffer = ""
-            state.status_message = "Enter name: "
-        elif key == "a":
-            state.input_mode = "age"
-            state.input_buffer = ""
-            state.status_message = "Enter age: "
-        elif key == "g":
-            state.input_mode = "gender"
-            state.input_buffer = ""
-            state.status_message = "Enter gender (male/female): "
-        elif key == "m":
-            state.input_mode = "mass"
-            state.input_buffer = ""
-            state.status_message = "Enter weight (kg): "
-        elif key == "f":
-            state.input_mode = "ftp"
-            state.input_buffer = ""
-            state.status_message = "Enter FTP (watts, blank to unset): "
-        elif key in ["t", "l", "r"]:
+        # Editing not implemented yet; let legend/help explain
+        if key in ["m", "f", "t", "r"]:
             state.status_message = "Settings modification not implemented yet"
+            return None
 
         return None

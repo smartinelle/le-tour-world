@@ -36,6 +36,7 @@ from .modes.sim import SimPhysics
 from .store.repository import TrainingRepository
 from .store.models import SessionModel, SampleModel, TrainingMode
 from .config import get_config
+from .logging_setup import setup_logging
 
 
 logger = logging.getLogger(__name__)
@@ -532,15 +533,8 @@ class TerminalRideApp:
 
 async def main():
     """Application entry point."""
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler("terminalride.log"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
+    # Configure logging: write to file only (avoid console logs that break TUI)
+    setup_logging(app_log_level="INFO", lib_log_level="WARNING", console_output=False)
 
     # Create and run application
     app = TerminalRideApp()
@@ -562,6 +556,7 @@ class _RawInputManager:
         self._loop = asyncio.get_event_loop()
         self._running = False
         self._esc_buffer: list[str] = []
+        self._esc_timer = None  # type: ignore
 
     def start(self) -> None:
         try:
@@ -601,11 +596,30 @@ class _RawInputManager:
 
                 # Escape sequences for arrows (ESC [ A/B/C/D)
                 if ch == "\x1b":
+                    # Start ESC sequence; schedule a short timeout to treat as lone ESC
                     self._esc_buffer = ["\x1b"]
+                    if self._esc_timer:
+                        try:
+                            self._esc_timer.cancel()
+                        except Exception:
+                            pass
+                    # 50 ms is typically enough for terminals to deliver '[' and the next code
+                    self._esc_timer = self._loop.call_later(0.05, self._flush_escape_if_pending)
                     continue
 
                 if self._esc_buffer:
                     self._esc_buffer.append(ch)
+                    # If second byte isn't '[', treat as lone ESC
+                    if len(self._esc_buffer) == 2 and self._esc_buffer[1] != "[":
+                        self._put_nowait("escape")
+                        self._esc_buffer.clear()
+                        if self._esc_timer:
+                            try:
+                                self._esc_timer.cancel()
+                            except Exception:
+                                pass
+                        continue
+
                     if len(self._esc_buffer) == 3:
                         mapped = None
                         if self._esc_buffer[1] == "[":
@@ -622,6 +636,11 @@ class _RawInputManager:
                         else:
                             self._put_nowait("escape")
                         self._esc_buffer.clear()
+                        if self._esc_timer:
+                            try:
+                                self._esc_timer.cancel()
+                            except Exception:
+                                pass
                     continue
 
                 # Regular keys
@@ -646,3 +665,12 @@ class _RawInputManager:
             self.queue.put_nowait(key)
         except Exception:
             pass
+
+    def _flush_escape_if_pending(self) -> None:
+        """Timeout handler: treat a pending single ESC byte as 'escape'."""
+        try:
+            if self._esc_buffer == ["\x1b"]:
+                self._put_nowait("escape")
+                self._esc_buffer.clear()
+        finally:
+            self._esc_timer = None
