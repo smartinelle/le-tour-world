@@ -199,12 +199,15 @@ Where:
 
 ## Configuration
 
-Edit `~/.terminalride/config.json`:
+Edit `~/.config/terminalride/config.json` (or via the in-app Settings view):
 
 ```json
 {
-    "user_mass_kg": 75.0,
-    "user_ftp_w": 250,
+    "name": "Rider",
+    "age": 30,
+    "gender": "male",
+    "mass_kg": 75.0,
+    "ftp_w": 250,
     "log_level": "info",
     "connection_timeout_s": 10.0
 }
