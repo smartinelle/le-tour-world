@@ -637,11 +637,20 @@ class SettingsView(BaseView):
         table.add_column("Setting", style="bold")
         table.add_column("Value", justify="left")
 
-        # Display current configuration
+        # Display user profile
+        ftp_display = (
+            f"{config.settings.ftp_w} W" if config.settings.ftp_w is not None else "Not set"
+        )
+        table.add_row("Name", config.settings.name)
+        table.add_row("Age", f"{config.settings.age}")
+        table.add_row("Gender", config.settings.gender.title())
+        table.add_row("Weight", f"{config.user_mass_kg} kg")
+        table.add_row("FTP", ftp_display)
+
+        table.add_row("---", "---")
+        # Display other configuration
         table.add_row("Data Directory", str(config.get_data_dir()))
         table.add_row("Log Level", config.log_level.upper())
-        table.add_row("Default User Mass", f"{config.user_mass_kg} kg")
-        table.add_row("Default User FTP", f"{config.user_ftp_w} W")
         table.add_row("Connection Timeout", f"{config.connection_timeout_s} s")
 
         return Panel(table, title="Current Settings", border_style="green")
@@ -649,8 +658,11 @@ class SettingsView(BaseView):
     def _render_settings_controls(self) -> Panel:
         """Render settings controls."""
         controls_text = """
-[m] Modify user mass (kg)
-[f] Modify user FTP (watts)
+[n] Modify name
+[a] Modify age
+[g] Modify gender (male/female)
+[m] Modify weight (kg)
+[f] Modify FTP (watts)
 [t] Modify connection timeout
 [l] Change log level
 [r] Reset to defaults
@@ -662,8 +674,60 @@ class SettingsView(BaseView):
         """Handle settings view keys."""
         if key == "escape":
             return ViewState.HOME
-        elif key in ["m", "f", "t", "l", "r"]:
+
+        from ..config import get_config
+
+        config = get_config()
+        if key == "n":
+            name = input("Enter name: ").strip()
+            if name:
+                config.settings.name = name
+                config.save_settings()
+                state.status_message = "Name updated"
+            else:
+                state.status_message = "Name not changed"
+        elif key == "a":
+            try:
+                age = int(input("Enter age: ").strip())
+                config.settings.age = age
+                config.save_settings()
+                state.status_message = "Age updated"
+            except Exception:
+                state.status_message = "Invalid age"
+        elif key == "g":
+            gender = input("Enter gender (male/female): ").strip().lower()
+            if gender in ["male", "female"]:
+                config.settings.gender = gender
+                config.save_settings()
+                state.status_message = "Gender updated"
+            else:
+                state.status_message = "Invalid gender"
+        elif key == "m":
+            try:
+                mass = float(input("Enter weight (kg): ").strip())
+                config.settings.mass_kg = mass
+                config.user_mass_kg = mass
+                config.save_settings()
+                state.status_message = "Weight updated"
+            except Exception:
+                state.status_message = "Invalid weight"
+        elif key == "f":
+            val = input("Enter FTP (watts, blank to unset): ").strip()
+            if val == "":
+                config.settings.ftp_w = None
+                config.user_ftp_w = 250
+                config.save_settings()
+                state.status_message = "FTP cleared"
+            else:
+                try:
+                    ftp = int(val)
+                    config.settings.ftp_w = ftp
+                    config.user_ftp_w = ftp
+                    config.save_settings()
+                    state.status_message = "FTP updated"
+                except Exception:
+                    state.status_message = "Invalid FTP"
+        elif key in ["t", "l", "r"]:
             state.status_message = "Settings modification not implemented yet"
-            return None
 
         return None

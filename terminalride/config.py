@@ -13,8 +13,10 @@ class UserSettings(BaseModel):
 
     # User profile
     name: str = "Rider"
+    age: int = Field(default=30, ge=10, le=100)
+    gender: str = Field(default="male", pattern="^(male|female)$")
     mass_kg: float = Field(default=75.0, ge=40.0, le=200.0)
-    ftp_w: int = Field(default=250, ge=50, le=600)
+    ftp_w: Optional[int] = Field(default=None, ge=50, le=600)
 
     # Physics parameters
     cda_m2: float = Field(default=0.33, ge=0.2, le=0.5)
@@ -69,7 +71,8 @@ class AppConfig:
         # App-level configuration
         self.log_level = "info"
         self.user_mass_kg = self.settings.mass_kg
-        self.user_ftp_w = self.settings.ftp_w
+        # Default to 250W if FTP not set
+        self.user_ftp_w = self.settings.ftp_w if self.settings.ftp_w is not None else 250
         self.connection_timeout_s = self.settings.reconnect_timeout_s
 
     def _load_settings(self) -> UserSettings:

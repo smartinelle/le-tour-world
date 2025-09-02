@@ -3,6 +3,9 @@
 
 import asyncio
 import time
+
+import pytest
+
 from terminalride.app import TerminalRideApp
 from terminalride.ui.views import ViewState
 
@@ -29,6 +32,7 @@ class SimpleInput:
         
         return None
 
+@pytest.mark.asyncio
 async def test_app():
     """Test app with simulated input."""
     app = TerminalRideApp()

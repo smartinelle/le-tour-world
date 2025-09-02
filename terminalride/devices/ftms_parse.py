@@ -145,7 +145,9 @@ def parse_indoor_bike_data(frame: bytes) -> ParsedBikeData:
             if offset + 2 > len(frame):
                 raise ValueError("Invalid frame: speed flagged but missing")
             speed_raw = struct.unpack("<H", frame[offset : offset + 2])[0]
-            speed_mps = speed_raw / 1000.0  # Original assumption
+            # Common FTMS implementation reports speed in 0.01 km/h units.
+            # Convert explicitly to meters per second to avoid 3.6x error.
+            speed_mps = (speed_raw / 100.0) / 3.6
             offset += 2
 
         # Bit 4: Instantaneous Cadence present (0x0010)
