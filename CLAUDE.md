@@ -2,7 +2,7 @@
 
 ## Project Overview
 - **Goal:** Terminal-first indoor cycling app (Zwift-lite) that connects to Wahoo KICKR via BLE FTMS
-- **Stack:** Python 3.11, bleak (BLE), rich (TUI), numpy, pydantic, pytest
+- **Stack:** Python 3.11+, bleak (BLE), rich (TUI), numpy, pydantic, pytest-asyncio
 - **Modes:** Free Ride, ERG (constant power), SIM (grade-based resistance)
 - **Data:** JSONL logging, CSV export, local persistence
 
@@ -10,7 +10,7 @@
 - Temperature 0.1 (deterministic generation)
 - Tests-first approach (TDD)
 - No invented FTMS details - add TODO(FTMS: confirm...) markers
-- Dependencies limited to: bleak, rich, numpy, pydantic, pytest
+- Dependencies limited to: bleak, rich, numpy, pydantic, pytest, pytest-asyncio
 - Pure functions separated from I/O operations
 - JSONL logging with stdlib only
 
@@ -27,7 +27,7 @@
 ```bash
 # Setup
 python3.11 -m venv .venv && source .venv/bin/activate
-pip install bleak rich numpy pydantic pytest mypy ruff black
+pip install -e ".[dev]"
 
 # Testing & Quality
 pytest -q
@@ -49,10 +49,26 @@ terminalride/
   docs/           # Documentation
   terminalride/   # Main package
     app.py        # State machine + router
+    config.py     # Configuration management
+    __main__.py   # Entry point
+    logging_setup.py # Logging configuration
     ui/           # Views and widgets
     devices/      # BLE FTMS client + parser
+      base.py     # Protocol interfaces
+      ftms_client.py  # BLE client
+      ftms_parse.py   # FTMS frame parser
     modes/        # Free/ERG/SIM logic
+      erg.py      # ERG mode implementation
+      sim.py      # SIM mode implementation
+    domain/       # Business logic
+      events.py   # Event definitions
+      state.py    # Application state
+      trainer_service.py  # Trainer service
     store/        # Persistence + export
+      models.py   # Data models
+      repository.py   # Data access
+      export.py   # CSV export
+    analytics/    # Analytics (future)
   tests/          # Test suite
 ```
 
@@ -62,15 +78,15 @@ terminalride/
 3. **Physics:** SIM physics + persistence+CSV ✅
 4. **Polish:** Hardening + packaging + v0.1.0 release ✅
 
-## FINAL STATUS: MVP v0.1.0 COMPLETE
+## CURRENT STATUS: MVP v0.1.0 - NEAR COMPLETION
 
-### Project Completion Summary:
-- **All core components implemented and tested (33/33 tests passing)**
+### Project Implementation Summary:
+- **Core components implemented and tested (33 tests passing, 2 failing)**
 - **Full BLE FTMS protocol support with Wahoo KICKR compatibility**
 - **Complete TUI with all training modes (Free/ERG/SIM)**
-- **Data persistence with dual JSONL/SQLite storage**
+- **Data persistence with store module (models, repository, export)**
 - **CSV export functionality**
-- **Statistics and settings views**
+- **Domain-driven architecture with events and trainer service**
 - **Comprehensive documentation (README.md)**
 
 ### Key Achievements:
@@ -80,5 +96,10 @@ terminalride/
 - Robust error handling and auto-reconnection
 - Clean architecture with protocol-oriented design
 - Type-safe implementation with mypy compliance
+- Modern packaging with pyproject.toml
 
-**PROJECT STATUS: READY FOR USE** 🎉
+### Outstanding Issues:
+- 2 test failures (async test setup and FTMS parsing edge case)
+- Minor dependency configuration refinements needed
+
+**PROJECT STATUS: 95% COMPLETE - NEEDS FINAL TESTING FIXES** ⚠️
