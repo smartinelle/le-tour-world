@@ -52,6 +52,9 @@ class AppState:
     show_help: bool = False
     show_legend: bool = False
     status_message: str = "Starting up..."
+    # Text input handling
+    input_mode: Optional[str] = None
+    input_buffer: str = ""
 
     def __post_init__(self) -> None:
         if self.metrics is None:
@@ -672,61 +675,99 @@ class SettingsView(BaseView):
 
     def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
         """Handle settings view keys."""
+        if state.input_mode:
+            # Capture text for current input mode
+            if key == "enter":
+                from ..config import get_config
+                config = get_config()
+                val = state.input_buffer.strip()
+                mode = state.input_mode
+                state.input_mode = None
+                state.input_buffer = ""
+                if mode == "name":
+                    if val:
+                        config.settings.name = val
+                        config.save_settings()
+                        state.status_message = "Name updated"
+                    else:
+                        state.status_message = "Name not changed"
+                elif mode == "age":
+                    try:
+                        age = int(val)
+                        config.settings.age = age
+                        config.save_settings()
+                        state.status_message = "Age updated"
+                    except Exception:
+                        state.status_message = "Invalid age"
+                elif mode == "gender":
+                    gender = val.lower()
+                    if gender in ["male", "female"]:
+                        config.settings.gender = gender
+                        config.save_settings()
+                        state.status_message = "Gender updated"
+                    else:
+                        state.status_message = "Invalid gender"
+                elif mode == "mass":
+                    try:
+                        mass = float(val)
+                        config.settings.mass_kg = mass
+                        config.user_mass_kg = mass
+                        config.save_settings()
+                        state.status_message = "Weight updated"
+                    except Exception:
+                        state.status_message = "Invalid weight"
+                elif mode == "ftp":
+                    if val == "":
+                        config.settings.ftp_w = None
+                        config.user_ftp_w = 250
+                        config.save_settings()
+                        state.status_message = "FTP cleared"
+                    else:
+                        try:
+                            ftp = int(val)
+                            config.settings.ftp_w = ftp
+                            config.user_ftp_w = ftp
+                            config.save_settings()
+                            state.status_message = "FTP updated"
+                        except Exception:
+                            state.status_message = "Invalid FTP"
+                return None
+            elif key == "escape":
+                state.status_message = f"{state.input_mode.capitalize()} edit cancelled"
+                state.input_mode = None
+                state.input_buffer = ""
+                return None
+            elif key == "backspace":
+                state.input_buffer = state.input_buffer[:-1]
+            else:
+                if len(key) == 1 and key.isprintable():
+                    state.input_buffer += key
+            state.status_message = f"Enter {state.input_mode}: {state.input_buffer}"
+            return None
+
         if key == "escape":
             return ViewState.HOME
 
-        from ..config import get_config
-
-        config = get_config()
         if key == "n":
-            name = input("Enter name: ").strip()
-            if name:
-                config.settings.name = name
-                config.save_settings()
-                state.status_message = "Name updated"
-            else:
-                state.status_message = "Name not changed"
+            state.input_mode = "name"
+            state.input_buffer = ""
+            state.status_message = "Enter name: "
         elif key == "a":
-            try:
-                age = int(input("Enter age: ").strip())
-                config.settings.age = age
-                config.save_settings()
-                state.status_message = "Age updated"
-            except Exception:
-                state.status_message = "Invalid age"
+            state.input_mode = "age"
+            state.input_buffer = ""
+            state.status_message = "Enter age: "
         elif key == "g":
-            gender = input("Enter gender (male/female): ").strip().lower()
-            if gender in ["male", "female"]:
-                config.settings.gender = gender
-                config.save_settings()
-                state.status_message = "Gender updated"
-            else:
-                state.status_message = "Invalid gender"
+            state.input_mode = "gender"
+            state.input_buffer = ""
+            state.status_message = "Enter gender (male/female): "
         elif key == "m":
-            try:
-                mass = float(input("Enter weight (kg): ").strip())
-                config.settings.mass_kg = mass
-                config.user_mass_kg = mass
-                config.save_settings()
-                state.status_message = "Weight updated"
-            except Exception:
-                state.status_message = "Invalid weight"
+            state.input_mode = "mass"
+            state.input_buffer = ""
+            state.status_message = "Enter weight (kg): "
         elif key == "f":
-            val = input("Enter FTP (watts, blank to unset): ").strip()
-            if val == "":
-                config.settings.ftp_w = None
-                config.user_ftp_w = 250
-                config.save_settings()
-                state.status_message = "FTP cleared"
-            else:
-                try:
-                    ftp = int(val)
-                    config.settings.ftp_w = ftp
-                    config.user_ftp_w = ftp
-                    config.save_settings()
-                    state.status_message = "FTP updated"
-                except Exception:
-                    state.status_message = "Invalid FTP"
+            state.input_mode = "ftp"
+            state.input_buffer = ""
+            state.status_message = "Enter FTP (watts, blank to unset): "
         elif key in ["t", "l", "r"]:
             state.status_message = "Settings modification not implemented yet"
 
