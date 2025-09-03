@@ -494,7 +494,7 @@ class StatsView(BaseView):
             )
         else:
             main.split_column(
-                Layout(self._render_stats_header(), name="header", size=3),
+                Layout(self._render_stats_header(), name="header", size=4),
                 Layout(self._render_session_list(state), name="sessions"),
                 Layout(self._render_stats_controls(), name="controls", size=6),
                 Layout(
@@ -510,12 +510,55 @@ class StatsView(BaseView):
         return self._with_legend(main, state)
 
     def _render_stats_header(self) -> Panel:
-        """Render statistics header."""
-        header_text = Text.assemble(
-            ("Session History", "bold blue"),
-            "\n\nRecent training sessions and performance data"
-        )
-        return Panel(Align.center(header_text), title="Statistics", border_style="blue")
+        """Render statistics header with totals across sessions."""
+        total_time_s, total_dist_km = self._compute_totals()
+
+        # Format time as HH:MM:SS
+        h = int(total_time_s // 3600)
+        m = int((total_time_s % 3600) // 60)
+        s = int(total_time_s % 60)
+        time_str = f"{h:02d}:{m:02d}:{s:02d}"
+
+        header = Text()
+        header.append("Session History\n", style="bold blue")
+        header.append("\nTotals: ")
+        header.append(f"Time {time_str}", style="bold")
+        header.append("  |  ")
+        header.append(f"Distance {total_dist_km:.1f} km", style="bold")
+        return Panel(Align.center(header), title="Statistics", border_style="blue")
+
+    def _compute_totals(self) -> tuple[float, float]:
+        """Compute total time (s) and distance (km) across sessions."""
+        try:
+            repository = getattr(self, "_repository", None)
+            if not repository:
+                from ..store.repository import TrainingRepository
+                repository = TrainingRepository()
+                self._repository = repository
+
+            sessions = repository.list_sessions(limit=10000)
+            total_time_s = 0.0
+            total_dist_m = 0.0
+
+            for sess in sessions:
+                # Prefer stored values; fall back to summary if missing
+                dur = sess.duration_s or 0.0
+                dist_m = sess.total_distance_m or 0.0
+
+                if (dur == 0.0 or dist_m == 0.0):
+                    summary = repository.get_session_summary(sess.session_id)
+                    if summary:
+                        if dur == 0.0 and summary.duration_s is not None:
+                            dur = summary.duration_s
+                        if dist_m == 0.0 and summary.total_distance_m is not None:
+                            dist_m = summary.total_distance_m
+
+                total_time_s += dur or 0.0
+                total_dist_m += dist_m or 0.0
+
+            return total_time_s, (total_dist_m / 1000.0)
+        except Exception:
+            return 0.0, 0.0
 
     def _render_session_list(self, state: AppState) -> Panel:
         """Render list of recent sessions."""
