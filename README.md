@@ -38,7 +38,7 @@ source venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
 
 # Run the application
-python main.py
+python -m terminalride
 ```
 
 ## Usage
@@ -46,7 +46,7 @@ python main.py
 ### Starting the Application
 
 ```bash
-python main.py
+python -m terminalride
 ```
 
 The app will:
@@ -161,9 +161,15 @@ mypy .
 4. Enter training mode and start pedaling
 5. Data will be recorded automatically
 
-### Demo Mode
+### Demo Script
 
-If no trainer is found, the app runs in demo mode with simulated data for development and testing.
+A simple hardware demo is available at `examples/demo_trainer.py`:
+
+```bash
+python examples/demo_trainer.py
+```
+
+This connects to a trainer and demonstrates ERG/SIM control outside the full TUI.
 
 ## Technical Details
 

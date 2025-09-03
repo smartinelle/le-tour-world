@@ -1,35 +1,19 @@
 #!/usr/bin/env python3
-"""TerminalRide - Terminal-first indoor cycling app.
+"""Compatibility runner for TerminalRide.
 
-Entry point for the application with proper async lifecycle management.
+Preferred: run `python -m terminalride` or the `terminalride` CLI.
+This shim delegates to the package entry point without console logging
+to avoid interfering with the TUI.
 """
 
 import asyncio
 import sys
 
-from terminalride.app import TerminalRideApp
-from terminalride.logging_setup import setup_logging
-from terminalride.config import get_config
-
-
-async def main():
-    """Main application entry point."""
-    # Setup logging
-    config = get_config()
-    setup_logging(config.log_level.upper())
-    
-    # Create and run application
-    app = TerminalRideApp()
-    try:
-        await app.run()
-    except KeyboardInterrupt:
-        print("\nShutting down TerminalRide...")
-    except Exception as e:
-        print(f"Application error: {e}")
-        sys.exit(1)
-    finally:
-        await app.cleanup()
-
+from terminalride.app import main as app_main
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Do not print or configure logging here; app configures logging itself.
+    try:
+        asyncio.run(app_main())
+    except KeyboardInterrupt:
+        sys.exit(0)
