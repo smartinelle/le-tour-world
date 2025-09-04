@@ -28,6 +28,7 @@ from .ui.views import (
     DevicesView,
     StatsView,
     SettingsView,
+    SummaryView,
 )
 from .devices.base import BikeSample, DeviceNotFoundError
 from .domain.trainer_service import TrainerService
@@ -61,6 +62,7 @@ class TerminalRideApp:
             ViewState.DEVICES: DevicesView(),
             ViewState.STATS: StatsView(),
             ViewState.SETTINGS: SettingsView(),
+            ViewState.SUMMARY: SummaryView(),
         }
 
         # Device service (wraps FTMS client)
