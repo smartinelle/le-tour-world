@@ -1,6 +1,7 @@
 """TUI views for different application screens."""
 
 import time
+import logging
 from typing import Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass
@@ -12,8 +13,19 @@ from rich.text import Text
 from rich.align import Align
 from rich.table import Table
 
-from .widgets import MetricsDisplay, AverageMetricsDisplay, StatusBar, HelpOverlay, DeviceList, LegendPanel
+from .widgets import (
+    MetricsDisplay,
+    AverageMetricsDisplay,
+    StatusBar,
+    HelpOverlay,
+    DeviceList,
+    LegendPanel,
+    DistanceProgressBar,
+)
 from .keymap import condensed_line
+
+
+logger = logging.getLogger(__name__)
 
 
 class ViewState(Enum):
@@ -28,6 +40,7 @@ class ViewState(Enum):
     DEVICES = "devices"
     STATS = "stats"
     SETTINGS = "settings"
+    SUMMARY = "summary"
 
 
 @dataclass
@@ -55,6 +68,9 @@ class AppState:
     # Text input handling
     input_mode: Optional[str] = None
     input_buffer: str = ""
+    
+    # Last saved/finished session id for summary
+    last_session_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.metrics is None:
@@ -311,8 +327,11 @@ class LiveView(BaseView):
                 Layout(self.avg_display.render(state.metrics), name="metrics_avg"),
             )
 
+            progress = DistanceProgressBar().render(state.metrics)
+
             main.split_column(
                 Layout(metrics_row, name="metrics"),
+                Layout(progress, name="progress", size=4),
                 Layout(self._render_mode_controls(state), name="controls", size=8),
                 Layout(
                     StatusBar().render(
@@ -331,35 +350,26 @@ class LiveView(BaseView):
 
     def _render_mode_controls(self, state: AppState) -> Panel:
         """Render mode-specific controls."""
+        # Compact, structured controls
+        table = Table.grid(padding=(0, 2))
+        table.add_column(justify="left")
+        table.add_column(justify="left")
+
+        common = f"Space: {'Resume' if state.session_paused else 'Pause'}   L: Lap   s: Save & Summary   Esc: Home"
         if self.mode == "erg":
             target_power = state.metrics.get("target_power_w", 150)
-            controls_text = f"""
-Target Power: {target_power} W
-
-[+/-] Adjust target power
-[Space] {"Resume" if state.session_paused else "Pause"}
-[L] Mark lap  [s] Save & stop  [Esc] Home
-            """
+            table.add_row("Mode", f"ERG  (Target {target_power} W)")
+            table.add_row("Adjust", "+ / - : Target Power")
         elif self.mode == "sim":
             grade_pct = state.metrics.get("grade_pct", 0.0)
-            controls_text = f"""
-Road Grade: {grade_pct:+4.1f} %
+            table.add_row("Mode", f"SIM  (Grade {grade_pct:+.1f} %)")
+            table.add_row("Adjust", "↑ / ↓ : Grade")
+        else:
+            table.add_row("Mode", "FREE")
+            table.add_row("Adjust", "—")
 
-[↑/↓] Adjust grade
-[Space] {"Resume" if state.session_paused else "Pause"}  
-[L] Mark lap  [s] Save & stop  [Esc] Home
-            """
-        else:  # free mode
-            controls_text = """
-Free Ride Mode
-
-[Space] {"Resume" if state.session_paused else "Pause"}
-[L] Mark lap  [s] Save & stop  [Esc] Home
-            """
-
-        return Panel(
-            controls_text, title=f"{self.mode.upper()} Controls", border_style="cyan"
-        )
+        table.add_row("", common)
+        return Panel(table, title=f"{self.mode.upper()} Controls", border_style="cyan")
 
     def _get_status(self, state: AppState) -> str:
         """Get training status message."""
@@ -375,10 +385,10 @@ Free Ride Mode
         elif key == "L":  # Mark lap (Shift+L)
             state.status_message = "Lap marked"
             return None
-        elif key == "s":  # Save and stop
+        elif key == "s":  # Finish and show summary
             state.session_active = False
-            state.status_message = "Session saved"
-            return ViewState.HOME
+            state.status_message = "Finishing session..."
+            return ViewState.SUMMARY
         elif key == "escape":  # Return to home
             state.session_active = False
             return ViewState.HOME
@@ -752,4 +762,111 @@ class SettingsView(BaseView):
             state.status_message = "Settings modification not implemented yet"
             return None
 
+        return None
+
+
+class SummaryView(BaseView):
+    """End-of-ride summary with save/discard choice."""
+
+    def render(self, state: AppState) -> Layout:
+        main = Layout()
+        main.split_column(
+            Layout(self._render_summary(state), name="summary"),
+            Layout(self._render_summary_controls(state), name="controls", size=5),
+            Layout(StatusBar().render(state.status_message), name="status", size=3),
+        )
+        return main
+
+    def _render_summary(self, state: AppState) -> Panel:
+        from ..config import get_config
+        from ..store.repository import TrainingRepository
+
+        username = get_config().settings.name
+        table = Table.grid(padding=1)
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right")
+
+        # Pull latest saved session id from state
+        session_id = state.last_session_id
+        summary = None
+        if session_id:
+            try:
+                repo = TrainingRepository()
+                summary = repo.get_session_summary(session_id)
+            except Exception as e:
+                logger.debug(f"Failed to load session summary: {e}")
+                # Continue with fallback to live metrics
+
+        # Duration
+        duration_s = 0.0
+        if summary and summary.duration_s is not None:
+            duration_s = summary.duration_s
+        else:
+            duration_s = state.metrics.get("time_s", 0.0)
+        h = int(duration_s // 3600)
+        m = int((duration_s % 3600) // 60)
+        s = int(duration_s % 60)
+        table.add_row("Duration", f"{h:02d}:{m:02d}:{s:02d}")
+
+        # Distance
+        dist_km = 0.0
+        if summary and summary.total_distance_m is not None:
+            dist_km = summary.total_distance_m / 1000.0
+        else:
+            dist_km = (state.metrics.get("distance_m") or 0.0) / 1000.0
+        table.add_row("Distance", f"{dist_km:.2f} km")
+
+        # Averages
+        avg_power = getattr(summary, "avg_power_w", None) if summary else state.metrics.get("avg_power_w")
+        avg_cad = getattr(summary, "avg_cadence_rpm", None) if summary else state.metrics.get("avg_cadence_rpm")
+        avg_speed_kph = None
+        if summary and summary.avg_speed_mps is not None:
+            avg_speed_kph = summary.avg_speed_mps * 3.6
+        else:
+            t = duration_s or 0.0
+            d_m = (state.metrics.get("distance_m") or 0.0)
+            if t > 0:
+                avg_speed_kph = (d_m / t) * 3.6
+
+        table.add_row("Avg Power", f"{int(round(avg_power))} W" if avg_power else "--- W")
+        table.add_row("Avg Cadence", f"{int(round(avg_cad))} rpm" if avg_cad else "--- rpm")
+        table.add_row("Avg Speed", f"{avg_speed_kph:.1f} km/h" if avg_speed_kph else "--- km/h")
+
+        # Max power (if available)
+        max_power = getattr(summary, "max_power_w", None) if summary else None
+        if max_power:
+            table.add_row("Max Power", f"{max_power} W")
+
+        header = Text.assemble((f"Good job, {username}!", "bold green"))
+        return Panel(
+            Align.center(Align.left(table)),
+            title=header,
+            border_style="green",
+        )
+
+    def _render_summary_controls(self, state: AppState) -> Panel:
+        controls = """
+[s] Save and finish   [d] Discard session   [Esc] Home
+        """
+        return Panel(controls, title="Summary", border_style="cyan")
+
+    def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
+        from ..store.repository import TrainingRepository
+        if key == "escape" or key == "s":
+            # Keep session (already saved), return Home
+            return ViewState.HOME
+        if key == "d":
+            # Delete session and return Home
+            sid = state.last_session_id
+            if sid:
+                try:
+                    repo = TrainingRepository()
+                    if repo.delete_session(sid):
+                        state.status_message = "Session discarded"
+                    else:
+                        state.status_message = "Failed to discard session"
+                except Exception as e:
+                    logger.warning(f"Error deleting session {sid}: {e}")
+                    state.status_message = "Failed to discard session"
+            return ViewState.HOME
         return None

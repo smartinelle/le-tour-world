@@ -28,6 +28,7 @@ from .ui.views import (
     DevicesView,
     StatsView,
     SettingsView,
+    SummaryView,
 )
 from .devices.base import BikeSample, DeviceNotFoundError
 from .domain.trainer_service import TrainerService
@@ -61,6 +62,7 @@ class TerminalRideApp:
             ViewState.DEVICES: DevicesView(),
             ViewState.STATS: StatsView(),
             ViewState.SETTINGS: SettingsView(),
+            ViewState.SUMMARY: SummaryView(),
         }
 
         # Device service (wraps FTMS client)
@@ -241,6 +243,8 @@ class TerminalRideApp:
                 
                 # Save updated session
                 self.repository.save_session(self.current_session)
+                # Record last session id for summary
+                self.state.last_session_id = self.current_session.session_id
                 
                 # Reset session state
                 self.state.session_active = False
@@ -251,8 +255,8 @@ class TerminalRideApp:
                 session_id = self.current_session.session_id
                 self.current_session = None
                 
-                self.state.status_message = f"Session {session_id[:8]} saved"
-                logger.info(f"Training session stopped and saved: {session_id}")
+                self.state.status_message = f"Session {session_id[:8]} finished"
+                logger.info(f"Training session stopped: {session_id}")
                 
             except Exception as e:
                 logger.warning(f"Error stopping training session: {e}")
