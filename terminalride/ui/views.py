@@ -12,7 +12,17 @@ from rich.text import Text
 from rich.align import Align
 from rich.table import Table
 
-from .widgets import MetricsDisplay, AverageMetricsDisplay, StatusBar, HelpOverlay, DeviceList, LegendPanel
+from .widgets import (
+    MetricsDisplay,
+    AverageMetricsDisplay,
+    StatusBar,
+    HelpOverlay,
+    DeviceList,
+    LegendPanel,
+    IntroTitle,
+    IntroScene,
+    DistanceProgressBar,
+)
 from .keymap import condensed_line
 
 
@@ -52,6 +62,12 @@ class AppState:
     show_help: bool = False
     show_legend: bool = False
     status_message: str = "Starting up..."
+    
+    # Intro animation state
+    intro_start_ts: Optional[float] = None
+    intro_title_chars: int = 0
+    intro_reveal_lines: int = 0
+    intro_cyclist_x: int = 0
     # Text input handling
     input_mode: Optional[str] = None
     input_buffer: str = ""
@@ -130,29 +146,44 @@ class StartupView(BaseView):
     """Startup/splash screen view."""
 
     def render(self, state: AppState) -> Layout:
-        """Render startup view."""
+        """Render animated startup view."""
+        # Initialize intro timing
+        if state.intro_start_ts is None:
+            state.intro_start_ts = time.time()
+
+        elapsed = time.time() - state.intro_start_ts
+
+        # Type-on title: ~80 ms per char
+        title_speed = 0.08
+        state.intro_title_chars = min(
+            len(IntroTitle.TITLE), int(elapsed / title_speed)
+        )
+
+        # Scene reveal after brief delay, ~2 lines per 0.1s
+        reveal_delay = 0.3
+        if elapsed > reveal_delay:
+            state.intro_reveal_lines = min(10, int((elapsed - reveal_delay) * 20))
+        else:
+            state.intro_reveal_lines = 0
+
+        # Cyclist horizontal motion on road row
+        state.intro_cyclist_x = int((elapsed * 10) % 55)
+
+        title = IntroTitle().render(state.intro_title_chars)
+        scene = IntroScene().render(state.intro_reveal_lines, state.intro_cyclist_x)
+
+        # Compose layout
         main = Layout()
         main.split_column(
-            Layout(self._render_splash(), name="splash"),
-            Layout(StatusBar().render(state.status_message), name="status", size=3),
+            Layout(title, name="title", size=5),
+            Layout(scene, name="scene"),
+            Layout(StatusBar().render("Press any key to skip"), name="status", size=3),
         )
-        return self._with_legend(main, state)
+        return main
 
     def _render_splash(self) -> Panel:
-        """Render splash screen."""
-        splash_text = """
-╔╦╗┌─┐┬─┐┌┬┐┬┌┐┌┌─┐┬  ╦═╗┬┌┬┐┌─┐
- ║ ├┤ ├┬┘│││││││├─┤│  ╠╦╝│ ││ ├┤ 
- ╩ └─┘┴└─┴ ┴┴┘└┘┴ ┴┴─┘╩╚═┴─┴┘ └─┘
-
-Terminal-first indoor cycling app
-        """
-
-        return Panel(
-            Align.center(Text(splash_text, style="bold blue")),
-            title="Welcome",
-            border_style="blue",
-        )
+        """Deprecated: replaced by animated intro."""
+        return Panel(Align.center(Text("TerminalRide", style="bold blue")))
 
 
 class ConnectView(BaseView):
@@ -311,8 +342,12 @@ class LiveView(BaseView):
                 Layout(self.avg_display.render(state.metrics), name="metrics_avg"),
             )
 
+            # Progress bar row under metrics
+            progress = DistanceProgressBar().render(state.metrics)
+
             main.split_column(
                 Layout(metrics_row, name="metrics"),
+                Layout(progress, name="progress", size=4),
                 Layout(self._render_mode_controls(state), name="controls", size=8),
                 Layout(
                     StatusBar().render(

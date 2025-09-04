@@ -159,6 +159,12 @@ class TerminalRideApp:
                 if not key:
                     continue
 
+                # On startup, allow any key to skip intro to Connect view
+                if self.state.current_view == ViewState.STARTUP:
+                    # Skip animated intro
+                    self.state.current_view = ViewState.CONNECT
+                    continue
+
                 # Global legend toggle persistence
                 if key == "l":
                     try:
