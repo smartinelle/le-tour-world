@@ -413,6 +413,12 @@ class TerminalRideApp:
                     logger.debug(
                         f"Auto speed: replacing trainer {trainer_speed} with virtual {virt_speed:.3f}"
                     )
+            # Update average speed in kph from distance/time
+            t = self.state.metrics.get("time_s") or 0.0
+            d_m = self.state.metrics.get("distance_m") or 0.0
+            if t > 0:
+                self.state.metrics["avg_speed_kph"] = (d_m / t) * 3.6
+
         except Exception as e:
             logger.debug(f"Speed source application error: {e}")
 
@@ -452,6 +458,13 @@ class TerminalRideApp:
         self.state.session_start_time = time.time()
         self.distance_m = 0.0
         self.last_sample_time = None
+        # Reset average accumulators
+        self._avg_power_sum = 0.0
+        self._avg_power_count = 0
+        self._avg_cad_sum = 0.0
+        self._avg_cad_count = 0
+        self._avg_hr_sum = 0.0
+        self._avg_hr_count = 0
 
         # Create session model
         mode_map = {
@@ -490,6 +503,24 @@ class TerminalRideApp:
             
         try:
             elapsed_s = self.state.metrics.get("time_s", 0)
+            # Update running averages (only while active and not paused)
+            if self.state.session_active and not self.state.session_paused:
+                pw = sample.get("power_w")
+                if pw is not None:
+                    self._avg_power_sum += float(pw)
+                    self._avg_power_count += 1
+                    self.state.metrics["avg_power_w"] = self._avg_power_sum / max(1, self._avg_power_count)
+                cad = sample.get("cadence_rpm")
+                if cad is not None:
+                    self._avg_cad_sum += float(cad)
+                    self._avg_cad_count += 1
+                    self.state.metrics["avg_cadence_rpm"] = self._avg_cad_sum / max(1, self._avg_cad_count)
+                # Avg speed derived from distance/time in UI (also set below on apply_speed_source)
+                hr = self.state.metrics.get("hr_bpm")
+                if hr is not None:
+                    self._avg_hr_sum += float(hr)
+                    self._avg_hr_count += 1
+                    self.state.metrics["avg_hr_bpm"] = self._avg_hr_sum / max(1, self._avg_hr_count)
             
             # Create sample model
             sample_model = SampleModel(

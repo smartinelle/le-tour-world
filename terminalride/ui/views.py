@@ -12,7 +12,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.table import Table
 
-from .widgets import MetricsDisplay, StatusBar, HelpOverlay, DeviceList, LegendPanel
+from .widgets import MetricsDisplay, AverageMetricsDisplay, StatusBar, HelpOverlay, DeviceList, LegendPanel
 from .keymap import condensed_line
 
 
@@ -285,6 +285,7 @@ class LiveView(BaseView):
         super().__init__()
         self.mode = mode
         self.metrics_display = MetricsDisplay()
+        self.avg_display = AverageMetricsDisplay()
 
     def render(self, state: AppState) -> Layout:
         """Render live training view."""
@@ -303,11 +304,15 @@ class LiveView(BaseView):
             if state.session_start_time and not state.session_paused:
                 state.metrics["time_s"] = time.time() - state.session_start_time
 
+            # Build side-by-side metrics panels
+            metrics_row = Layout()
+            metrics_row.split_row(
+                Layout(self.metrics_display.render(state.metrics, self.mode), name="metrics_live"),
+                Layout(self.avg_display.render(state.metrics), name="metrics_avg"),
+            )
+
             main.split_column(
-                Layout(
-                    self.metrics_display.render(state.metrics, self.mode),
-                    name="metrics",
-                ),
+                Layout(metrics_row, name="metrics"),
                 Layout(self._render_mode_controls(state), name="controls", size=8),
                 Layout(
                     StatusBar().render(
