@@ -1,13 +1,12 @@
 """Common TUI widgets and components."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
 from .keymap import get_hints
-from rich.box import HEAVY
 
 
 class MetricsDisplay:
@@ -268,57 +267,8 @@ class LegendPanel:
         return Panel(table, title="Legend", border_style="cyan")
 
 
-# ---------- Intro animation widgets ----------
-
-class IntroTitle:
-    """Type-on title widget for the intro screen."""
-
-    TITLE = "TerminalRide"
-
-    def render(self, progress_chars: int) -> Panel:
-        shown = self.TITLE[: max(0, min(len(self.TITLE), progress_chars))]
-        # Simple color emphasis for the typed portion
-        txt = Text(shown, style="bold cyan")
-        return Panel(Align.center(txt), title="", border_style="blue")
-
-
-class IntroScene:
-    """ASCII landscape scene gradually revealed with a moving cyclist."""
-
-    SCENE: List[str] = [
-        "           /\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",
-        "          /   ^        ^        ^        ^        ^       ",
-        "         /    ^  ^  ^     ^  ^     ^  ^     ^  ^     ^   ",
-        " MOUNTAINS                                               ",
-        " ------------------------------------------------------- ",
-        " ~ ~  ~  ~  ~   RIVER   ~   ~  ~  ~  ~  ~  ~  ~  ~  ~   ",
-        " ------------------------------------------------------- ",
-        "                                                         ",
-        " =====================   ROAD   ======================== ",
-        "                                                         ",
-    ]
-
-    ROAD_ROW = 8
-
-    def render(self, reveal_lines: int, cyclist_x: int = 0) -> Panel:
-        lines = []
-        for i, line in enumerate(self.SCENE):
-            if i < reveal_lines:
-                if i == self.ROAD_ROW:
-                    # Overlay cyclist on road row; keep within bounds
-                    cx = max(0, min(len(line) - 2, cyclist_x))
-                    line = line[:cx] + "🚴" + line[cx + 1 :]
-                lines.append(line)
-            else:
-                lines.append("")
-        txt = Text("\n".join(lines))
-        return Panel(Align.center(txt), title="", border_style="blue", box=HEAVY)
-
-
-# ---------- Live progress widgets ----------
-
 class DistanceProgressBar:
-    """Progress bar showing progress toward the next kilometer (or goal)."""
+    """Progress bar showing progress within the current kilometer."""
 
     def __init__(self, width_cells: int = 40) -> None:
         self.width = width_cells
@@ -326,15 +276,16 @@ class DistanceProgressBar:
     def render(self, metrics: Dict[str, Any]) -> Panel:
         dist_m = float(metrics.get("distance_m") or 0.0)
         km_completed = int(dist_m // 1000)
-        within_km = dist_m - (km_completed * 1000)
+        within_km = max(0.0, dist_m - km_completed * 1000)
         frac = 0.0 if dist_m <= 0 else min(1.0, within_km / 1000.0)
 
-        filled = int(round(self.width * frac))
-        bar = "█" * filled + "─" * (self.width - filled)
+        filled = int(self.width * frac)
+        empty = self.width - filled
+        bar = "█" * filled + "─" * empty
         label = f"KM {km_completed}  •  {int(frac*100):3d}%  •  {int(within_km):3d} m"
 
         grid = Table.grid(padding=(0, 1))
         grid.add_column(justify="left")
         grid.add_row(Text(bar, style="bold green"))
         grid.add_row(Text(label, style="dim"))
-        return Panel(grid, title="Progress to Next KM", border_style="green")
+        return Panel(grid, title="Next Kilometer", border_style="green")
