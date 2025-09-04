@@ -268,7 +268,7 @@ class LegendPanel:
 
 
 class DistanceProgressBar:
-    """Progress bar showing progress within the current kilometer."""
+    """2D progress bar showing progress within the current kilometer."""
 
     def __init__(self, width_cells: int = 40) -> None:
         self.width = width_cells
@@ -281,11 +281,18 @@ class DistanceProgressBar:
 
         filled = int(self.width * frac)
         empty = self.width - filled
-        bar = "█" * filled + "─" * empty
+
+        # Build a boxed bar with top/middle/bottom lines
+        top = "┌" + ("─" * self.width) + "┐"
+        mid = "│" + ("█" * filled + " " * empty) + "│"
+        bot = "└" + ("─" * self.width) + "┘"
+
         label = f"KM {km_completed}  •  {int(frac*100):3d}%  •  {int(within_km):3d} m"
 
         grid = Table.grid(padding=(0, 1))
         grid.add_column(justify="left")
-        grid.add_row(Text(bar, style="bold green"))
+        grid.add_row(Text(top, style="green"))
+        grid.add_row(Text(mid, style="green"))
+        grid.add_row(Text(bot, style="green"))
         grid.add_row(Text(label, style="dim"))
         return Panel(grid, title="Next Kilometer", border_style="green")
