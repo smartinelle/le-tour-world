@@ -1,0 +1,62 @@
+name: Claude Apply Fixes
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  apply:
+    if: |
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude') &&
+       (contains(github.event.comment.body, 'fix comments') ||
+        contains(github.event.comment.body, 'apply suggestions'))) ||
+      (github.event_name == 'pull_request_review_comment' &&
+       contains(github.event.comment.body, '@claude') &&
+       (contains(github.event.comment.body, 'fix comments') ||
+        contains(github.event.comment.body, 'apply suggestions')))
+    runs-on: ubuntu-latest
+
+    # **Schreibrechte aktivieren**
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # volle Historie, falls nötig (Renames/Diffs)
+          fetch-depth: 0
+          # wichtig: GITHUB_TOKEN bleibt für push konfiguriert
+          persist-credentials: true
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run Claude Code (apply fixes)
+        uses: anthropics/claude-code-action@v1
+        with:
+          # du nutzt bereits OAuth – das ist fein
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Erlaube Tools, die Commits/Pushs/PR-Kommentare brauchen
+          claude_args: >-
+            --allowed-tools
+            "Bash(git *),Bash(gh pr *),Bash(gh api *),Bash(jq *),Bash(sed *),Bash(find *),Bash(xargs *)"
+            --temperature 0.1
+
+          # Klare Aufgabe: unresolved Kommentare lösen & committen
+          prompt: |
+            You are allowed to COMMIT to the current PR branch using the provided credentials.
+            Task: Resolve all UNRESOLVED review comments and safe-to-apply suggestions in this PR.
+            - Prefer minimal, targeted changes; preserve style & tests.
+            - If an item is ambiguous or risky, reply with a clarifying PR comment instead of committing.
+            - After edits: run quick static checks if present (ruff/black/mypy/pytest -q) and keep the diff small.
+            - Commit message: "chore: resolve review comments (Claude)"
