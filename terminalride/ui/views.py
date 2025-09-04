@@ -1,6 +1,7 @@
 """TUI views for different application screens."""
 
 import time
+import logging
 from typing import Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass
@@ -22,6 +23,9 @@ from .widgets import (
     DistanceProgressBar,
 )
 from .keymap import condensed_line
+
+
+logger = logging.getLogger(__name__)
 
 
 class ViewState(Enum):
@@ -784,11 +788,14 @@ class SummaryView(BaseView):
 
         # Pull latest saved session id from state
         session_id = state.last_session_id
+        summary = None
         if session_id:
-            repo = TrainingRepository()
-            summary = repo.get_session_summary(session_id)
-        else:
-            summary = None
+            try:
+                repo = TrainingRepository()
+                summary = repo.get_session_summary(session_id)
+            except Exception as e:
+                logger.debug(f"Failed to load session summary: {e}")
+                # Continue with fallback to live metrics
 
         # Duration
         duration_s = 0.0
@@ -852,10 +859,14 @@ class SummaryView(BaseView):
             # Delete session and return Home
             sid = state.last_session_id
             if sid:
-                repo = TrainingRepository()
-                if repo.delete_session(sid):
-                    state.status_message = "Session discarded"
-                else:
+                try:
+                    repo = TrainingRepository()
+                    if repo.delete_session(sid):
+                        state.status_message = "Session discarded"
+                    else:
+                        state.status_message = "Failed to discard session"
+                except Exception as e:
+                    logger.warning(f"Error deleting session {sid}: {e}")
                     state.status_message = "Failed to discard session"
             return ViewState.HOME
         return None
