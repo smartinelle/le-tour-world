@@ -133,6 +133,8 @@ Physics-based cycling simulation:
 
 ## Development
 
+See `docs/adr/` for the current set of accepted architecture decisions before making structural changes.
+
 ### Running Tests
 
 ```bash
@@ -237,7 +239,7 @@ Edit `~/.config/terminalride/config.json` (or via the in-app Settings view):
 ### Data Issues
 
 1. **Missing sessions**: Check `~/.terminalride/sessions.jsonl`
-2. **Corrupt data**: SQLite auto-rebuilds from JSONL primary storage
+2. **Corrupt data**: Delete `~/.terminalride/terminalride.db` to clear the cache. JSONL remains the source of truth, but historical sessions must be re-imported manually (see ADR-001 follow-ups).
 3. **Export failures**: Verify write permissions in export directory
 
 ## Contributing
@@ -245,8 +247,9 @@ Edit `~/.config/terminalride/config.json` (or via the in-app Settings view):
 1. Fork the repository
 2. Create feature branch
 3. Ensure all tests pass
-4. Add tests for new functionality  
-5. Submit pull request
+4. Reference or add an ADR for architecture-impacting changes (`docs/adr/`)
+5. Add tests for new functionality  
+6. Submit pull request
 
 ## License
 
