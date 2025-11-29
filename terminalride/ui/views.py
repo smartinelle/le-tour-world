@@ -824,10 +824,12 @@ class StatsView(BaseView):
 
 
 class SettingsView(BaseView):
-    """Application settings view."""
+    """Application settings view with inline editing."""
 
     def __init__(self) -> None:
         super().__init__()
+        self._editing: Optional[str] = None  # Currently editing field name
+        self._edit_value: float = 0.0  # Current edit value
 
     def render(self, state: AppState) -> Layout:
         """Render settings view."""
@@ -874,72 +876,156 @@ class SettingsView(BaseView):
         return Panel(Align.center(header_text), title="Settings", border_style="blue")
 
     def _render_settings_content(self) -> Panel:
-        """Render settings content."""
+        """Render settings content with edit highlighting."""
         import logging
+        from ..analytics import estimate_max_hr
 
         cfg = get_config()
         s = cfg.settings
 
         table = Table.grid(padding=1)
+        table.add_column("Key", style="dim", width=4)
         table.add_column("Setting", style="bold")
         table.add_column("Value", justify="left")
 
-        # File locations
-        table.add_row("Data Directory", str(cfg.get_data_dir()))
+        def row(key: str, label: str, value: str, field: str) -> None:
+            """Add a row, highlighting if currently editing."""
+            if self._editing == field:
+                # Show edit value with highlight
+                val_text = Text(f"► {self._edit_value:.1f}", style="bold yellow")
+                val_text.append(" (↑↓ adjust, Enter save, Esc cancel)", style="dim")
+                table.add_row(f"[{key}]", label, val_text)
+            else:
+                table.add_row(f"[{key}]", label, value)
+
+        # Editable settings
+        row("m", "Mass", f"{s.mass_kg:.1f} kg", "mass")
+        row("f", "FTP", f"{s.ftp_w or 250} W", "ftp")
+
+        max_hr = s.max_hr_bpm or estimate_max_hr(s.age)
+        max_hr_display = f"{s.max_hr_bpm} bpm" if s.max_hr_bpm else f"{max_hr} bpm (estimated)"
+        row("h", "Max HR", max_hr_display, "max_hr")
+
+        row("a", "Age", f"{s.age} years", "age")
+
+        # Non-editable info
+        table.add_row("", "", "")  # Spacer
+        table.add_row("", "Name", s.name)
+        table.add_row("", "Data Directory", str(cfg.get_data_dir()))
 
         # Logging (effective)
         level_name = logging.getLevelName(
             logging.getLogger("terminalride").getEffectiveLevel()
         )
-        table.add_row("Log Level", str(level_name))
-
-        # User profile
-        table.add_row("Name", s.name)
-        table.add_row("Mass", f"{s.mass_kg:.1f} kg")
-        table.add_row("FTP", f"{s.ftp_w} W")
-
-        # Physics defaults
-        table.add_row("CdA", f"{s.cda_m2:.3f} m²")
-        table.add_row("Crr", f"{s.crr:.4f}")
-
-        # UI / behavior
-        table.add_row("Units", s.units)
-        table.add_row("Refresh Rate", f"{s.refresh_rate_hz} Hz")
-        table.add_row("Show Legend", "on" if s.show_legend else "off")
-        table.add_row("Speed Source", s.speed_source)
-
-        # Device prefs
-        table.add_row("Auto-connect Trainer", "on" if s.auto_connect_trainer else "off")
-        table.add_row("Auto-connect HR", "on" if s.auto_connect_hr else "off")
-        table.add_row("Reconnect Timeout", f"{s.reconnect_timeout_s} s")
-
-        # Training defaults
-        table.add_row("Default ERG Target", f"{s.default_erg_power_w} W")
-        table.add_row("Default SIM Grade", f"{s.default_sim_grade_pct:+.1f} %")
+        table.add_row("", "Log Level", str(level_name))
 
         return Panel(table, title="Current Settings", border_style="green")
 
     def _render_settings_controls(self) -> Panel:
         """Render settings controls."""
-        controls_text = """
-[m] Modify mass (kg) — later
-[f] Modify FTP (watts) — later
-[t] Modify reconnect timeout — later
-[r] Reset to defaults — later
-[Esc] Back to home
-        """
-        return Panel(controls_text, title="Controls", border_style="cyan")
+        if self._editing:
+            controls = Text()
+            controls.append("Editing: ", style="bold")
+            controls.append(f"{self._editing}\n", style="yellow")
+            controls.append("  ↑/+  Increase value\n")
+            controls.append("  ↓/-  Decrease value\n")
+            controls.append("  Enter  Save changes\n")
+            controls.append("  Esc  Cancel\n")
+        else:
+            controls = Text()
+            controls.append("[m] Edit mass (kg)\n")
+            controls.append("[f] Edit FTP (watts)\n")
+            controls.append("[h] Edit max heart rate\n")
+            controls.append("[a] Edit age\n")
+            controls.append("[Esc] Back to home\n")
+
+        return Panel(controls, title="Controls", border_style="cyan")
 
     def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
         """Handle settings view keys."""
+        cfg = get_config()
+        s = cfg.settings
+
+        # If editing, handle edit keys
+        if self._editing:
+            if key == "escape":
+                self._editing = None
+                state.status_message = "Edit cancelled"
+                return None
+            elif key in ("enter", "\r", "\n"):
+                # Save the value
+                self._save_edit_value(cfg, state)
+                return None
+            elif key in ("up", "+", "="):
+                self._adjust_edit_value(1)
+                return None
+            elif key in ("down", "-"):
+                self._adjust_edit_value(-1)
+                return None
+            return None
+
+        # Not editing - handle selection keys
         if key == "escape":
             return ViewState.HOME
-        # Editing not implemented yet; let legend/help explain
-        if key in ["m", "f", "t", "r"]:
-            state.status_message = "Settings modification not implemented yet"
+        elif key == "m":
+            self._editing = "mass"
+            self._edit_value = s.mass_kg
+            state.status_message = "Editing mass - use ↑↓ to adjust"
+            return None
+        elif key == "f":
+            self._editing = "ftp"
+            self._edit_value = float(s.ftp_w or 250)
+            state.status_message = "Editing FTP - use ↑↓ to adjust"
+            return None
+        elif key == "h":
+            from ..analytics import estimate_max_hr
+            self._editing = "max_hr"
+            self._edit_value = float(s.max_hr_bpm or estimate_max_hr(s.age))
+            state.status_message = "Editing max HR - use ↑↓ to adjust"
+            return None
+        elif key == "a":
+            self._editing = "age"
+            self._edit_value = float(s.age)
+            state.status_message = "Editing age - use ↑↓ to adjust"
             return None
 
         return None
+
+    def _adjust_edit_value(self, direction: int) -> None:
+        """Adjust the current edit value."""
+        if self._editing == "mass":
+            # Adjust by 0.5 kg
+            self._edit_value = max(40.0, min(200.0, self._edit_value + direction * 0.5))
+        elif self._editing == "ftp":
+            # Adjust by 5 W
+            self._edit_value = max(50.0, min(600.0, self._edit_value + direction * 5))
+        elif self._editing == "max_hr":
+            # Adjust by 1 bpm
+            self._edit_value = max(100.0, min(230.0, self._edit_value + direction))
+        elif self._editing == "age":
+            # Adjust by 1 year
+            self._edit_value = max(10.0, min(100.0, self._edit_value + direction))
+
+    def _save_edit_value(self, cfg, state: AppState) -> None:
+        """Save the edited value to config."""
+        s = cfg.settings
+
+        if self._editing == "mass":
+            s.mass_kg = self._edit_value
+            state.status_message = f"Mass set to {self._edit_value:.1f} kg"
+        elif self._editing == "ftp":
+            s.ftp_w = int(self._edit_value)
+            state.status_message = f"FTP set to {int(self._edit_value)} W"
+        elif self._editing == "max_hr":
+            s.max_hr_bpm = int(self._edit_value)
+            state.status_message = f"Max HR set to {int(self._edit_value)} bpm"
+        elif self._editing == "age":
+            s.age = int(self._edit_value)
+            state.status_message = f"Age set to {int(self._edit_value)} years"
+
+        # Save to disk
+        cfg.save_settings()
+        self._editing = None
 
 
 class SummaryView(BaseView):
