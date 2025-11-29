@@ -829,7 +829,8 @@ class SettingsView(BaseView):
     def __init__(self) -> None:
         super().__init__()
         self._editing: Optional[str] = None  # Currently editing field name
-        self._edit_value: float = 0.0  # Current edit value
+        self._edit_value: float = 0.0  # Current edit value (for numeric fields)
+        self._edit_text: str = ""  # Current edit text (for string fields)
 
     def render(self, state: AppState) -> Layout:
         """Render settings view."""
@@ -888,17 +889,23 @@ class SettingsView(BaseView):
         table.add_column("Setting", style="bold")
         table.add_column("Value", justify="left")
 
-        def row(key: str, label: str, value: str, field: str) -> None:
+        def row(key: str, label: str, value: str, field: str, is_text: bool = False) -> None:
             """Add a row, highlighting if currently editing."""
             if self._editing == field:
-                # Show edit value with highlight
-                val_text = Text(f"► {self._edit_value:.1f}", style="bold yellow")
-                val_text.append(" (↑↓ adjust, Enter save, Esc cancel)", style="dim")
+                if is_text:
+                    # Show text edit with cursor
+                    val_text = Text(f"► {self._edit_text}_", style="bold yellow")
+                    val_text.append(" (type, Backspace delete, Enter save, Esc cancel)", style="dim")
+                else:
+                    # Show numeric edit value with highlight
+                    val_text = Text(f"► {self._edit_value:.1f}", style="bold yellow")
+                    val_text.append(" (↑↓ adjust, Enter save, Esc cancel)", style="dim")
                 table.add_row(f"[{key}]", label, val_text)
             else:
                 table.add_row(f"[{key}]", label, value)
 
         # Editable settings
+        row("n", "Name", s.name, "name", is_text=True)
         row("m", "Mass", f"{s.mass_kg:.1f} kg", "mass")
         row("f", "FTP", f"{s.ftp_w or 250} W", "ftp")
 
@@ -907,10 +914,6 @@ class SettingsView(BaseView):
         row("h", "Max HR", max_hr_display, "max_hr")
 
         row("a", "Age", f"{s.age} years", "age")
-
-        # Non-editable info
-        table.add_row("", "", "")  # Spacer
-        table.add_row("", "Name", s.name)
         table.add_row("", "Data Directory", str(cfg.get_data_dir()))
 
         # Logging (effective)
@@ -927,12 +930,17 @@ class SettingsView(BaseView):
             controls = Text()
             controls.append("Editing: ", style="bold")
             controls.append(f"{self._editing}\n", style="yellow")
-            controls.append("  ↑/+  Increase value\n")
-            controls.append("  ↓/-  Decrease value\n")
+            if self._editing == "name":
+                controls.append("  Type to enter text\n")
+                controls.append("  Backspace to delete\n")
+            else:
+                controls.append("  ↑/+  Increase value\n")
+                controls.append("  ↓/-  Decrease value\n")
             controls.append("  Enter  Save changes\n")
             controls.append("  Esc  Cancel\n")
         else:
             controls = Text()
+            controls.append("[n] Edit name\n")
             controls.append("[m] Edit mass (kg)\n")
             controls.append("[f] Edit FTP (watts)\n")
             controls.append("[h] Edit max heart rate\n")
@@ -950,13 +958,30 @@ class SettingsView(BaseView):
         if self._editing:
             if key == "escape":
                 self._editing = None
+                self._edit_text = ""
                 state.status_message = "Edit cancelled"
                 return None
             elif key in ("enter", "\r", "\n"):
                 # Save the value
                 self._save_edit_value(cfg, state)
                 return None
-            elif key in ("up", "+", "="):
+
+            # Text editing for name field
+            if self._editing == "name":
+                if key == "backspace" or key == "\x7f":
+                    # Delete last character
+                    if self._edit_text:
+                        self._edit_text = self._edit_text[:-1]
+                    return None
+                elif len(key) == 1 and key.isprintable():
+                    # Add character (limit to 30 chars)
+                    if len(self._edit_text) < 30:
+                        self._edit_text += key
+                    return None
+                return None
+
+            # Numeric editing for other fields
+            if key in ("up", "+", "="):
                 self._adjust_edit_value(1)
                 return None
             elif key in ("down", "-"):
@@ -967,6 +992,11 @@ class SettingsView(BaseView):
         # Not editing - handle selection keys
         if key == "escape":
             return ViewState.HOME
+        elif key == "n":
+            self._editing = "name"
+            self._edit_text = s.name
+            state.status_message = "Editing name - type to change, Enter to save"
+            return None
         elif key == "m":
             self._editing = "mass"
             self._edit_value = s.mass_kg
@@ -1010,7 +1040,17 @@ class SettingsView(BaseView):
         """Save the edited value to config."""
         s = cfg.settings
 
-        if self._editing == "mass":
+        if self._editing == "name":
+            name = self._edit_text.strip()
+            if name:
+                s.name = name
+                state.status_message = f"Name set to '{name}'"
+            else:
+                state.status_message = "Name cannot be empty"
+                self._editing = None
+                self._edit_text = ""
+                return
+        elif self._editing == "mass":
             s.mass_kg = self._edit_value
             state.status_message = f"Mass set to {self._edit_value:.1f} kg"
         elif self._editing == "ftp":
@@ -1026,6 +1066,7 @@ class SettingsView(BaseView):
         # Save to disk
         cfg.save_settings()
         self._editing = None
+        self._edit_text = ""
 
 
 class SummaryView(BaseView):
