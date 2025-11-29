@@ -1,6 +1,5 @@
 """Tests for SIM mode physics solver."""
 
-import pytest
 import math
 from terminalride.modes.sim import SimPhysics, SimConfig
 

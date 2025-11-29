@@ -1,184 +1,175 @@
 """Tests for UI views."""
 
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+from rich.console import Console
+from rich.text import Text
 
 from terminalride.ui.views import AppState, SummaryView, ViewState
-from terminalride.store.models import SessionModel, TrainingMode
+from terminalride.store.models import SessionSummary
 
 
 class TestSummaryView:
     """Tests for the SummaryView."""
 
+    @staticmethod
+    def _render_text(layout) -> str:
+        console = Console(record=True, width=120)
+        console.print(layout)
+        return console.export_text()
+
     def test_summary_view_renders_with_valid_session(self):
-        """Test that SummaryView renders correctly with valid session data."""
-        view = SummaryView()
-        
-        # Mock state with session ID
         state = AppState()
         state.last_session_id = "test-session-123"
-        
-        # Mock session data
-        mock_session = SessionModel(
+
+        summary = SessionSummary(
             session_id="test-session-123",
-            mode=TrainingMode.ERG,
+            mode="erg",
+            duration_s=1800.0,
             start_time=datetime(2023, 1, 1, 10, 0, 0),
-            end_time=datetime(2023, 1, 1, 10, 30, 0),
-            duration_s=1800.0,  # 30 minutes
-            trainer_name="Test Trainer",
-            total_distance_m=10000.0,  # 10 km
+            total_distance_m=10000.0,
             avg_power_w=200.0,
-            max_power_w=300.0,
+            max_power_w=300,
             avg_cadence_rpm=90.0,
+            avg_speed_mps=10000.0 / 1800.0,
         )
-        
-        with patch('terminalride.ui.views.TrainingRepository') as mock_repo_class:
-            mock_repo = MagicMock()
-            mock_repo_class.return_value = mock_repo
-            mock_repo.get_session.return_value = mock_session
-            
-            result = view.render(state)
-            result_str = str(result)
-            
-            # Check that session data is displayed
-            assert "Good job" in result_str
-            assert "30:00" in result_str  # Duration HH:MM
-            assert "10.0" in result_str   # Distance km
-            assert "200" in result_str    # Avg Power
-            assert "90" in result_str     # Avg Cadence
-            assert "300" in result_str    # Max Power
-            
-            # Check that controls are shown
-            assert "s" in result_str or "Esc" in result_str  # Keep session
-            assert "d" in result_str  # Discard session
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc = MagicMock()
+            svc_factory.return_value = svc
+            svc.get_session_summary.return_value = summary
+
+            view = SummaryView()
+            layout = view.render(state)
+
+        rendered = self._render_text(layout)
+        assert "Good job" in rendered
+        assert "00:30:00" in rendered
+        assert "10.00 km" in rendered
+        assert "200 W" in rendered
+        assert "300 W" in rendered
+        assert "90 rpm" in rendered
+        assert "20.0 km/h" in rendered
 
     def test_summary_view_handles_missing_session(self):
-        """Test that SummaryView gracefully handles missing session data."""
-        view = SummaryView()
-        
         state = AppState()
-        state.last_session_id = None
-        
-        result = view.render(state)
-        result_str = str(result)
-        
-        # Should show fallback message
-        assert "No session" in result_str or "Error" in result_str
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc_factory.return_value = MagicMock()
+            view = SummaryView()
+
+            layout = view.render(state)
+            rendered = self._render_text(layout)
+
+        assert "Duration" in rendered
+        assert "00:00:00" in rendered
+        assert "[s] Save and finish" in rendered
 
     def test_summary_view_handles_repository_error(self):
-        """Test that SummaryView handles repository errors gracefully."""
-        view = SummaryView()
-        
         state = AppState()
         state.last_session_id = "test-session-123"
-        
-        with patch('terminalride.ui.views.TrainingRepository') as mock_repo_class:
-            mock_repo = MagicMock()
-            mock_repo_class.return_value = mock_repo
-            mock_repo.get_session.side_effect = Exception("Database error")
-            
-            result = view.render(state)
-            result_str = str(result)
-            
-            # Should not crash and show error handling
-            assert len(result_str) > 0  # Some content rendered
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc = MagicMock()
+            svc_factory.return_value = svc
+            svc.get_session_summary.side_effect = Exception("Database error")
+
+            view = SummaryView()
+            layout = view.render(state)
+
+        rendered = self._render_text(layout)
+        assert "Duration" in rendered
 
     def test_summary_view_handles_incomplete_session_data(self):
-        """Test that SummaryView handles sessions with missing optional fields."""
-        view = SummaryView()
-        
         state = AppState()
         state.last_session_id = "test-session-123"
-        
-        # Mock session with minimal data
-        mock_session = SessionModel(
+
+        summary = SessionSummary(
             session_id="test-session-123",
-            mode=TrainingMode.FREE,
+            mode="free",
+            duration_s=0.0,
             start_time=datetime(2023, 1, 1, 10, 0, 0),
-            trainer_name="Test Trainer",
+            total_distance_m=0.0,
         )
-        # Intentionally leave end_time, duration_s, etc. as None
-        
-        with patch('terminalride.ui.views.TrainingRepository') as mock_repo_class:
-            mock_repo = MagicMock()
-            mock_repo_class.return_value = mock_repo
-            mock_repo.get_session.return_value = mock_session
-            
-            result = view.render(state)
-            result_str = str(result)
-            
-            # Should still render without crashing
-            assert "Good job" in result_str
-            # Should handle missing data gracefully (show N/A or 0)
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc = MagicMock()
+            svc_factory.return_value = svc
+            svc.get_session_summary.return_value = summary
+
+            view = SummaryView()
+            layout = view.render(state)
+
+        rendered = self._render_text(layout)
+        assert "--- W" in rendered
+        assert "--- rpm" in rendered
+        assert "--- km/h" in rendered
 
     def test_summary_view_key_handling_keep_session(self):
-        """Test handling of 's' key to keep session."""
-        view = SummaryView()
-        
         state = AppState()
         state.current_view = ViewState.SUMMARY
-        
-        # Test 's' key
-        result = view.handle_key('s', state)
-        assert result == ViewState.HOME
-        
-        # Test 'escape' key
-        result = view.handle_key('escape', state)
-        assert result == ViewState.HOME
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc_factory.return_value = MagicMock()
+            view = SummaryView()
+
+            assert view.handle_key("s", state) == ViewState.HOME
+            assert view.handle_key("escape", state) == ViewState.HOME
 
     def test_summary_view_key_handling_discard_session(self):
-        """Test handling of 'd' key to discard session."""
-        view = SummaryView()
-        
         state = AppState()
         state.current_view = ViewState.SUMMARY
         state.last_session_id = "test-session-123"
-        
-        with patch('terminalride.ui.views.TrainingRepository') as mock_repo_class:
-            mock_repo = MagicMock()
-            mock_repo_class.return_value = mock_repo
-            mock_repo.delete_session.return_value = True
-            
-            result = view.handle_key('d', state)
-            
-            # Should return to HOME view
-            assert result == ViewState.HOME
-            
-            # Should have called delete_session
-            mock_repo.delete_session.assert_called_once_with("test-session-123")
-            
-            # Should have set status message
-            assert "discarded" in state.status_message.lower()
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc = MagicMock()
+            svc_factory.return_value = svc
+            svc.delete_session.return_value = True
+
+            view = SummaryView()
+            result = view.handle_key("d", state)
+
+        assert result == ViewState.HOME
+        svc.delete_session.assert_called_once_with("test-session-123")
+        assert "discarded" in state.status_message.lower()
 
     def test_summary_view_key_handling_discard_failure(self):
-        """Test handling of 'd' key when discard fails."""
-        view = SummaryView()
-        
         state = AppState()
         state.current_view = ViewState.SUMMARY
         state.last_session_id = "test-session-123"
-        
-        with patch('terminalride.ui.views.TrainingRepository') as mock_repo_class:
-            mock_repo = MagicMock()
-            mock_repo_class.return_value = mock_repo
-            mock_repo.delete_session.return_value = False
-            
-            result = view.handle_key('d', state)
-            
-            # Should still return to HOME
-            assert result == ViewState.HOME
-            
-            # Should have set failure message
-            assert "failed" in state.status_message.lower()
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc = MagicMock()
+            svc_factory.return_value = svc
+            svc.delete_session.return_value = False
+
+            view = SummaryView()
+            result = view.handle_key("d", state)
+
+        assert result == ViewState.HOME
+        assert "failed" in state.status_message.lower()
 
     def test_summary_view_key_handling_unknown_key(self):
-        """Test handling of unknown keys."""
-        view = SummaryView()
-        
         state = AppState()
         state.current_view = ViewState.SUMMARY
-        
-        # Unknown keys should not change view
-        result = view.handle_key('x', state)
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc_factory.return_value = MagicMock()
+            view = SummaryView()
+
+            result = view.handle_key("x", state)
         assert result is None or result == ViewState.SUMMARY
+
+    def test_summary_controls_use_plain_text(self):
+        state = AppState()
+
+        with patch("terminalride.ui.views.get_session_service") as svc_factory:
+            svc_factory.return_value = MagicMock()
+            view = SummaryView()
+
+            layout = view.render(state)
+        controls_panel = layout["controls"].renderable
+
+        assert isinstance(controls_panel.renderable, Text)
+        assert controls_panel.renderable.plain.startswith("[s] Save and finish")

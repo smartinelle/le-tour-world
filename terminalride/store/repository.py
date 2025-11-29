@@ -9,6 +9,7 @@ import logging
 
 from .models import SessionModel, SampleModel, SessionSummary
 from ..config import get_config
+from ..analytics import calculate_training_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -292,10 +293,28 @@ class TrainingRepository:
             ]
             total_distance_m = max(distance_samples) if distance_samples else 0.0
 
+            # Calculate training metrics (NP, IF, TSS) using analytics module
+            duration_s = session.duration_s or 0.0
+            normalized_power_w: Optional[float] = None
+            intensity_factor: Optional[float] = None
+            training_stress_score: Optional[float] = None
+
+            if power_values and duration_s > 0:
+                metrics = calculate_training_metrics(
+                    power_samples=power_values,
+                    duration_seconds=duration_s,
+                    ftp_w=session.user_ftp_w,
+                    sample_rate_hz=1.0,  # Assume 1Hz sampling
+                )
+                if metrics:
+                    normalized_power_w = metrics.normalized_power_w
+                    intensity_factor = metrics.intensity_factor
+                    training_stress_score = metrics.training_stress_score
+
             return SessionSummary(
                 session_id=session.session_id,
                 mode=session.mode.value,
-                duration_s=session.duration_s or 0.0,
+                duration_s=duration_s,
                 start_time=session.start_time,
                 total_distance_m=total_distance_m,
                 avg_power_w=(
@@ -314,10 +333,9 @@ class TrainingRepository:
                 max_speed_mps=max(speed_values) if speed_values else None,
                 avg_hr_bpm=sum(hr_values) / len(hr_values) if hr_values else None,
                 max_hr_bpm=max(hr_values) if hr_values else None,
-                # TODO: Calculate normalized power, IF, TSS
-                normalized_power_w=session.normalized_power_w,
-                intensity_factor=session.intensity_factor,
-                training_stress_score=session.training_stress_score,
+                normalized_power_w=normalized_power_w,
+                intensity_factor=intensity_factor,
+                training_stress_score=training_stress_score,
             )
 
         except Exception as e:

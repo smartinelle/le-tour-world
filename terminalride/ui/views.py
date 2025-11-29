@@ -13,6 +13,9 @@ from rich.text import Text
 from rich.align import Align
 from rich.table import Table
 
+from ..config import get_config
+from ..domain.session_service import get_session_service
+
 from .widgets import (
     MetricsDisplay,
     AverageMetricsDisplay,
@@ -68,7 +71,7 @@ class AppState:
     # Text input handling
     input_mode: Optional[str] = None
     input_buffer: str = ""
-    
+
     # Last saved/finished session id for summary
     last_session_id: Optional[str] = None
 
@@ -121,7 +124,9 @@ class BaseView:
         """View-specific key handling implementation."""
         return None
 
-    def _with_legend(self, content: Layout, state: AppState, live: bool = False) -> Layout:
+    def _with_legend(
+        self, content: Layout, state: AppState, live: bool = False
+    ) -> Layout:
         """Wrap content with a right-side legend when enabled."""
         if not state.show_legend:
             self.layout = content
@@ -323,7 +328,10 @@ class LiveView(BaseView):
             # Build side-by-side metrics panels
             metrics_row = Layout()
             metrics_row.split_row(
-                Layout(self.metrics_display.render(state.metrics, self.mode), name="metrics_live"),
+                Layout(
+                    self.metrics_display.render(state.metrics, self.mode),
+                    name="metrics_live",
+                ),
                 Layout(self.avg_display.render(state.metrics), name="metrics_avg"),
             )
 
@@ -489,11 +497,7 @@ class StatsView(BaseView):
 
     def __init__(self) -> None:
         super().__init__()
-        try:
-            from ..store.repository import TrainingRepository
-            self._repository = TrainingRepository()
-        except Exception:
-            self._repository = None
+        self._session_service = get_session_service()
 
     def render(self, state: AppState) -> Layout:
         """Render statistics view."""
@@ -545,13 +549,7 @@ class StatsView(BaseView):
     def _compute_totals(self) -> tuple[float, float]:
         """Compute total time (s) and distance (km) across sessions."""
         try:
-            repository = getattr(self, "_repository", None)
-            if not repository:
-                from ..store.repository import TrainingRepository
-                repository = TrainingRepository()
-                self._repository = repository
-
-            sessions = repository.list_sessions(limit=10000)
+            sessions = self._session_service.list_sessions(limit=10000)
             total_time_s = 0.0
             total_dist_m = 0.0
 
@@ -560,8 +558,8 @@ class StatsView(BaseView):
                 dur = sess.duration_s or 0.0
                 dist_m = sess.total_distance_m or 0.0
 
-                if (dur == 0.0 or dist_m == 0.0):
-                    summary = repository.get_session_summary(sess.session_id)
+                if dur == 0.0 or dist_m == 0.0:
+                    summary = self._session_service.get_session_summary(sess.session_id)
                     if summary:
                         if dur == 0.0 and summary.duration_s is not None:
                             dur = summary.duration_s
@@ -577,12 +575,14 @@ class StatsView(BaseView):
 
     def _render_session_list(self, state: AppState) -> Panel:
         """Render list of recent sessions."""
-        repository = getattr(self, "_repository", None)
-        sessions = repository.list_sessions(limit=10) if repository else []
-        
+        sessions = self._session_service.list_sessions(limit=10)
+
         if not sessions:
-            content = Text("No training sessions found.\nComplete some workouts to see statistics here!", 
-                          style="dim", justify="center")
+            content = Text(
+                "No training sessions found.\nComplete some workouts to see statistics here!",
+                style="dim",
+                justify="center",
+            )
             return Panel(content, title="Recent Sessions", border_style="yellow")
 
         # Create sessions table
@@ -599,12 +599,20 @@ class StatsView(BaseView):
             date_str = session.start_time.strftime("%m/%d %H:%M")
             duration_str = self._format_duration(session.duration_s or 0)
             distance_str = f"{(session.total_distance_m or 0) / 1000:.1f} km"
-            
+
             # Get session summary for additional stats
-            summary = repository.get_session_summary(session.session_id) if repository else None
-            avg_power = f"{summary.avg_power_w:.0f} W" if summary and summary.avg_power_w else "--- W"
-            max_power = f"{summary.max_power_w} W" if summary and summary.max_power_w else "--- W"
-            
+            summary = self._session_service.get_session_summary(session.session_id)
+            avg_power = (
+                f"{summary.avg_power_w:.0f} W"
+                if summary and summary.avg_power_w
+                else "--- W"
+            )
+            max_power = (
+                f"{summary.max_power_w} W"
+                if summary and summary.max_power_w
+                else "--- W"
+            )
+
             table.add_row(
                 date_str,
                 session.mode.value.upper(),
@@ -675,7 +683,11 @@ class SettingsView(BaseView):
                 Layout(
                     StatusBar().render(
                         state.status_message,
-                        "connected" if state.devices.get("trainer", {}).get("connected", False) else "disconnected",
+                        (
+                            "connected"
+                            if state.devices.get("trainer", {}).get("connected", False)
+                            else "disconnected"
+                        ),
                         hints_line=condensed_line(
                             state.current_view.value,
                             state.devices.get("trainer", {}).get("connected", False),
@@ -691,14 +703,13 @@ class SettingsView(BaseView):
         """Render settings header."""
         header_text = Text.assemble(
             ("Application Settings", "bold blue"),
-            "\n\nConfigure TerminalRide preferences"
+            "\n\nConfigure TerminalRide preferences",
         )
         return Panel(Align.center(header_text), title="Settings", border_style="blue")
 
     def _render_settings_content(self) -> Panel:
         """Render settings content."""
         import logging
-        from ..config import get_config
 
         cfg = get_config()
         s = cfg.settings
@@ -768,6 +779,10 @@ class SettingsView(BaseView):
 class SummaryView(BaseView):
     """End-of-ride summary with save/discard choice."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._session_service = get_session_service()
+
     def render(self, state: AppState) -> Layout:
         main = Layout()
         main.split_column(
@@ -778,9 +793,6 @@ class SummaryView(BaseView):
         return main
 
     def _render_summary(self, state: AppState) -> Panel:
-        from ..config import get_config
-        from ..store.repository import TrainingRepository
-
         username = get_config().settings.name
         table = Table.grid(padding=1)
         table.add_column("Metric", style="bold")
@@ -791,8 +803,7 @@ class SummaryView(BaseView):
         summary = None
         if session_id:
             try:
-                repo = TrainingRepository()
-                summary = repo.get_session_summary(session_id)
+                summary = self._session_service.get_session_summary(session_id)
             except Exception as e:
                 logger.debug(f"Failed to load session summary: {e}")
                 # Continue with fallback to live metrics
@@ -817,20 +828,34 @@ class SummaryView(BaseView):
         table.add_row("Distance", f"{dist_km:.2f} km")
 
         # Averages
-        avg_power = getattr(summary, "avg_power_w", None) if summary else state.metrics.get("avg_power_w")
-        avg_cad = getattr(summary, "avg_cadence_rpm", None) if summary else state.metrics.get("avg_cadence_rpm")
+        avg_power = (
+            getattr(summary, "avg_power_w", None)
+            if summary
+            else state.metrics.get("avg_power_w")
+        )
+        avg_cad = (
+            getattr(summary, "avg_cadence_rpm", None)
+            if summary
+            else state.metrics.get("avg_cadence_rpm")
+        )
         avg_speed_kph = None
         if summary and summary.avg_speed_mps is not None:
             avg_speed_kph = summary.avg_speed_mps * 3.6
         else:
             t = duration_s or 0.0
-            d_m = (state.metrics.get("distance_m") or 0.0)
+            d_m = state.metrics.get("distance_m") or 0.0
             if t > 0:
                 avg_speed_kph = (d_m / t) * 3.6
 
-        table.add_row("Avg Power", f"{int(round(avg_power))} W" if avg_power else "--- W")
-        table.add_row("Avg Cadence", f"{int(round(avg_cad))} rpm" if avg_cad else "--- rpm")
-        table.add_row("Avg Speed", f"{avg_speed_kph:.1f} km/h" if avg_speed_kph else "--- km/h")
+        table.add_row(
+            "Avg Power", f"{int(round(avg_power))} W" if avg_power else "--- W"
+        )
+        table.add_row(
+            "Avg Cadence", f"{int(round(avg_cad))} rpm" if avg_cad else "--- rpm"
+        )
+        table.add_row(
+            "Avg Speed", f"{avg_speed_kph:.1f} km/h" if avg_speed_kph else "--- km/h"
+        )
 
         # Max power (if available)
         max_power = getattr(summary, "max_power_w", None) if summary else None
@@ -845,13 +870,10 @@ class SummaryView(BaseView):
         )
 
     def _render_summary_controls(self, state: AppState) -> Panel:
-        controls = """
-[s] Save and finish   [d] Discard session   [Esc] Home
-        """
-        return Panel(controls, title="Summary", border_style="cyan")
+        controls = "[s] Save and finish   [d] Discard session   [Esc] Home"
+        return Panel(Text(controls), title="Summary", border_style="cyan")
 
     def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
-        from ..store.repository import TrainingRepository
         if key == "escape" or key == "s":
             # Keep session (already saved), return Home
             return ViewState.HOME
@@ -860,8 +882,7 @@ class SummaryView(BaseView):
             sid = state.last_session_id
             if sid:
                 try:
-                    repo = TrainingRepository()
-                    if repo.delete_session(sid):
+                    if self._session_service.delete_session(sid):
                         state.status_message = "Session discarded"
                     else:
                         state.status_message = "Failed to discard session"

@@ -101,11 +101,16 @@ class AverageMetricsDisplay:
 
         # Average power
         avg_power = metrics.get("avg_power_w")
-        table.add_row("Power", f"{int(round(avg_power))} W" if avg_power is not None else "--- W")
+        table.add_row(
+            "Power", f"{int(round(avg_power))} W" if avg_power is not None else "--- W"
+        )
 
         # Average cadence
         avg_cad = metrics.get("avg_cadence_rpm")
-        table.add_row("Cadence", f"{int(round(avg_cad))} rpm" if avg_cad is not None else "--- rpm")
+        table.add_row(
+            "Cadence",
+            f"{int(round(avg_cad))} rpm" if avg_cad is not None else "--- rpm",
+        )
 
         # Average speed (prefer km/h value if present, else compute)
         avg_speed_kph = metrics.get("avg_speed_kph")
@@ -113,11 +118,16 @@ class AverageMetricsDisplay:
             dist_m = metrics.get("distance_m") or 0.0
             if time_s > 0:
                 avg_speed_kph = (dist_m / time_s) * 3.6
-        table.add_row("Speed", f"{avg_speed_kph:4.1f} km/h" if avg_speed_kph else "--- km/h")
+        table.add_row(
+            "Speed", f"{avg_speed_kph:4.1f} km/h" if avg_speed_kph else "--- km/h"
+        )
 
         # Average heart rate
         avg_hr = metrics.get("avg_hr_bpm")
-        table.add_row("Heart Rate", f"{int(round(avg_hr))} bpm" if avg_hr is not None else "--- bpm")
+        table.add_row(
+            "Heart Rate",
+            f"{int(round(avg_hr))} bpm" if avg_hr is not None else "--- bpm",
+        )
 
         return Panel(table, title="Session Averages", border_style="white")
 
@@ -125,7 +135,12 @@ class AverageMetricsDisplay:
 class StatusBar:
     """Bottom status bar widget."""
 
-    def render(self, status: str, connection: str = "disconnected", hints_line: str | None = None) -> Panel:
+    def render(
+        self,
+        status: str,
+        connection: str = "disconnected",
+        hints_line: str | None = None,
+    ) -> Panel:
         """Render status bar.
 
         Args:
@@ -246,7 +261,7 @@ class LegendPanel:
     """Non-modal legend panel with contextual key hints."""
 
     def render(self, current_view: str, connected: bool, in_live: bool) -> Panel:
-        table = Table.grid(padding=(0,1))
+        table = Table.grid(padding=(0, 1))
         table.add_column("Key", style="bold cyan")
         table.add_column("Action")
 
@@ -274,9 +289,9 @@ class DistanceProgressBar:
         self.width = width_cells
 
     def render(self, metrics: Dict[str, Any]) -> Panel:
-        dist_m = float(metrics.get("distance_m") or 0.0)
+        dist_m = max(0.0, float(metrics.get("distance_m") or 0.0))
         km_completed = int(dist_m // 1000)
-        within_km = max(0.0, dist_m - km_completed * 1000)
+        within_km = dist_m - km_completed * 1000
         frac = 0.0 if dist_m <= 0 else min(1.0, within_km / 1000.0)
 
         filled = int(self.width * frac)
@@ -287,7 +302,8 @@ class DistanceProgressBar:
         mid = "│" + ("█" * filled + " " * empty) + "│"
         bot = "└" + ("─" * self.width) + "┘"
 
-        label = f"KM {km_completed}  •  {int(frac*100):3d}%  •  {int(within_km):3d} m"
+        km_display = max(1, km_completed + 1)
+        label = f"KM {km_display}  •  {int(frac*100):3d}%  •  {int(within_km):3d} m"
 
         grid = Table.grid(padding=(0, 1))
         grid.add_column(justify="left")

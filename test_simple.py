@@ -7,7 +7,6 @@ import time
 import pytest
 
 from terminalride.app import TerminalRideApp
-from terminalride.ui.views import ViewState
 
 class SimpleInput:
     """Simple input handler for testing."""

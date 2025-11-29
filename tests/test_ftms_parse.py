@@ -1,7 +1,8 @@
 """Tests for FTMS Indoor Bike Data parsing."""
 
 import pytest
-from terminalride.devices.ftms_parse import parse_indoor_bike_data, ParsedBikeData
+
+from terminalride.devices.ftms_parse import parse_indoor_bike_data
 
 
 def test_parse_all_fields():

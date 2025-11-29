@@ -1,12 +1,12 @@
 """Data models for training sessions and samples."""
 
 from datetime import datetime, UTC
-from typing import Optional, List, Any, Dict
+from typing import Optional, List
 from uuid import uuid4
 from dataclasses import dataclass, field
 from enum import Enum
 
-from pydantic import BaseModel, Field, ConfigDict, computed_field
+from pydantic import BaseModel, Field, ConfigDict, computed_field, field_serializer
 
 
 class TrainingMode(str, Enum):
@@ -61,9 +61,11 @@ class SessionModel(BaseModel):
     notes: str = ""
     tags: List[str] = Field(default_factory=list)
 
-    model_config = ConfigDict(
-        json_encoders={datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("created_at", "start_time", "end_time")
+    def _serialize_datetime(self, dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt else None
 
 
 class SampleModel(BaseModel):
@@ -87,9 +89,11 @@ class SampleModel(BaseModel):
     erg_target_power_w: Optional[int] = None
     sim_grade_pct: Optional[float] = None
 
-    model_config = ConfigDict(
-        json_encoders={datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("timestamp")
+    def _serialize_timestamp(self, ts: datetime) -> str:
+        return ts.isoformat()
 
     @computed_field
     def speed_kph(self) -> Optional[float]:

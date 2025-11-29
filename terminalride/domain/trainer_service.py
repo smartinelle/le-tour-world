@@ -6,13 +6,12 @@ don't need to depend on bleak or FTMS details directly.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Callable, Optional, Dict, Any, List
+from typing import Callable, Dict, Any, List
 
 from terminalride.devices.base import BikeSample
 from terminalride.devices.ftms_client import FtmsClient
-from .events import DomainEvent, DeviceConnected, DeviceDisconnected, SampleReceived, ControlGranted, ErrorEvent
+from .events import DomainEvent, DeviceConnected, DeviceDisconnected, SampleReceived, ControlGranted
 
 
 logger = logging.getLogger(__name__)
@@ -82,4 +81,3 @@ class TrainerService:
 
     async def set_simulation(self, grade_pct: float) -> None:
         await self._client.set_simulation_params(grade_pct)
-

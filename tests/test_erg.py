@@ -1,6 +1,5 @@
 """Tests for ERG PI controller."""
 
-import pytest
 from terminalride.modes.erg import ErgController
 
 

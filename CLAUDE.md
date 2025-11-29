@@ -53,10 +53,15 @@ terminalride/
     __main__.py   # Entry point
     logging_setup.py # Logging configuration
     ui/           # Views and widgets
-    devices/      # BLE FTMS client + parser
+      views.py    # Rich-based TUI views
+      widgets.py  # Reusable UI components
+      keymap.py   # Keyboard bindings
+    devices/      # BLE device clients + parsers
       base.py     # Protocol interfaces
-      ftms_client.py  # BLE client
+      ftms_client.py  # FTMS trainer BLE client
       ftms_parse.py   # FTMS frame parser
+      hr_client.py    # Heart rate BLE client
+      hr_parse.py     # HR measurement parser
     modes/        # Free/ERG/SIM logic
       erg.py      # ERG mode implementation
       sim.py      # SIM mode implementation
@@ -64,11 +69,14 @@ terminalride/
       events.py   # Event definitions
       state.py    # Application state
       trainer_service.py  # Trainer service
+      hr_service.py       # Heart rate service
+      session_service.py  # Session persistence service
     store/        # Persistence + export
       models.py   # Data models
       repository.py   # Data access
       export.py   # CSV export
-    analytics/    # Analytics (future)
+    analytics/    # Training metrics (NP, IF, TSS)
+      metrics.py  # Normalized Power, Intensity Factor, TSS calculations
   tests/          # Test suite
 ```
 
@@ -78,16 +86,16 @@ terminalride/
 3. **Physics:** SIM physics + persistence+CSV ✅
 4. **Polish:** Hardening + packaging + v0.1.0 release ✅
 
-## CURRENT STATUS: MVP v0.1.0 - NEAR COMPLETION
+## CURRENT STATUS: MVP v0.1.0 - COMPLETE ✅
 
 ### Project Implementation Summary:
-- **Core components implemented and tested (33 tests passing, 2 failing)**
+- **Core components implemented and fully tested (112 tests passing)**
 - **Full BLE FTMS protocol support with Wahoo KICKR compatibility**
 - **Complete TUI with all training modes (Free/ERG/SIM)**
 - **Data persistence with store module (models, repository, export)**
 - **CSV export functionality**
-- **Domain-driven architecture with events and trainer service**
-- **Comprehensive documentation (README.md)**
+- **Domain-driven architecture with events, trainer service, and session service**
+- **Comprehensive documentation (README.md, ADRs)**
 
 ### Key Achievements:
 - ERG mode with advanced PI controller (anti-windup, rate limiting)
@@ -97,9 +105,8 @@ terminalride/
 - Clean architecture with protocol-oriented design
 - Type-safe implementation with mypy compliance
 - Modern packaging with pyproject.toml
+- SessionService layer decoupling UI from storage
+- Analytics module with NP/IF/TSS calculations
+- Heart rate monitor support (Wahoo TICKR, Garmin HRM, Polar, etc.)
 
-### Outstanding Issues:
-- 2 test failures (async test setup and FTMS parsing edge case)
-- Minor dependency configuration refinements needed
-
-**PROJECT STATUS: 95% COMPLETE - NEEDS FINAL TESTING FIXES** ⚠️
+**PROJECT STATUS: MVP v0.1.0 COMPLETE** ✅

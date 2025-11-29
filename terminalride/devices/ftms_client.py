@@ -3,7 +3,7 @@
 import asyncio
 import time
 import struct
-from typing import Callable, Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any
 import logging
 
 from bleak import BleakClient, BleakScanner

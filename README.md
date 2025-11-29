@@ -5,6 +5,7 @@ Terminal-first indoor cycling application for connecting to Wahoo KICKR and othe
 ## Features
 
 - **BLE FTMS Support**: Connect to Wahoo KICKR and compatible trainers
+- **Heart Rate Monitors**: Connect to BLE HR straps (Wahoo TICKR, Garmin HRM, Polar H10, etc.)
 - **Training Modes**: 
   - Free Ride: Natural cycling without constraints
   - ERG Mode: Target power training with PI controller
@@ -13,12 +14,13 @@ Terminal-first indoor cycling application for connecting to Wahoo KICKR and othe
 - **Data Persistence**: Session recording with JSONL/SQLite dual storage
 - **CSV Export**: Export training data for analysis
 - **Real-time Metrics**: Power, cadence, speed, distance, heart rate
+- **Training Analytics**: Normalized Power (NP), Intensity Factor (IF), Training Stress Score (TSS)
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.9+ 
+- Python 3.11+ 
 - macOS/Linux (Windows support requires additional BLE stack configuration)
 - BLE adapter for trainer connectivity
 
@@ -175,12 +177,19 @@ This connects to a trainer and demonstrates ERG/SIM control outside the full TUI
 
 ## Technical Details
 
-### BLE FTMS Protocol
+### BLE FTMS Protocol (Trainers)
 
 - Service UUID: `00001826-0000-1000-8000-00805f9b34fb`
 - Indoor Bike Data: Real-time power, cadence, speed
 - Control Point: ERG power control, SIM grade control
 - Auto-reconnection with exponential backoff
+
+### BLE Heart Rate Profile
+
+- Service UUID: `0000180D-0000-1000-8000-00805f9b34fb`
+- Supports: Wahoo TICKR, Garmin HRM-Pro/Dual, Polar H10/H9/OH1
+- Features: Heart rate, sensor contact detection, RR intervals
+- **Note**: Whoop is NOT supported (closed ecosystem, no BLE broadcast)
 
 ### ERG Controller 
 

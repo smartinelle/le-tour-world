@@ -5,8 +5,6 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 import csv
 
-import pytest
-
 from terminalride.store.models import SessionModel, SampleModel, TrainingMode
 from terminalride.store.repository import TrainingRepository
 from terminalride.store.export import DataExporter

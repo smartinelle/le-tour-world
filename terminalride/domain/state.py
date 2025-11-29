@@ -6,7 +6,7 @@ These provide UI-agnostic snapshots of the current ride/train state.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from enum import Enum
 
 
@@ -23,4 +23,3 @@ class RideState:
     paused: bool = False
     # Metrics
     metrics: Dict[str, Any] = field(default_factory=dict)
-

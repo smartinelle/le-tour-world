@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional
 import logging
 import signal
 import sys
@@ -10,9 +10,6 @@ import os
 
 import tty
 import termios
-import fcntl
-import select
-
 from rich.console import Console
 from rich.live import Live
 
@@ -32,6 +29,7 @@ from .ui.views import (
 )
 from .devices.base import BikeSample, DeviceNotFoundError
 from .domain.trainer_service import TrainerService
+from .domain.session_service import SessionService
 from .modes.erg import ErgController
 from .modes.sim import SimPhysics
 from .store.repository import TrainingRepository
@@ -71,15 +69,18 @@ class TerminalRideApp:
         # Training mode controllers
         self.erg_controller = ErgController()
         from .modes.sim import SimConfig
+
         self.sim_solver = SimPhysics(SimConfig())
 
         # Data persistence
         self.repository = TrainingRepository()
+        self.session_service = SessionService(self.repository)
         self.current_session: Optional[SessionModel] = None
 
         # Metrics accumulator
         self.distance_m = 0.0
         self.last_sample_time: Optional[float] = None
+        self._sample_count = 0
 
         # Keyboard input management
         self._key_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -193,17 +194,25 @@ class TerminalRideApp:
         """Handle transitions between views."""
         old_view = self.state.current_view
         self.state.current_view = new_view_state
-        
+
         # Handle session management during transitions
         if old_view in [ViewState.LIVE_FREE, ViewState.LIVE_ERG, ViewState.LIVE_SIM]:
-            if new_view_state not in [ViewState.LIVE_FREE, ViewState.LIVE_ERG, ViewState.LIVE_SIM]:
+            if new_view_state not in [
+                ViewState.LIVE_FREE,
+                ViewState.LIVE_ERG,
+                ViewState.LIVE_SIM,
+            ]:
                 # Leaving training mode
                 await self._stop_training_session()
-        
-        elif new_view_state in [ViewState.LIVE_FREE, ViewState.LIVE_ERG, ViewState.LIVE_SIM]:
+
+        elif new_view_state in [
+            ViewState.LIVE_FREE,
+            ViewState.LIVE_ERG,
+            ViewState.LIVE_SIM,
+        ]:
             # Entering training mode
             await self._prepare_training_mode(new_view_state)
-            
+
         logger.debug(f"View transition: {old_view.value} -> {new_view_state.value}")
 
     async def _prepare_training_mode(self, mode_state: ViewState):
@@ -212,7 +221,7 @@ class TerminalRideApp:
             try:
                 # Request trainer control
                 await self.trainer.request_control()
-                
+
                 # Mode-specific setup
                 if mode_state == ViewState.LIVE_ERG:
                     await self.trainer.set_target_power(150)
@@ -220,47 +229,75 @@ class TerminalRideApp:
                 elif mode_state == ViewState.LIVE_SIM:
                     await self.trainer.set_simulation(0.0)
                     self.state.metrics["grade_pct"] = 0.0
-                    
+
                 # Start trainer session
                 await self.trainer.start()
-                
+
             except Exception as e:
                 logger.warning(f"Failed to prepare training mode: {e}")
                 self.state.status_message = f"Training setup failed: {e}"
 
     async def _stop_training_session(self):
         """Stop current training session."""
-        if self.state.session_active and self.current_session:
-            try:
-                if self.trainer.is_connected:
-                    await self.trainer.stop()
-                
-                # Update session with final data
-                from datetime import datetime
-                self.current_session.end_time = datetime.now()
-                self.current_session.duration_s = self.state.metrics.get("time_s", 0)
-                self.current_session.total_distance_m = self.state.metrics.get("distance_m", 0)
-                
-                # Save updated session
-                self.repository.save_session(self.current_session)
-                # Record last session id for summary
-                self.state.last_session_id = self.current_session.session_id
-                
+        if not self.current_session:
+            return
+
+        try:
+            if self.trainer.is_connected:
+                await self.trainer.stop()
+
+            elapsed_s = self.state.metrics.get("time_s", 0) or 0.0
+            no_data = self._sample_count == 0 or elapsed_s <= 0.0
+
+            if no_data:
+                sid = self.current_session.session_id
+                try:
+                    self.session_service.delete_session(sid)
+                    self.state.status_message = "Session aborted (no data)"
+                    logger.info(f"Session {sid} aborted — no samples recorded")
+                except Exception as e:
+                    logger.warning(f"Failed to abort empty session {sid}: {e}")
+                    self.state.status_message = "Session abort error"
+
                 # Reset session state
                 self.state.session_active = False
                 self.state.session_paused = False
                 self.state.session_start_time = None
                 self.distance_m = 0.0
-                
-                session_id = self.current_session.session_id
+                self._sample_count = 0
                 self.current_session = None
-                
-                self.state.status_message = f"Session {session_id[:8]} finished"
-                logger.info(f"Training session stopped: {session_id}")
-                
-            except Exception as e:
-                logger.warning(f"Error stopping training session: {e}")
-                self.state.status_message = f"Session stop error: {e}"
+                return
+
+            # Update session with final data
+            from datetime import datetime
+
+            self.current_session.end_time = datetime.now()
+            self.current_session.duration_s = elapsed_s
+            self.current_session.total_distance_m = self.state.metrics.get(
+                "distance_m", 0
+            )
+
+            # Save updated session
+            self.session_service.save_session(self.current_session)
+            # Record last session id for summary
+            self.state.last_session_id = self.current_session.session_id
+
+            # Reset session state
+            self.state.session_active = False
+            self.state.session_paused = False
+            self.state.session_start_time = None
+            self.distance_m = 0.0
+            self._sample_count = 0
+
+            session_id = self.current_session.session_id
+            self.current_session = None
+
+            self.state.status_message = f"Session {session_id[:8]} finished"
+            logger.info(f"Training session stopped: {session_id}")
+
+        except Exception as e:
+            logger.warning(f"Error stopping training session: {e}")
+            self.state.status_message = f"Session stop error: {e}"
 
     async def _connection_loop(self):
         """Background loop for device connection management."""
@@ -341,9 +378,8 @@ class TerminalRideApp:
             return
 
         try:
-            current_time = time.time()
             dt = 0.1  # Update interval
-            
+
             # ERG mode power control with PI controller
             if (
                 self.state.current_view == ViewState.LIVE_ERG
@@ -351,10 +387,12 @@ class TerminalRideApp:
             ):
                 target_power = self.state.metrics.get("target_power_w", 150)
                 current_power = self.state.metrics.get("power_w", 0)
-                
+
                 # Use ERG controller to calculate optimal power
-                optimal_power = self.erg_controller.update(target_power, current_power, dt)
-                
+                optimal_power = self.erg_controller.update(
+                    target_power, current_power, dt
+                )
+
                 # Send command to trainer
                 await self.trainer.set_target_power(optimal_power)
 
@@ -365,12 +403,14 @@ class TerminalRideApp:
             ):
                 grade_pct = self.state.metrics.get("grade_pct", 0.0)
                 current_power = self.state.metrics.get("power_w", 0)
-                
+
                 # Calculate expected speed using physics solver
                 if current_power > 0:
-                    expected_speed = self.sim_solver.solve_speed(current_power, grade_pct)
+                    expected_speed = self.sim_solver.solve_speed(
+                        current_power, grade_pct
+                    )
                     self.state.metrics["expected_speed_mps"] = expected_speed
-                
+
                 # Send simulation parameters to trainer
                 await self.trainer.set_simulation(grade_pct)
 
@@ -407,7 +447,9 @@ class TerminalRideApp:
                     self.state.metrics["speed_mps"] = virt_speed
             elif policy == "auto":
                 # Plausibility threshold ~17 m/s (61 km/h)
-                implausible = trainer_speed is None or (trainer_speed is not None and trainer_speed > 17.0)
+                implausible = trainer_speed is None or (
+                    trainer_speed is not None and trainer_speed > 17.0
+                )
                 if virt_speed is not None:
                     # If trainer is >30% above physics estimate, treat as implausible
                     if trainer_speed is not None and trainer_speed > virt_speed * 1.3:
@@ -462,6 +504,7 @@ class TerminalRideApp:
         self.state.session_start_time = time.time()
         self.distance_m = 0.0
         self.last_sample_time = None
+        self._sample_count = 0
         # Reset average accumulators
         self._avg_power_sum = 0.0
         self._avg_power_count = 0
@@ -476,20 +519,20 @@ class TerminalRideApp:
             ViewState.LIVE_ERG: TrainingMode.ERG,
             ViewState.LIVE_SIM: TrainingMode.SIM,
         }
-        
+
         mode = mode_map.get(self.state.current_view, TrainingMode.FREE)
         trainer_name = self.state.devices.get("trainer", {}).get("name", "Unknown")
-        
+
         from datetime import datetime
-        
+
         self.current_session = SessionModel(
             mode=mode,
             start_time=datetime.now(),
             trainer_name=trainer_name,
         )
-        
+
         # Save session to repository
-        self.repository.save_session(self.current_session)
+        self.session_service.save_session(self.current_session)
 
         # Set default values for mode
         if self.state.current_view == ViewState.LIVE_ERG:
@@ -498,13 +541,15 @@ class TerminalRideApp:
         elif self.state.current_view == ViewState.LIVE_SIM:
             self.state.metrics.setdefault("grade_pct", 0.0)
 
-        logger.info(f"Training session started: {self.current_session.session_id} ({mode.value})")
+        logger.info(
+            f"Training session started: {self.current_session.session_id} ({mode.value})"
+        )
 
     def _record_sample_data(self, sample: BikeSample):
         """Record sample data to repository."""
         if not self.current_session:
             return
-            
+
         try:
             elapsed_s = self.state.metrics.get("time_s", 0)
             # Update running averages (only while active and not paused)
@@ -513,19 +558,25 @@ class TerminalRideApp:
                 if pw is not None:
                     self._avg_power_sum += float(pw)
                     self._avg_power_count += 1
-                    self.state.metrics["avg_power_w"] = self._avg_power_sum / max(1, self._avg_power_count)
+                    self.state.metrics["avg_power_w"] = self._avg_power_sum / max(
+                        1, self._avg_power_count
+                    )
                 cad = sample.get("cadence_rpm")
                 if cad is not None:
                     self._avg_cad_sum += float(cad)
                     self._avg_cad_count += 1
-                    self.state.metrics["avg_cadence_rpm"] = self._avg_cad_sum / max(1, self._avg_cad_count)
+                    self.state.metrics["avg_cadence_rpm"] = self._avg_cad_sum / max(
+                        1, self._avg_cad_count
+                    )
                 # Avg speed derived from distance/time in UI (also set below on apply_speed_source)
                 hr = self.state.metrics.get("hr_bpm")
                 if hr is not None:
                     self._avg_hr_sum += float(hr)
                     self._avg_hr_count += 1
-                    self.state.metrics["avg_hr_bpm"] = self._avg_hr_sum / max(1, self._avg_hr_count)
-            
+                    self.state.metrics["avg_hr_bpm"] = self._avg_hr_sum / max(
+                        1, self._avg_hr_count
+                    )
+
             # Create sample model
             sample_model = SampleModel(
                 session_id=self.current_session.session_id,
@@ -534,13 +585,22 @@ class TerminalRideApp:
                 cadence_rpm=sample.get("cadence_rpm"),
                 speed_mps=sample.get("speed_mps"),
                 distance_m=self.state.metrics.get("distance_m", 0),
-                erg_target_power_w=self.state.metrics.get("target_power_w") if self.state.current_view == ViewState.LIVE_ERG else None,
-                sim_grade_pct=self.state.metrics.get("grade_pct") if self.state.current_view == ViewState.LIVE_SIM else None,
+                erg_target_power_w=(
+                    self.state.metrics.get("target_power_w")
+                    if self.state.current_view == ViewState.LIVE_ERG
+                    else None
+                ),
+                sim_grade_pct=(
+                    self.state.metrics.get("grade_pct")
+                    if self.state.current_view == ViewState.LIVE_SIM
+                    else None
+                ),
             )
-            
+
             # Save to repository
-            self.repository.save_sample(sample_model)
-            
+            self.session_service.save_sample(sample_model)
+            self._sample_count += 1
+
         except Exception as e:
             logger.debug(f"Failed to record sample data: {e}")
 
@@ -560,7 +620,7 @@ class TerminalRideApp:
             logger.error(f"Error disconnecting trainer: {e}")
 
         logger.info("Application shutdown complete")
-    
+
     async def cleanup(self):
         """Clean up application resources."""
         await self._cleanup()
@@ -639,7 +699,9 @@ class _RawInputManager:
                         except Exception:
                             pass
                     # 50 ms is typically enough for terminals to deliver '[' and the next code
-                    self._esc_timer = self._loop.call_later(0.05, self._flush_escape_if_pending)
+                    self._esc_timer = self._loop.call_later(
+                        0.05, self._flush_escape_if_pending
+                    )
                     continue
 
                 if self._esc_buffer:
