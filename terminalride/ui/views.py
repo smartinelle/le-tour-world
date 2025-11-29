@@ -120,6 +120,14 @@ class BaseView:
         Returns:
             New view state if transition needed, None otherwise
         """
+        # Handle help overlay: Esc or ? closes it
+        if state.show_help:
+            if key in ("?", "escape"):
+                state.show_help = False
+                return None
+            # While help is shown, ignore other keys
+            return None
+
         # Common keys for all views
         if key == "?":
             state.show_help = not state.show_help
@@ -264,20 +272,25 @@ class HomeView(BaseView):
 
     def _render_home_menu(self, state: AppState) -> Panel:
         """Render home menu options."""
-        menu_text = """
-[bold cyan]Training Modes:[/bold cyan]
-  [1] Free Ride
-  [2] ERG Mode (Target Power)
-  [3] SIM Mode (Virtual Route)
+        connected = state.devices.get("trainer", {}).get("connected", False)
 
-[bold cyan]Options:[/bold cyan]
-  [d] Device Management
-  [s] Statistics
-  [c] Settings
-  [q] Quit
-        """
+        # Training modes - grayed out if not connected
+        mode_style = "" if connected else "[dim]"
+        mode_end = "" if connected else "[/dim]"
 
-        return Panel(menu_text, title="TerminalRide", border_style="blue")
+        menu = Text()
+        menu.append("Training Modes:\n", style="bold cyan")
+        menu.append(f"  {mode_style}[1] Free Ride{mode_end}\n")
+        menu.append(f"  {mode_style}[2] ERG Mode (Target Power){mode_end}\n")
+        menu.append(f"  {mode_style}[3] SIM Mode (Virtual Route){mode_end}\n")
+        menu.append("\n")
+        menu.append("Options:\n", style="bold cyan")
+        menu.append("  [d] Device Management\n")
+        menu.append("  [s] Statistics\n")
+        menu.append("  [c] Settings\n")
+        menu.append("  [q] Quit\n")
+
+        return Panel(menu, title="TerminalRide", border_style="blue")
 
     def _get_connection_status(self, state: AppState) -> str:
         """Get connection status string."""
@@ -287,16 +300,21 @@ class HomeView(BaseView):
 
     def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
         """Handle home view keys."""
-        if not state.devices.get("trainer", {}).get("connected", False):
-            state.status_message = "Connect trainer first"
-            return None
+        connected = state.devices.get("trainer", {}).get("connected", False)
 
-        if key == "1":
-            return ViewState.LIVE_FREE
-        elif key == "2":
-            return ViewState.LIVE_ERG
-        elif key == "3":
-            return ViewState.LIVE_SIM
+        # Training modes require trainer connection
+        if key in ("1", "2", "3"):
+            if not connected:
+                state.status_message = "Connect trainer first (press 'd' for devices)"
+                return None
+            if key == "1":
+                return ViewState.LIVE_FREE
+            elif key == "2":
+                return ViewState.LIVE_ERG
+            elif key == "3":
+                return ViewState.LIVE_SIM
+
+        # Options - always available
         elif key == "d":
             return ViewState.DEVICES
         elif key == "s":
