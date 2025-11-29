@@ -27,8 +27,9 @@ from .ui.views import (
     SettingsView,
     SummaryView,
 )
-from .devices.base import BikeSample, DeviceNotFoundError
+from .devices.base import BikeSample, HrSample, DeviceNotFoundError
 from .domain.trainer_service import TrainerService
+from .domain.hr_service import HrService
 from .domain.session_service import SessionService
 from .modes.erg import ErgController
 from .modes.sim import SimPhysics
@@ -63,8 +64,9 @@ class TerminalRideApp:
             ViewState.SUMMARY: SummaryView(),
         }
 
-        # Device service (wraps FTMS client)
+        # Device services
         self.trainer = TrainerService()
+        self.hr_service = HrService()
 
         # Training mode controllers
         self.erg_controller = ErgController()
@@ -111,7 +113,10 @@ class TerminalRideApp:
 
             # Start UI and background tasks concurrently
             await asyncio.gather(
-                self._ui_loop(), self._connection_loop(), self._metrics_loop()
+                self._ui_loop(),
+                self._connection_loop(),
+                self._metrics_loop(),
+                self._device_management_loop(),
             )
 
         except KeyboardInterrupt:
@@ -417,6 +422,134 @@ class TerminalRideApp:
         except Exception as e:
             logger.debug(f"Mode control error: {e}")
 
+    async def _device_management_loop(self) -> None:
+        """Background loop for handling device scan/connect requests from UI."""
+        while self.running:
+            try:
+                await self._process_device_requests()
+            except Exception as e:
+                logger.debug(f"Device management error: {e}")
+
+            await asyncio.sleep(0.2)
+
+    async def _process_device_requests(self) -> None:
+        """Process pending device scan/connect/disconnect requests."""
+        devices = self.state.devices
+
+        # Handle trainer scan request
+        if self.state.scanning_trainers:
+            try:
+                available = await self.trainer._client.scan_available(timeout_s=5.0)
+                self.state.available_trainers = available
+                self.state.status_message = f"Found {len(available)} trainer(s)"
+            except Exception as e:
+                logger.warning(f"Trainer scan failed: {e}")
+                self.state.status_message = f"Scan failed: {e}"
+                self.state.available_trainers = []
+            finally:
+                self.state.scanning_trainers = False
+
+        # Handle HR scan request
+        if self.state.scanning_hr:
+            try:
+                available = await self.hr_service._client.scan_available(timeout_s=5.0)
+                self.state.available_hr = available
+                self.state.status_message = f"Found {len(available)} HR monitor(s)"
+            except Exception as e:
+                logger.warning(f"HR scan failed: {e}")
+                self.state.status_message = f"Scan failed: {e}"
+                self.state.available_hr = []
+            finally:
+                self.state.scanning_hr = False
+
+        # Handle trainer connection request
+        pending_trainer = devices.pop("_pending_trainer", None)
+        if pending_trainer:
+            address = pending_trainer.get("address")
+            name = pending_trainer.get("name", "trainer")
+            try:
+                # Disconnect existing if connected
+                if self.trainer.is_connected:
+                    await self.trainer.disconnect()
+
+                await self.trainer._client.connect_to_device(address)
+
+                # Update state
+                devices["trainer"] = {
+                    "connected": True,
+                    "name": self.trainer._client.device_info.get("name", name),
+                    "address": address,
+                    "rssi": self.trainer._client.device_info.get("rssi"),
+                }
+
+                # Subscribe to bike data
+                await self.trainer.subscribe_samples(self._on_bike_sample)
+
+                self.state.status_message = f"Connected to {name}"
+                logger.info(f"Manually connected to trainer: {name}")
+
+            except Exception as e:
+                logger.warning(f"Failed to connect to trainer {name}: {e}")
+                self.state.status_message = f"Connection failed: {e}"
+
+        # Handle HR connection request
+        pending_hr = devices.pop("_pending_hr", None)
+        if pending_hr:
+            address = pending_hr.get("address")
+            name = pending_hr.get("name", "HR monitor")
+            try:
+                # Disconnect existing if connected
+                if self.hr_service.is_connected:
+                    await self.hr_service.disconnect()
+
+                await self.hr_service._client.connect_to_device(address)
+
+                # Update state
+                devices["hr"] = {
+                    "connected": True,
+                    "name": self.hr_service._client.device_info.get("name", name),
+                    "address": address,
+                    "rssi": self.hr_service._client.device_info.get("rssi"),
+                }
+
+                # Subscribe to HR data
+                await self.hr_service.subscribe_hr_data(self._on_hr_sample)
+
+                self.state.status_message = f"Connected to {name}"
+                logger.info(f"Manually connected to HR: {name}")
+
+            except Exception as e:
+                logger.warning(f"Failed to connect to HR {name}: {e}")
+                self.state.status_message = f"Connection failed: {e}"
+
+        # Handle trainer disconnect request
+        if devices.pop("_disconnect_trainer", None):
+            try:
+                if self.trainer.is_connected:
+                    await self.trainer.disconnect()
+                devices["trainer"] = {"connected": False, "name": None}
+                self.state.status_message = "Trainer disconnected"
+            except Exception as e:
+                logger.warning(f"Failed to disconnect trainer: {e}")
+                self.state.status_message = f"Disconnect failed: {e}"
+
+        # Handle HR disconnect request
+        if devices.pop("_disconnect_hr", None):
+            try:
+                if self.hr_service.is_connected:
+                    await self.hr_service.disconnect()
+                devices["hr"] = {"connected": False, "name": None}
+                self.state.status_message = "HR monitor disconnected"
+            except Exception as e:
+                logger.warning(f"Failed to disconnect HR: {e}")
+                self.state.status_message = f"Disconnect failed: {e}"
+
+    def _on_hr_sample(self, sample: HrSample) -> None:
+        """Handle incoming HR data sample."""
+        hr_bpm = sample.get("hr_bpm")
+        if hr_bpm is not None:
+            self.state.metrics["hr_bpm"] = hr_bpm
+
     async def _apply_speed_source(self) -> None:
         """Apply speed source policy: trainer|virtual|auto.
 
@@ -618,6 +751,12 @@ class TerminalRideApp:
                 await self.trainer.disconnect()
         except Exception as e:
             logger.error(f"Error disconnecting trainer: {e}")
+
+        try:
+            if self.hr_service.is_connected:
+                await self.hr_service.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting HR: {e}")
 
         logger.info("Application shutdown complete")
 

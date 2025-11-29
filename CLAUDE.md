@@ -108,5 +108,6 @@ terminalride/
 - SessionService layer decoupling UI from storage
 - Analytics module with NP/IF/TSS calculations
 - Heart rate monitor support (Wahoo TICKR, Garmin HRM, Polar, etc.)
+- Manual device selection (scan, list, and choose specific devices)
 
 **PROJECT STATUS: MVP v0.1.0 COMPLETE** ✅

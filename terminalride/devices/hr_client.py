@@ -83,12 +83,51 @@ class HrClient:
         """Device information (name, manufacturer, battery, etc.)."""
         return self._device_info.copy()
 
+    async def connect_to_device(self, address: str) -> None:
+        """Connect to a specific HR monitor by address.
+
+        Args:
+            address: BLE address of the device to connect to.
+
+        Raises:
+            DeviceNotFoundError: If device not found.
+            ConnectionError: If connection fails.
+        """
+        logger.info(f"Connecting to HR monitor at {address}")
+
+        # Scan to find the specific device
+        devices = await BleakScanner.discover(
+            timeout=5.0,
+            service_uuids=[self.HR_SERVICE_UUID],
+        )
+
+        device = next((d for d in devices if d.address == address), None)
+        if not device:
+            raise DeviceNotFoundError(f"HR monitor at {address} not found")
+
+        try:
+            self._client = BleakClient(device, disconnected_callback=self._on_disconnect)
+            await self._client.connect()
+            self._device = device
+
+            self._device_info = {
+                "name": device.name,
+                "address": device.address,
+                "rssi": getattr(device, "rssi", None),
+            }
+
+            await self._read_device_info()
+            logger.info(f"Connected to {device.name}")
+
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to {device.name}: {e}")
+
     async def scan_and_connect(
         self,
         timeout_s: float = 10.0,
         device_name: Optional[str] = None,
     ) -> None:
-        """Scan for HR device and connect.
+        """Scan for HR device and connect to first found (or by name).
 
         Args:
             timeout_s: Maximum time to spend scanning/connecting.

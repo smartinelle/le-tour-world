@@ -3,7 +3,7 @@
 import asyncio
 import time
 import struct
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional, Dict, Any, List
 import logging
 
 from bleak import BleakClient, BleakScanner
@@ -69,8 +69,72 @@ class FtmsClient:
         """Device information (model, firmware, etc.)."""
         return self._device_info.copy()
 
+    async def scan_available(self, timeout_s: float = 5.0) -> List[Dict[str, Any]]:
+        """Scan for available FTMS trainers without connecting.
+
+        Args:
+            timeout_s: Maximum time to spend scanning.
+
+        Returns:
+            List of device info dicts with name, address, rssi.
+        """
+        logger.info(f"Scanning for available FTMS trainers (timeout: {timeout_s}s)")
+
+        devices = await BleakScanner.discover(
+            timeout=timeout_s,
+            service_uuids=[self.FTMS_SERVICE_UUID],
+        )
+
+        return [
+            {
+                "name": d.name or "Unknown Trainer",
+                "address": d.address,
+                "rssi": getattr(d, "rssi", None),
+            }
+            for d in devices
+        ]
+
+    async def connect_to_device(self, address: str) -> None:
+        """Connect to a specific FTMS trainer by address.
+
+        Args:
+            address: BLE address of the device to connect to.
+
+        Raises:
+            DeviceNotFoundError: If device not found.
+            ConnectionError: If connection fails.
+        """
+        logger.info(f"Connecting to trainer at {address}")
+
+        # Scan to find the specific device
+        devices = await BleakScanner.discover(
+            timeout=5.0,
+            service_uuids=[self.FTMS_SERVICE_UUID],
+        )
+
+        device = next((d for d in devices if d.address == address), None)
+        if not device:
+            raise DeviceNotFoundError(f"Trainer at {address} not found")
+
+        try:
+            self._client = BleakClient(device)
+            await self._client.connect()
+            self._device = device
+
+            self._device_info = {
+                "name": device.name,
+                "address": device.address,
+                "rssi": getattr(device, "rssi", None),
+            }
+
+            await self._read_device_characteristics()
+            logger.info(f"Connected to {device.name}")
+
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to {device.name}: {e}")
+
     async def scan_and_connect(self, timeout_s: float = 10.0) -> None:
-        """Scan for FTMS trainer and connect.
+        """Scan for FTMS trainer and connect to first found.
 
         Args:
             timeout_s: Maximum time to spend scanning/connecting
@@ -89,8 +153,7 @@ class FtmsClient:
         if not devices:
             raise DeviceNotFoundError("No FTMS trainers found")
 
-        # Try to connect to first compatible device
-        # TODO: Add device filtering/selection logic
+        # Connect to first compatible device
         device = devices[0]
         logger.info(f"Found trainer: {device.name} ({device.address})")
 

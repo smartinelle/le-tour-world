@@ -61,8 +61,14 @@ class AppState:
     # Live metrics
     metrics: Optional[Dict[str, Any]] = None
 
-    # Devices
+    # Devices (connected)
     devices: Optional[Dict[str, Dict[str, Any]]] = None
+
+    # Available devices (from scan)
+    available_trainers: Optional[list] = None
+    available_hr: Optional[list] = None
+    scanning_trainers: bool = False
+    scanning_hr: bool = False
 
     # UI state
     show_help: bool = False
@@ -80,6 +86,10 @@ class AppState:
             self.metrics = {}
         if self.devices is None:
             self.devices = {}
+        if self.available_trainers is None:
+            self.available_trainers = []
+        if self.available_hr is None:
+            self.available_hr = []
 
 
 class BaseView:
@@ -425,14 +435,15 @@ class LiveView(BaseView):
 
 
 class DevicesView(BaseView):
-    """Device management view."""
+    """Device management view with manual device selection."""
 
     def render(self, state: AppState) -> Layout:
         """Render devices view."""
         main = Layout()
         main.split_column(
-            Layout(DeviceList().render(state.devices), name="devices"),
-            Layout(self._render_device_controls(), name="controls"),
+            Layout(self._render_connected_devices(state), name="connected", size=6),
+            Layout(self._render_available_devices(state), name="available"),
+            Layout(self._render_device_controls(state), name="controls", size=7),
             Layout(
                 StatusBar().render(
                     state.status_message,
@@ -448,29 +459,166 @@ class DevicesView(BaseView):
         )
         return self._with_legend(main, state)
 
-    def _render_device_controls(self) -> Panel:
-        """Render device control panel."""
-        controls_text = """
-[r] Rescan for devices
-[c] Connect/Disconnect trainer
-[h] Connect/Disconnect heart rate  
-[Esc] Back to home
-        """
+    def _render_connected_devices(self, state: AppState) -> Panel:
+        """Render currently connected devices."""
+        table = Table.grid(padding=(0, 2))
+        table.add_column("Type", style="bold")
+        table.add_column("Device")
+        table.add_column("Status")
 
-        return Panel(controls_text, title="Device Controls", border_style="blue")
+        # Trainer
+        trainer = state.devices.get("trainer", {})
+        if trainer.get("connected"):
+            trainer_status = Text("● Connected", style="green")
+            trainer_name = trainer.get("name", "Unknown")
+        else:
+            trainer_status = Text("○ Not connected", style="dim")
+            trainer_name = "—"
+        table.add_row("Trainer", trainer_name, trainer_status)
+
+        # HR Monitor
+        hr = state.devices.get("hr", {})
+        if hr.get("connected"):
+            hr_status = Text("● Connected", style="green")
+            hr_name = hr.get("name", "Unknown")
+        else:
+            hr_status = Text("○ Not connected", style="dim")
+            hr_name = "—"
+        table.add_row("HR Monitor", hr_name, hr_status)
+
+        return Panel(table, title="Connected Devices", border_style="green")
+
+    def _render_available_devices(self, state: AppState) -> Panel:
+        """Render available devices from scan."""
+        layout = Layout()
+        layout.split_row(
+            Layout(self._render_trainer_list(state), name="trainers"),
+            Layout(self._render_hr_list(state), name="hr"),
+        )
+        return Panel(layout, title="Available Devices", border_style="cyan")
+
+    def _render_trainer_list(self, state: AppState) -> Panel:
+        """Render list of available trainers."""
+        if state.scanning_trainers:
+            content = Text("Scanning...", style="yellow italic")
+        elif not state.available_trainers:
+            content = Text("No trainers found.\nPress [t] to scan.", style="dim")
+        else:
+            table = Table.grid(padding=(0, 1))
+            table.add_column("Key", style="bold cyan")
+            table.add_column("Name")
+            table.add_column("Signal", justify="right")
+
+            for i, device in enumerate(state.available_trainers[:9], 1):
+                name = device.get("name", "Unknown")[:20]
+                rssi = device.get("rssi")
+                signal = f"{rssi} dBm" if rssi else "—"
+                table.add_row(f"[{i}]", name, signal)
+
+            content = table
+
+        return Panel(content, title="Trainers [t]", border_style="blue")
+
+    def _render_hr_list(self, state: AppState) -> Panel:
+        """Render list of available HR monitors."""
+        if state.scanning_hr:
+            content = Text("Scanning...", style="yellow italic")
+        elif not state.available_hr:
+            content = Text("No HR monitors found.\nPress [h] to scan.", style="dim")
+        else:
+            table = Table.grid(padding=(0, 1))
+            table.add_column("Key", style="bold cyan")
+            table.add_column("Name")
+            table.add_column("Signal", justify="right")
+
+            # Use letters a-i for HR monitors
+            for i, device in enumerate(state.available_hr[:9]):
+                key = chr(ord('a') + i)
+                name = device.get("name", "Unknown")[:20]
+                rssi = device.get("rssi")
+                signal = f"{rssi} dBm" if rssi else "—"
+                table.add_row(f"[{key}]", name, signal)
+
+            content = table
+
+        return Panel(content, title="HR Monitors [h]", border_style="magenta")
+
+    def _render_device_controls(self, state: AppState) -> Panel:
+        """Render device control panel."""
+        controls = Text()
+        controls.append("Scan:  ", style="bold")
+        controls.append("[t] Trainers  [h] HR Monitors\n")
+        controls.append("Connect:  ", style="bold")
+        controls.append("[1-9] Select trainer  [a-i] Select HR\n")
+        controls.append("Disconnect:  ", style="bold")
+        controls.append("[T] Trainer  [H] HR Monitor\n")
+        controls.append("Navigation:  ", style="bold")
+        controls.append("[Esc] Back to home")
+
+        return Panel(controls, title="Controls", border_style="blue")
+
+    def _get_connection_status(self, state: AppState) -> str:
+        """Get connection status string."""
+        trainer_connected = state.devices.get("trainer", {}).get("connected", False)
+        hr_connected = state.devices.get("hr", {}).get("connected", False)
+
+        if trainer_connected and hr_connected:
+            return "all connected"
+        elif trainer_connected:
+            return "trainer only"
+        elif hr_connected:
+            return "HR only"
+        return "disconnected"
 
     def _handle_key_impl(self, key: str, state: AppState) -> Optional[ViewState]:
         """Handle devices view keys."""
         if key == "escape":
             return ViewState.HOME
-        elif key == "r":
-            state.status_message = "Scanning for devices..."
-            return None
-        elif key == "c":
-            state.status_message = "Toggling trainer connection..."
+
+        # Scan commands
+        elif key == "t":
+            state.status_message = "Scanning for trainers..."
+            state.scanning_trainers = True
+            # Actual scan will be triggered by app controller
             return None
         elif key == "h":
-            state.status_message = "Toggling HR connection..."
+            state.status_message = "Scanning for HR monitors..."
+            state.scanning_hr = True
+            return None
+
+        # Trainer selection (1-9)
+        elif key.isdigit() and key != "0":
+            idx = int(key) - 1
+            if idx < len(state.available_trainers or []):
+                device = state.available_trainers[idx]
+                state.status_message = f"Connecting to {device.get('name', 'trainer')}..."
+                # Store selection for app controller to process
+                state.devices["_pending_trainer"] = device
+            else:
+                state.status_message = "Invalid selection"
+            return None
+
+        # HR selection (a-i)
+        elif key.lower() in "abcdefghi" and key.islower():
+            idx = ord(key.lower()) - ord('a')
+            if idx < len(state.available_hr or []):
+                device = state.available_hr[idx]
+                state.status_message = f"Connecting to {device.get('name', 'HR')}..."
+                state.devices["_pending_hr"] = device
+            else:
+                state.status_message = "Invalid selection"
+            return None
+
+        # Disconnect commands (uppercase)
+        elif key == "T":
+            if state.devices.get("trainer", {}).get("connected"):
+                state.status_message = "Disconnecting trainer..."
+                state.devices["_disconnect_trainer"] = True
+            return None
+        elif key == "H":
+            if state.devices.get("hr", {}).get("connected"):
+                state.status_message = "Disconnecting HR..."
+                state.devices["_disconnect_hr"] = True
             return None
 
         return None

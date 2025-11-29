@@ -63,10 +63,19 @@ The app will:
 - `1` - Free Ride Mode
 - `2` - ERG Mode (Target Power)  
 - `3` - SIM Mode (Virtual Route)
-- `d` - Device Management
+- `d` - Device Management (scan & connect)
 - `s` - Statistics & History
 - `c` - Settings
 - `q` - Quit
+
+**Device Management:**
+- `t` - Scan for trainers
+- `h` - Scan for HR monitors
+- `1-9` - Connect to trainer by number
+- `a-i` - Connect to HR monitor by letter
+- `T` - Disconnect trainer (Shift+T)
+- `H` - Disconnect HR monitor (Shift+H)
+- `Esc` - Back to home
 
 **Training Views:**
 - `Space` - Pause/Resume session
