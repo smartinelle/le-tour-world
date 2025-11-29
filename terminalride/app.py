@@ -30,11 +30,7 @@ from .ui.views import (
 from .devices.base import BikeSample, HrSample, DeviceNotFoundError
 from .domain.trainer_service import TrainerService
 from .domain.hr_service import HrService
-from .domain.session_service import SessionService
-from .modes.erg import ErgController
-from .modes.sim import SimPhysics
-from .store.repository import TrainingRepository
-from .store.models import SessionModel, SampleModel, TrainingMode
+from .domain.ride_controller import RideController, RideMode, RideMetrics
 from .config import get_config
 from .logging_setup import setup_logging
 
@@ -64,25 +60,16 @@ class TerminalRideApp:
             ViewState.SUMMARY: SummaryView(),
         }
 
-        # Device services
-        self.trainer = TrainerService()
-        self.hr_service = HrService()
-
-        # Training mode controllers
-        self.erg_controller = ErgController()
-        from .modes.sim import SimConfig
-
-        self.sim_solver = SimPhysics(SimConfig())
-
-        # Data persistence
-        self.repository = TrainingRepository()
-        self.session_service = SessionService(self.repository)
-        self.current_session: Optional[SessionModel] = None
-
-        # Metrics accumulator
-        self.distance_m = 0.0
-        self.last_sample_time: Optional[float] = None
-        self._sample_count = 0
+        # RideController handles all business logic (UI-agnostic)
+        self.ride_controller = RideController()
+        
+        # Wire up callbacks from controller to update UI state
+        self.ride_controller.on_metrics_update = self._on_controller_metrics
+        self.ride_controller.on_state_change = self._on_controller_state_change
+        
+        # Convenience aliases for device services
+        self.trainer = self.ride_controller.trainer
+        self.hr_service = self.ride_controller.hr_service
 
         # Keyboard input management
         self._key_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -243,62 +230,25 @@ class TerminalRideApp:
                 self.state.status_message = f"Training setup failed: {e}"
 
     async def _stop_training_session(self):
-        """Stop current training session."""
-        if not self.current_session:
+        """Stop current training session via RideController."""
+        if not self.ride_controller.is_active:
             return
 
         try:
             if self.trainer.is_connected:
                 await self.trainer.stop()
 
-            elapsed_s = self.state.metrics.get("time_s", 0) or 0.0
-            no_data = self._sample_count == 0 or elapsed_s <= 0.0
-
-            if no_data:
-                sid = self.current_session.session_id
-                try:
-                    self.session_service.delete_session(sid)
-                    self.state.status_message = "Session aborted (no data)"
-                    logger.info(f"Session {sid} aborted — no samples recorded")
-                except Exception as e:
-                    logger.warning(f"Failed to abort empty session {sid}: {e}")
-                    self.state.status_message = "Session abort error"
-
-                # Reset session state
-                self.state.session_active = False
-                self.state.session_paused = False
-                self.state.session_start_time = None
-                self.distance_m = 0.0
-                self._sample_count = 0
-                self.current_session = None
-                return
-
-            # Update session with final data
-            from datetime import datetime
-
-            self.current_session.end_time = datetime.now()
-            self.current_session.duration_s = elapsed_s
-            self.current_session.total_distance_m = self.state.metrics.get(
-                "distance_m", 0
-            )
-
-            # Save updated session
-            self.session_service.save_session(self.current_session)
-            # Record last session id for summary
-            self.state.last_session_id = self.current_session.session_id
-
-            # Reset session state
-            self.state.session_active = False
-            self.state.session_paused = False
+            session_id = self.ride_controller.stop_session()
+            
+            # Reset UI state
             self.state.session_start_time = None
-            self.distance_m = 0.0
-            self._sample_count = 0
-
-            session_id = self.current_session.session_id
-            self.current_session = None
-
-            self.state.status_message = f"Session {session_id[:8]} finished"
-            logger.info(f"Training session stopped: {session_id}")
+            
+            if session_id:
+                self.state.status_message = f"Session {session_id[:8]} finished"
+                logger.info(f"Training session stopped: {session_id}")
+            else:
+                self.state.status_message = "Session aborted (no data)"
+                logger.info("Session aborted - no samples recorded")
 
         except Exception as e:
             logger.warning(f"Error stopping training session: {e}")
@@ -349,78 +299,19 @@ class TerminalRideApp:
             self.state.current_view = ViewState.HOME
 
     async def _metrics_loop(self):
-        """Background loop for metrics updates and calculations."""
+        """Background loop for metrics updates and control commands."""
         while self.running:
             try:
-                # Update distance calculation
-                if (
-                    self.state.session_active
-                    and not self.state.session_paused
-                    and self.state.metrics.get("speed_mps")
-                ):
-
-                    current_time = time.time()
-                    if self.last_sample_time:
-                        dt = current_time - self.last_sample_time
-                        speed_mps = self.state.metrics["speed_mps"]
-                        self.distance_m += speed_mps * dt
-                        self.state.metrics["distance_m"] = self.distance_m
-
-                    self.last_sample_time = current_time
-
-                # Handle mode transitions and control commands
+                # Apply speed source policy if configured
                 await self._apply_speed_source()
-                await self._handle_mode_logic()
+                
+                # Delegate mode control (ERG/SIM) to RideController
+                await self.ride_controller.update_mode_control(dt=0.1)
 
             except Exception as e:
                 logger.debug(f"Metrics loop error: {e}")
 
             await asyncio.sleep(0.1)
-
-    async def _handle_mode_logic(self):
-        """Handle mode-specific logic (ERG/SIM control commands)."""
-        if not self.trainer.is_connected or not self.state.session_active:
-            return
-
-        try:
-            dt = 0.1  # Update interval
-
-            # ERG mode power control with PI controller
-            if (
-                self.state.current_view == ViewState.LIVE_ERG
-                and not self.state.session_paused
-            ):
-                target_power = self.state.metrics.get("target_power_w", 150)
-                current_power = self.state.metrics.get("power_w", 0)
-
-                # Use ERG controller to calculate optimal power
-                optimal_power = self.erg_controller.update(
-                    target_power, current_power, dt
-                )
-
-                # Send command to trainer
-                await self.trainer.set_target_power(optimal_power)
-
-            # SIM mode physics-based control
-            elif (
-                self.state.current_view == ViewState.LIVE_SIM
-                and not self.state.session_paused
-            ):
-                grade_pct = self.state.metrics.get("grade_pct", 0.0)
-                current_power = self.state.metrics.get("power_w", 0)
-
-                # Calculate expected speed using physics solver
-                if current_power > 0:
-                    expected_speed = self.sim_solver.solve_speed(
-                        current_power, grade_pct
-                    )
-                    self.state.metrics["expected_speed_mps"] = expected_speed
-
-                # Send simulation parameters to trainer
-                await self.trainer.set_simulation(grade_pct)
-
-        except Exception as e:
-            logger.debug(f"Mode control error: {e}")
 
     async def _device_management_loop(self) -> None:
         """Background loop for handling device scan/connect requests from UI."""
@@ -545,10 +436,19 @@ class TerminalRideApp:
                 self.state.status_message = f"Disconnect failed: {e}"
 
     def _on_hr_sample(self, sample: HrSample) -> None:
-        """Handle incoming HR data sample."""
-        hr_bpm = sample.get("hr_bpm")
-        if hr_bpm is not None:
-            self.state.metrics["hr_bpm"] = hr_bpm
+        """Handle incoming HR data sample - delegate to RideController."""
+        self.ride_controller.handle_hr_sample(sample)
+    
+    def _on_controller_metrics(self, metrics: RideMetrics) -> None:
+        """Callback when RideController updates metrics - sync to UI state."""
+        self.state.metrics.update(metrics.to_dict())
+    
+    def _on_controller_state_change(self, state) -> None:
+        """Callback when RideController state changes - sync to UI state."""
+        self.state.session_active = state.active
+        self.state.session_paused = state.paused
+        if state.session_id:
+            self.state.last_session_id = state.session_id
 
     async def _apply_speed_source(self) -> None:
         """Apply speed source policy: trainer|virtual|auto.
@@ -573,7 +473,7 @@ class TerminalRideApp:
             # Compute physics-based estimate when needed
             virt_speed = None
             if power > 0:
-                virt_speed = self.sim_solver.solve_speed(power, grade)
+                virt_speed = self.ride_controller._sim_solver.solve_speed(power, grade)
 
             if policy == "virtual":
                 if virt_speed is not None:
@@ -602,140 +502,37 @@ class TerminalRideApp:
             logger.debug(f"Speed source application error: {e}")
 
     def _on_bike_sample(self, sample: BikeSample):
-        """Handle incoming bike data sample."""
-        # Update metrics with latest sample
-        self.state.metrics.update(
-            {
-                "power_w": sample["power_w"],
-                "cadence_rpm": sample["cadence_rpm"],
-                "speed_mps": sample["speed_mps"],
-                "timestamp": sample["ts"],
-            }
-        )
-
+        """Handle incoming bike data sample - delegate to RideController."""
         if not self._got_first_sample:
             self._got_first_sample = True
             self.state.status_message = "Receiving data from trainer"
             logger.info("First trainer sample received")
 
-        # Initialize session on first sample if in training mode
+        # Start session on first sample if in training mode
         if (
             self.state.current_view
             in [ViewState.LIVE_FREE, ViewState.LIVE_ERG, ViewState.LIVE_SIM]
-            and not self.state.session_active
+            and not self.ride_controller.is_active
         ):
             self._start_training_session()
 
-        # Record sample data if session is active
-        if self.state.session_active and self.current_session:
-            self._record_sample_data(sample)
+        # Delegate sample processing to RideController
+        self.ride_controller.handle_bike_sample(sample)
 
     def _start_training_session(self):
-        """Initialize a new training session."""
-        self.state.session_active = True
-        self.state.session_paused = False
-        self.state.session_start_time = time.time()
-        self.distance_m = 0.0
-        self.last_sample_time = None
-        self._sample_count = 0
-        # Reset average accumulators
-        self._avg_power_sum = 0.0
-        self._avg_power_count = 0
-        self._avg_cad_sum = 0.0
-        self._avg_cad_count = 0
-        self._avg_hr_sum = 0.0
-        self._avg_hr_count = 0
-
-        # Create session model
+        """Initialize a new training session via RideController."""
         mode_map = {
-            ViewState.LIVE_FREE: TrainingMode.FREE,
-            ViewState.LIVE_ERG: TrainingMode.ERG,
-            ViewState.LIVE_SIM: TrainingMode.SIM,
+            ViewState.LIVE_FREE: RideMode.FREE,
+            ViewState.LIVE_ERG: RideMode.ERG,
+            ViewState.LIVE_SIM: RideMode.SIM,
         }
-
-        mode = mode_map.get(self.state.current_view, TrainingMode.FREE)
+        mode = mode_map.get(self.state.current_view, RideMode.FREE)
         trainer_name = self.state.devices.get("trainer", {}).get("name", "Unknown")
-
-        from datetime import datetime
-
-        self.current_session = SessionModel(
-            mode=mode,
-            start_time=datetime.now(),
-            trainer_name=trainer_name,
-        )
-
-        # Save session to repository
-        self.session_service.save_session(self.current_session)
-
-        # Set default values for mode
-        if self.state.current_view == ViewState.LIVE_ERG:
-            self.state.metrics.setdefault("target_power_w", 150)
-            self.current_session.erg_target_power_w = 150
-        elif self.state.current_view == ViewState.LIVE_SIM:
-            self.state.metrics.setdefault("grade_pct", 0.0)
-
-        logger.info(
-            f"Training session started: {self.current_session.session_id} ({mode.value})"
-        )
-
-    def _record_sample_data(self, sample: BikeSample):
-        """Record sample data to repository."""
-        if not self.current_session:
-            return
-
-        try:
-            elapsed_s = self.state.metrics.get("time_s", 0)
-            # Update running averages (only while active and not paused)
-            if self.state.session_active and not self.state.session_paused:
-                pw = sample.get("power_w")
-                if pw is not None:
-                    self._avg_power_sum += float(pw)
-                    self._avg_power_count += 1
-                    self.state.metrics["avg_power_w"] = self._avg_power_sum / max(
-                        1, self._avg_power_count
-                    )
-                cad = sample.get("cadence_rpm")
-                if cad is not None:
-                    self._avg_cad_sum += float(cad)
-                    self._avg_cad_count += 1
-                    self.state.metrics["avg_cadence_rpm"] = self._avg_cad_sum / max(
-                        1, self._avg_cad_count
-                    )
-                # Avg speed derived from distance/time in UI (also set below on apply_speed_source)
-                hr = self.state.metrics.get("hr_bpm")
-                if hr is not None:
-                    self._avg_hr_sum += float(hr)
-                    self._avg_hr_count += 1
-                    self.state.metrics["avg_hr_bpm"] = self._avg_hr_sum / max(
-                        1, self._avg_hr_count
-                    )
-
-            # Create sample model
-            sample_model = SampleModel(
-                session_id=self.current_session.session_id,
-                elapsed_s=elapsed_s,
-                power_w=sample.get("power_w"),
-                cadence_rpm=sample.get("cadence_rpm"),
-                speed_mps=sample.get("speed_mps"),
-                distance_m=self.state.metrics.get("distance_m", 0),
-                erg_target_power_w=(
-                    self.state.metrics.get("target_power_w")
-                    if self.state.current_view == ViewState.LIVE_ERG
-                    else None
-                ),
-                sim_grade_pct=(
-                    self.state.metrics.get("grade_pct")
-                    if self.state.current_view == ViewState.LIVE_SIM
-                    else None
-                ),
-            )
-
-            # Save to repository
-            self.session_service.save_sample(sample_model)
-            self._sample_count += 1
-
-        except Exception as e:
-            logger.debug(f"Failed to record sample data: {e}")
+        
+        session_id = self.ride_controller.start_session(mode, trainer_name)
+        self.state.session_start_time = time.time()
+        
+        logger.info(f"Training session started via controller: {session_id} ({mode.value})")
 
     def _signal_handler(self, signum, frame):
         """Handle system signals for graceful shutdown."""
