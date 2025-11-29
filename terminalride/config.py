@@ -17,6 +17,7 @@ class UserSettings(BaseModel):
     gender: str = Field(default="male", pattern="^(male|female)$")
     mass_kg: float = Field(default=75.0, ge=40.0, le=200.0)
     ftp_w: Optional[int] = Field(default=None, ge=50, le=600)
+    max_hr_bpm: Optional[int] = Field(default=None, ge=100, le=230)  # Max heart rate
 
     # Physics parameters
     cda_m2: float = Field(default=0.33, ge=0.2, le=0.5)

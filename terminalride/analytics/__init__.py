@@ -15,6 +15,9 @@ from .metrics import (
     calculate_training_metrics,
     calculate_power_zones,
     calculate_time_in_zones,
+    calculate_hr_zones,
+    get_hr_zone,
+    estimate_max_hr,
 )
 
 __all__ = [
@@ -25,4 +28,7 @@ __all__ = [
     "calculate_training_metrics",
     "calculate_power_zones",
     "calculate_time_in_zones",
+    "calculate_hr_zones",
+    "get_hr_zone",
+    "estimate_max_hr",
 ]

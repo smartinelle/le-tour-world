@@ -300,6 +300,78 @@ def calculate_power_zones(ftp_w: int) -> dict[str, tuple[int, int]]:
     }
 
 
+def calculate_hr_zones(max_hr_bpm: int) -> dict[str, tuple[int, int]]:
+    """Calculate heart rate training zones based on max HR.
+
+    Uses the classic 5-zone model based on percentage of max HR.
+
+    Args:
+        max_hr_bpm: Maximum heart rate in BPM.
+
+    Returns:
+        Dictionary mapping zone names to (min_bpm, max_bpm) tuples.
+
+    Example:
+        >>> zones = calculate_hr_zones(190)
+        >>> zones["Z2 Easy"]
+        (114, 133)
+    """
+    return {
+        "Z1 Recovery": (0, int(max_hr_bpm * 0.60)),
+        "Z2 Easy": (int(max_hr_bpm * 0.60) + 1, int(max_hr_bpm * 0.70)),
+        "Z3 Aerobic": (int(max_hr_bpm * 0.70) + 1, int(max_hr_bpm * 0.80)),
+        "Z4 Threshold": (int(max_hr_bpm * 0.80) + 1, int(max_hr_bpm * 0.90)),
+        "Z5 Max": (int(max_hr_bpm * 0.90) + 1, max_hr_bpm + 50),  # Allow for spikes
+    }
+
+
+def get_hr_zone(hr_bpm: int, max_hr_bpm: int) -> tuple[str, str]:
+    """Get the HR zone name and color for a given heart rate.
+
+    Args:
+        hr_bpm: Current heart rate in BPM.
+        max_hr_bpm: Maximum heart rate in BPM.
+
+    Returns:
+        Tuple of (zone_name, color) where color is a Rich style string.
+
+    Example:
+        >>> get_hr_zone(150, 190)
+        ('Z4', 'yellow')
+    """
+    pct = hr_bpm / max_hr_bpm if max_hr_bpm > 0 else 0
+
+    if pct <= 0.60:
+        return ("Z1", "dim")
+    elif pct <= 0.70:
+        return ("Z2", "blue")
+    elif pct <= 0.80:
+        return ("Z3", "green")
+    elif pct <= 0.90:
+        return ("Z4", "yellow")
+    else:
+        return ("Z5", "red")
+
+
+def estimate_max_hr(age: int) -> int:
+    """Estimate max heart rate from age using Tanaka formula.
+
+    Formula: 208 - (0.7 × age)
+    This is more accurate than the older 220 - age formula.
+
+    Args:
+        age: Age in years.
+
+    Returns:
+        Estimated max heart rate in BPM.
+
+    Example:
+        >>> estimate_max_hr(30)
+        187
+    """
+    return int(208 - (0.7 * age))
+
+
 def calculate_time_in_zones(
     power_samples: Sequence[int],
     ftp_w: int,

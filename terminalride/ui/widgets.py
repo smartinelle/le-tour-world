@@ -1,12 +1,14 @@
 """Common TUI widgets and components."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
 from .keymap import get_hints
+from ..analytics import get_hr_zone, estimate_max_hr
+from ..config import get_config
 
 
 class MetricsDisplay:
@@ -64,10 +66,23 @@ class MetricsDisplay:
         distance_km = distance_m / 1000.0
         table.add_row("Distance", f"{distance_km:4.1f} km")
 
-        # Heart rate (if available)
+        # Heart rate (always show, with zone color if available)
         hr_bpm = metrics.get("hr_bpm")
         if hr_bpm is not None:
-            table.add_row("Heart Rate", f"{hr_bpm:3d} bpm")
+            # Get max HR from config or estimate from age
+            cfg = get_config()
+            max_hr = cfg.settings.max_hr_bpm
+            if max_hr is None:
+                max_hr = estimate_max_hr(cfg.settings.age)
+
+            zone_name, zone_color = get_hr_zone(hr_bpm, max_hr)
+            hr_text = Text()
+            hr_text.append(f"{hr_bpm:3d}", style=f"bold {zone_color}")
+            hr_text.append(f" bpm ")
+            hr_text.append(f"[{zone_name}]", style=zone_color)
+            table.add_row("Heart Rate", hr_text)
+        else:
+            table.add_row("Heart Rate", Text("--- bpm", style="dim"))
 
         # Mode-specific info
         if mode == "sim":
@@ -122,12 +137,21 @@ class AverageMetricsDisplay:
             "Speed", f"{avg_speed_kph:4.1f} km/h" if avg_speed_kph else "--- km/h"
         )
 
-        # Average heart rate
+        # Average heart rate (with zone color)
         avg_hr = metrics.get("avg_hr_bpm")
-        table.add_row(
-            "Heart Rate",
-            f"{int(round(avg_hr))} bpm" if avg_hr is not None else "--- bpm",
-        )
+        if avg_hr is not None:
+            cfg = get_config()
+            max_hr = cfg.settings.max_hr_bpm
+            if max_hr is None:
+                max_hr = estimate_max_hr(cfg.settings.age)
+
+            zone_name, zone_color = get_hr_zone(int(avg_hr), max_hr)
+            hr_text = Text()
+            hr_text.append(f"{int(round(avg_hr))}", style=zone_color)
+            hr_text.append(f" bpm")
+            table.add_row("Heart Rate", hr_text)
+        else:
+            table.add_row("Heart Rate", Text("--- bpm", style="dim"))
 
         return Panel(table, title="Session Averages", border_style="white")
 

@@ -1010,6 +1010,23 @@ class SummaryView(BaseView):
         if max_power:
             table.add_row("Max Power", f"{max_power} W")
 
+        # Heart rate (if available)
+        avg_hr = (
+            getattr(summary, "avg_hr_bpm", None)
+            if summary
+            else state.metrics.get("avg_hr_bpm")
+        )
+        max_hr_recorded = (
+            getattr(summary, "max_hr_bpm", None)
+            if summary
+            else None
+        )
+        if avg_hr:
+            hr_str = f"{int(round(avg_hr))} bpm"
+            if max_hr_recorded:
+                hr_str += f" (max {max_hr_recorded})"
+            table.add_row("Avg Heart Rate", hr_str)
+
         header = Text.assemble((f"Good job, {username}!", "bold green"))
         return Panel(
             Align.center(Align.left(table)),

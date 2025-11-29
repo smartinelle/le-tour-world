@@ -18,6 +18,9 @@ from terminalride.analytics import (
     calculate_training_metrics,
     calculate_power_zones,
     calculate_time_in_zones,
+    calculate_hr_zones,
+    get_hr_zone,
+    estimate_max_hr,
 )
 
 
@@ -353,6 +356,61 @@ class TestTimeInZones:
 
         for zone_time in times.values():
             assert zone_time == 0.0
+
+
+class TestHrZones:
+    """Tests for heart rate zone calculations."""
+
+    def test_hr_zones_structure(self):
+        """HR zones have correct structure."""
+        zones = calculate_hr_zones(190)
+
+        assert "Z1 Recovery" in zones
+        assert "Z2 Easy" in zones
+        assert "Z3 Aerobic" in zones
+        assert "Z4 Threshold" in zones
+        assert "Z5 Max" in zones
+
+    def test_hr_zones_boundaries(self):
+        """HR zones have correct boundaries for max HR 200."""
+        zones = calculate_hr_zones(200)
+
+        # Z1: 0-60% = 0-120
+        assert zones["Z1 Recovery"] == (0, 120)
+        # Z2: 60-70% = 121-140
+        assert zones["Z2 Easy"] == (121, 140)
+        # Z3: 70-80% = 141-160
+        assert zones["Z3 Aerobic"] == (141, 160)
+        # Z4: 80-90% = 161-180
+        assert zones["Z4 Threshold"] == (161, 180)
+
+    def test_get_hr_zone_recovery(self):
+        """Low HR returns recovery zone."""
+        zone, color = get_hr_zone(100, 190)
+        assert zone == "Z1"
+        assert color == "dim"
+
+    def test_get_hr_zone_threshold(self):
+        """High HR returns threshold zone."""
+        zone, color = get_hr_zone(165, 190)  # ~87% of max
+        assert zone == "Z4"
+        assert color == "yellow"
+
+    def test_get_hr_zone_max(self):
+        """Very high HR returns max zone."""
+        zone, color = get_hr_zone(180, 190)  # ~95% of max
+        assert zone == "Z5"
+        assert color == "red"
+
+    def test_estimate_max_hr_age_30(self):
+        """Max HR estimate for age 30."""
+        max_hr = estimate_max_hr(30)
+        assert max_hr == 187  # 208 - 0.7*30 = 187
+
+    def test_estimate_max_hr_age_50(self):
+        """Max HR estimate for age 50."""
+        max_hr = estimate_max_hr(50)
+        assert max_hr == 173  # 208 - 0.7*50 = 173
 
 
 class TestEdgeCases:
