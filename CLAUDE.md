@@ -39,9 +39,10 @@ black terminalride
 ## Architecture Principles
 - Protocol interfaces in devices/base.py
 - FTMS parser as pure function (bit-field parsing)
-- ERG PI controller: bounds [100,400]W, rate limit �10W/5s, anti-windup
-- SIM physics: power�speed solver with Newton/fixed-point method
+- ERG PI controller: bounds [100,400]W, rate limit ±10W/5s, anti-windup
+- SIM physics: power→speed solver with Newton/fixed-point method
 - BLE I/O isolated from business logic
+- **UI-agnostic RideController** for session/ride management (allows future non-terminal UIs)
 
 ## Repository Structure
 ```
@@ -65,9 +66,10 @@ terminalride/
     modes/        # Free/ERG/SIM logic
       erg.py      # ERG mode implementation
       sim.py      # SIM mode implementation
-    domain/       # Business logic
-      events.py   # Event definitions
-      state.py    # Application state
+    domain/       # Business logic (UI-agnostic)
+      ride_controller.py  # UI-agnostic session/ride management
+      events.py           # Event definitions
+      state.py            # Application state
       trainer_service.py  # Trainer service
       hr_service.py       # Heart rate service
       session_service.py  # Session persistence service
@@ -89,12 +91,12 @@ terminalride/
 ## CURRENT STATUS: MVP v0.1.0 - COMPLETE ✅
 
 ### Project Implementation Summary:
-- **Core components implemented and fully tested (112 tests passing)**
+- **Core components implemented and fully tested (140 tests passing)**
 - **Full BLE FTMS protocol support with Wahoo KICKR compatibility**
 - **Complete TUI with all training modes (Free/ERG/SIM)**
 - **Data persistence with store module (models, repository, export)**
 - **CSV export functionality**
-- **Domain-driven architecture with events, trainer service, and session service**
+- **Domain-driven architecture with events, services, and RideController**
 - **Comprehensive documentation (README.md, ADRs)**
 
 ### Key Achievements:
@@ -109,5 +111,6 @@ terminalride/
 - Analytics module with NP/IF/TSS calculations
 - Heart rate monitor support (Wahoo TICKR, Garmin HRM, Polar, etc.)
 - Manual device selection (scan, list, and choose specific devices)
+- **UI-agnostic RideController (70% ready for non-terminal UI migration)**
 
 **PROJECT STATUS: MVP v0.1.0 COMPLETE** ✅
