@@ -1126,15 +1126,23 @@ class WebUI:
                 ui.label("Trainer").classes("text-lg font-medium text-gray-900 mb-4")
                 
                 connected = self.controller.trainer.is_connected
-                with ui.row().classes("items-center justify-between"):
-                    with ui.row().classes("items-center"):
+                trainer_name = self.controller.trainer.device_info.get("name", "Trainer") if connected else None
+                
+                with ui.row().classes("items-center justify-between w-full"):
+                    with ui.row().classes("items-center gap-2"):
                         dot_class = "connected" if connected else "disconnected"
                         ui.html(f'<span class="status-dot {dot_class}"></span>', sanitize=False)
-                        status = "Connected" if connected else "Not connected"
+                        if connected:
+                            status = f"Connected to {trainer_name}"
+                        else:
+                            status = "Not connected"
                         ui.label(status).classes("text-gray-600")
                     
                     if connected:
-                        ui.button("Disconnect").classes("btn-secondary")
+                        ui.button(
+                            "Disconnect", 
+                            on_click=lambda: self._disconnect_trainer()
+                        ).classes("btn-secondary")
                     else:
                         ui.button("Scan", on_click=self._scan_trainers).classes(
                             "btn-primary"
@@ -1147,17 +1155,49 @@ class WebUI:
                 )
                 
                 hr_connected = self.controller.hr_service.is_connected
-                with ui.row().classes("items-center justify-between"):
-                    with ui.row().classes("items-center"):
+                hr_name = self.controller.hr_service.device_info.get("name", "HR Monitor") if hr_connected else None
+                
+                with ui.row().classes("items-center justify-between w-full"):
+                    with ui.row().classes("items-center gap-2"):
                         dot_class = "connected" if hr_connected else "disconnected"
                         ui.html(f'<span class="status-dot {dot_class}"></span>', sanitize=False)
-                        status = "Connected" if hr_connected else "Not connected"
+                        if hr_connected:
+                            status = f"Connected to {hr_name}"
+                        else:
+                            status = "Not connected"
                         ui.label(status).classes("text-gray-600")
                     
                     if hr_connected:
-                        ui.button("Disconnect").classes("btn-secondary")
+                        ui.button(
+                            "Disconnect",
+                            on_click=lambda: self._disconnect_hr()
+                        ).classes("btn-secondary")
                     else:
                         ui.button("Scan", on_click=self._scan_hr).classes("btn-primary")
+
+    async def _disconnect_trainer(self) -> None:
+        """Disconnect the trainer and refresh the page."""
+        try:
+            if self.controller.trainer.is_connected:
+                await self.controller.trainer.disconnect()
+                logger.info("Trainer disconnected via web UI")
+            # Refresh page to show updated status
+            ui.navigate.to("/devices")
+        except Exception as e:
+            logger.warning(f"Error disconnecting trainer: {e}")
+            ui.notify(f"Disconnect failed: {e}", color="red")
+
+    async def _disconnect_hr(self) -> None:
+        """Disconnect the HR monitor and refresh the page."""
+        try:
+            if self.controller.hr_service.is_connected:
+                await self.controller.hr_service.disconnect()
+                logger.info("HR monitor disconnected via web UI")
+            # Refresh page to show updated status
+            ui.navigate.to("/devices")
+        except Exception as e:
+            logger.warning(f"Error disconnecting HR: {e}")
+            ui.notify(f"Disconnect failed: {e}", color="red")
 
     async def _scan_trainers(self) -> None:
         """Scan for available trainers."""
