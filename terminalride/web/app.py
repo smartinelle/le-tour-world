@@ -319,7 +319,7 @@ class WebUI:
                 ui.label(status).classes("text-gray-600")
             
             # Mode cards
-            with ui.row().classes("gap-6 w-full"):
+            with ui.row().classes("gap-6 w-full items-stretch"):
                 self._mode_card(
                     "Free Ride",
                     "Ride freely without resistance control",
@@ -343,7 +343,7 @@ class WebUI:
         self, title: str, description: str, path: str, shortcut: str
     ) -> None:
         """Render a training mode card."""
-        with ui.card().classes("metric-card flex-1 cursor-pointer").on(
+        with ui.card().classes("metric-card flex-1 h-full cursor-pointer").on(
             "click", lambda: ui.navigate.to(path)
         ):
             ui.label(shortcut).classes(
@@ -582,12 +582,12 @@ class WebUI:
 
     async def _scan_trainers(self) -> None:
         """Scan for available trainers."""
-        ui.notify("Scanning for trainers...", type="info")
+        ui.notify("Scanning for trainers...")
         # TODO: Implement scanning
 
     async def _scan_hr(self) -> None:
         """Scan for HR monitors."""
-        ui.notify("Scanning for HR monitors...", type="info")
+        ui.notify("Scanning for HR monitors...")
         # TODO: Implement scanning
 
     def _render_history(self) -> None:
@@ -655,7 +655,7 @@ class WebUI:
 
     def _save_settings(self) -> None:
         """Save settings."""
-        ui.notify("Settings saved!", type="positive")
+        ui.notify("Settings saved!", color="green")
 
 
 def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
