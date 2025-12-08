@@ -6,12 +6,13 @@ Big metrics for visibility from bike distance.
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any, Callable
 
 from nicegui import ui, app
 
 from ..domain.ride_controller import RideController, RideMode, RideMetrics
 from ..config import get_config
+from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -228,16 +229,510 @@ body {
     width: 100%;
     margin: 1rem 0;
 }
+
+/* Scanning dialog styles */
+.scan-dialog {
+    max-width: 480px;
+    width: 90vw;
+}
+
+.scan-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.scan-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.scan-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.device-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 1rem 0;
+}
+
+.device-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--surface);
+}
+
+.device-item:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.device-item.connecting {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    cursor: wait;
+}
+
+.device-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.device-name {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.device-address {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+
+/* Signal strength bars */
+.signal-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+}
+
+.signal-bar {
+    width: 4px;
+    background: var(--border);
+    border-radius: 1px;
+    transition: background 0.2s;
+}
+
+.signal-bar.active {
+    background: var(--accent);
+}
+
+.signal-bar:nth-child(1) { height: 4px; }
+.signal-bar:nth-child(2) { height: 8px; }
+.signal-bar:nth-child(3) { height: 12px; }
+.signal-bar:nth-child(4) { height: 16px; }
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state-title {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.empty-state-tips {
+    font-size: 0.875rem;
+    text-align: left;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--accent-light);
+    border-radius: 0.5rem;
+}
+
+.empty-state-tips li {
+    margin-bottom: 0.5rem;
+}
+
+/* Progress text */
+.scan-progress {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin: 1rem 0;
+}
+
+/* Connection status */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    margin: 1rem 0;
+}
+
+.connection-status.success {
+    background: #DCFCE7;
+    color: #166534;
+}
+
+.connection-status.error {
+    background: #FEE2E2;
+    color: #991B1B;
+}
+
+.connection-status.info {
+    background: var(--accent-light);
+    color: var(--accent);
+}
 </style>
 """
+
+
+def _rssi_to_bars(rssi: Optional[int]) -> int:
+    """Convert RSSI dBm value to signal bar count (1-4)."""
+    if rssi is None:
+        return 2  # Unknown, show medium
+    if rssi >= -50:
+        return 4  # Excellent
+    if rssi >= -60:
+        return 3  # Good
+    if rssi >= -70:
+        return 2  # Fair
+    return 1  # Weak
+
+
+class ScanDialog:
+    """Reusable scanning dialog with progress, device list, and connection flow."""
+
+    def __init__(
+        self,
+        title: str,
+        device_type: str,
+        scan_fn: Callable[[], Any],
+        connect_fn: Callable[[str], Any],
+        on_connected: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self.title = title
+        self.device_type = device_type
+        self.scan_fn = scan_fn
+        self.connect_fn = connect_fn
+        self.on_connected = on_connected
+
+        self._dialog: Optional[ui.dialog] = None
+        self._device_container: Optional[ui.column] = None
+        self._status_label: Optional[ui.label] = None
+        self._scan_task: Optional[asyncio.Task] = None
+        self._is_scanning = False
+        self._is_connecting = False
+        self._devices: List[Dict[str, Any]] = []
+
+    def show(self) -> None:
+        """Show the scanning dialog and start scanning."""
+        self._create_dialog()
+        self._dialog.open()
+        asyncio.create_task(self._run_scan())
+
+    def _create_dialog(self) -> None:
+        """Create the dialog UI."""
+        self._dialog = ui.dialog().props("persistent")
+
+        with self._dialog, ui.card().classes("scan-dialog"):
+            # Header
+            with ui.row().classes("scan-header w-full items-center"):
+                ui.html('<div class="scan-spinner"></div>', sanitize=False)
+                ui.label(f"Scanning for {self.title}").classes(
+                    "text-xl font-semibold text-gray-900 flex-grow"
+                )
+                ui.button(icon="close", on_click=self._cancel).props(
+                    "flat round dense"
+                )
+
+            # Status text
+            self._status_label = ui.label("Looking for devices...").classes(
+                "scan-progress scan-pulse"
+            )
+
+            # Device list container
+            self._device_container = ui.column().classes("device-list w-full")
+
+            # Footer with cancel button
+            with ui.row().classes("w-full justify-end mt-4"):
+                ui.button("Cancel", on_click=self._cancel).classes("btn-secondary")
+
+    async def _run_scan(self) -> None:
+        """Execute the scan and update UI with results."""
+        self._is_scanning = True
+        self._devices = []
+
+        try:
+            if self._status_label:
+                self._status_label.set_text("Scanning... this may take a few seconds")
+
+            # Run the scan
+            devices = await self.scan_fn()
+            self._devices = devices
+
+            self._is_scanning = False
+
+            if self._status_label:
+                if devices:
+                    count = len(devices)
+                    self._status_label.set_text(
+                        f"Found {count} device{'s' if count != 1 else ''}. "
+                        "Tap to connect."
+                    )
+                    self._status_label.classes(remove="scan-pulse")
+                else:
+                    self._status_label.set_text("")
+                    self._status_label.classes(remove="scan-pulse")
+
+            # Update device list
+            self._update_device_list()
+
+        except Exception as e:
+            logger.error(f"Scan failed: {e}")
+            self._is_scanning = False
+            if self._status_label:
+                self._status_label.set_text("")
+                self._status_label.classes(remove="scan-pulse")
+            self._show_error(str(e))
+
+    def _update_device_list(self) -> None:
+        """Update the device list UI."""
+        if not self._device_container:
+            return
+
+        self._device_container.clear()
+
+        if not self._devices:
+            self._show_empty_state()
+            return
+
+        with self._device_container:
+            for device in self._devices:
+                self._create_device_item(device)
+
+    def _create_device_item(self, device: Dict[str, Any]) -> None:
+        """Create a device list item."""
+        name = device.get("name", "Unknown Device")
+        address = device.get("address", "")
+        rssi = device.get("rssi")
+        bars = _rssi_to_bars(rssi)
+
+        with ui.element("div").classes("device-item").on(
+            "click", lambda d=device: asyncio.create_task(self._connect_to_device(d))
+        ) as item:
+            # Store reference to update classes later
+            device["_ui_element"] = item
+
+            with ui.element("div").classes("device-info"):
+                ui.label(name).classes("device-name")
+                ui.label(address).classes("device-address")
+
+            # Signal bars
+            with ui.element("div").classes("signal-bars"):
+                for i in range(1, 5):
+                    active = "active" if i <= bars else ""
+                    ui.element("div").classes(f"signal-bar {active}")
+
+    def _show_empty_state(self) -> None:
+        """Show empty state when no devices found."""
+        if not self._device_container:
+            return
+
+        with self._device_container:
+            with ui.element("div").classes("empty-state"):
+                ui.html(
+                    '<div class="empty-state-icon">📡</div>',
+                    sanitize=False,
+                )
+                ui.label(f"No {self.device_type}s found").classes("empty-state-title")
+                ui.label(
+                    "Make sure your device is powered on and in range."
+                ).classes("text-sm")
+
+                with ui.element("div").classes("empty-state-tips"):
+                    ui.label("Troubleshooting tips:").classes("font-medium mb-2")
+                    ui.html(
+                        """
+                        <ul style="margin: 0; padding-left: 1.25rem;">
+                            <li>Is Bluetooth enabled on this computer?</li>
+                            <li>Is the device powered on and awake?</li>
+                            <li>Is the device within range (< 10m)?</li>
+                            <li>Is another app connected to it?</li>
+                        </ul>
+                        """,
+                        sanitize=False,
+                    )
+
+                ui.button(
+                    "Scan Again",
+                    on_click=lambda: asyncio.create_task(self._rescan()),
+                ).classes("btn-primary mt-4")
+
+    def _show_error(self, message: str) -> None:
+        """Show an error message."""
+        if not self._device_container:
+            return
+
+        self._device_container.clear()
+
+        with self._device_container:
+            with ui.element("div").classes("connection-status error"):
+                ui.icon("error").classes("text-2xl")
+                with ui.column().classes("gap-1"):
+                    ui.label("Scan failed").classes("font-medium")
+                    ui.label(message).classes("text-sm")
+
+            ui.button(
+                "Try Again",
+                on_click=lambda: asyncio.create_task(self._rescan()),
+            ).classes("btn-primary mt-4")
+
+    async def _rescan(self) -> None:
+        """Rescan for devices."""
+        if self._device_container:
+            self._device_container.clear()
+        if self._status_label:
+            self._status_label.set_text("Scanning...")
+            self._status_label.classes(add="scan-pulse")
+        await self._run_scan()
+
+    async def _connect_to_device(self, device: Dict[str, Any]) -> None:
+        """Connect to the selected device."""
+        if self._is_connecting or self._is_scanning:
+            return
+
+        self._is_connecting = True
+        address = device.get("address", "")
+        name = device.get("name", "device")
+
+        # Update UI to show connecting state
+        if self._status_label:
+            self._status_label.set_text(f"Connecting to {name}...")
+            self._status_label.classes(add="scan-pulse")
+
+        # Update device item visual state
+        ui_element = device.get("_ui_element")
+        if ui_element:
+            ui_element.classes(add="connecting")
+
+        try:
+            await self.connect_fn(address)
+
+            # Success!
+            self._is_connecting = False
+            if self._status_label:
+                self._status_label.set_text("")
+                self._status_label.classes(remove="scan-pulse")
+
+            # Show success message briefly
+            if self._device_container:
+                self._device_container.clear()
+                with self._device_container:
+                    with ui.element("div").classes("connection-status success"):
+                        ui.icon("check_circle").classes("text-2xl")
+                        with ui.column().classes("gap-1"):
+                            ui.label("Connected!").classes("font-medium")
+                            ui.label(f"Successfully connected to {name}").classes(
+                                "text-sm"
+                            )
+
+            # Wait a moment then close
+            await asyncio.sleep(1.5)
+            self._dialog.close()
+
+            # Call callback if provided
+            if self.on_connected:
+                self.on_connected()
+
+        except DeviceNotFoundError as e:
+            logger.error(f"Device not found: {e}")
+            self._is_connecting = False
+            self._show_connection_error(
+                name,
+                "Device not found. It may have gone out of range or powered off.",
+            )
+
+        except DeviceConnectionError as e:
+            logger.error(f"Connection failed: {e}")
+            self._is_connecting = False
+            self._show_connection_error(name, str(e))
+
+        except Exception as e:
+            logger.error(f"Unexpected connection error: {e}")
+            self._is_connecting = False
+            self._show_connection_error(name, str(e))
+
+    def _show_connection_error(self, device_name: str, message: str) -> None:
+        """Show connection error and allow retry."""
+        if self._status_label:
+            self._status_label.set_text("")
+            self._status_label.classes(remove="scan-pulse")
+
+        if not self._device_container:
+            return
+
+        self._device_container.clear()
+
+        with self._device_container:
+            with ui.element("div").classes("connection-status error"):
+                ui.icon("error").classes("text-2xl")
+                with ui.column().classes("gap-1"):
+                    ui.label(f"Failed to connect to {device_name}").classes(
+                        "font-medium"
+                    )
+                    ui.label(message).classes("text-sm")
+
+            with ui.row().classes("gap-2 mt-4"):
+                ui.button(
+                    "Scan Again",
+                    on_click=lambda: asyncio.create_task(self._rescan()),
+                ).classes("btn-secondary")
+
+    def _cancel(self) -> None:
+        """Cancel scanning and close dialog."""
+        if self._scan_task and not self._scan_task.done():
+            self._scan_task.cancel()
+        self._dialog.close()
+
+
+def _get_shared_controller() -> RideController:
+    """Get or create the shared RideController singleton.
+    
+    Uses NiceGUI's app.storage to persist the controller across page loads,
+    ensuring device connections are maintained throughout the session.
+    """
+    if not hasattr(app, '_shared_controller') or app._shared_controller is None:
+        app._shared_controller = RideController()
+        logger.info("Created shared RideController instance")
+    return app._shared_controller
 
 
 class WebUI:
     """Web-based UI for TerminalRide."""
 
     def __init__(self) -> None:
-        self.controller = RideController()
+        # Use shared singleton controller instead of creating new one each time
+        self.controller = _get_shared_controller()
         self._update_task: Optional[asyncio.Task] = None
+        self._auto_connect_attempted: bool = False
         
         # UI element references
         self._power_label: Optional[ui.label] = None
@@ -248,13 +743,15 @@ class WebUI:
         self._speed_label: Optional[ui.label] = None
         self._target_label: Optional[ui.label] = None
         self._status_label: Optional[ui.label] = None
+        self._connection_status_label: Optional[ui.label] = None
+        self._connection_dot: Optional[ui.html] = None
 
     def setup(self) -> None:
         """Set up the web UI routes and pages."""
         
         @ui.page("/")
-        def home_page():
-            self._render_home()
+        async def home_page():
+            await self._render_home_with_auto_connect()
 
         @ui.page("/session/{mode}")
         def session_page(mode: str):
@@ -295,8 +792,12 @@ class WebUI:
                         active = "active" if current == name else ""
                         ui.link(name, path).classes(f"nav-link {active}")
 
-    def _render_home(self) -> None:
-        """Render the home/menu page."""
+    async def _render_home_with_auto_connect(self) -> None:
+        """Render home page with automatic device connection on first load.
+        
+        Mirrors CLI behavior: automatically scan and connect to trainer
+        when the app first loads, providing seamless device discovery.
+        """
         self._render_header("Home")
         
         with ui.column().classes(
@@ -310,13 +811,19 @@ class WebUI:
                 "Choose a training mode to get started."
             ).classes("text-xl text-gray-500 mb-12")
             
-            # Connection status
+            # Connection status (will be updated dynamically)
             connected = self.controller.trainer.is_connected
-            with ui.row().classes("items-center mb-8"):
+            with ui.row().classes("items-center mb-8") as status_row:
                 dot_class = "connected" if connected else "disconnected"
-                ui.html(f'<span class="status-dot {dot_class}"></span>', sanitize=False)
-                status = "Trainer connected" if connected else "No trainer connected"
-                ui.label(status).classes("text-gray-600")
+                self._connection_dot = ui.html(
+                    f'<span class="status-dot {dot_class}"></span>', sanitize=False
+                )
+                if connected:
+                    trainer_name = self.controller.trainer.device_info.get("name", "Trainer")
+                    status = f"Connected to {trainer_name}"
+                else:
+                    status = "Searching for trainer..."
+                self._connection_status_label = ui.label(status).classes("text-gray-600")
             
             # Mode cards
             with ui.row().classes("gap-6 w-full items-stretch"):
@@ -338,6 +845,78 @@ class WebUI:
                     "/session/sim",
                     "3",
                 )
+        
+        # Auto-connect if not already connected (like CLI does on startup)
+        # Use create_task so page renders immediately while scan runs in background
+        if not self.controller.trainer.is_connected:
+            asyncio.create_task(self._auto_connect_trainer())
+
+    async def _auto_connect_trainer(self) -> None:
+        """Automatically scan and connect to first available trainer.
+        
+        This mirrors the CLI's _connection_loop() behavior, providing
+        seamless device discovery without requiring manual intervention.
+        """
+        try:
+            if self._connection_status_label:
+                self._connection_status_label.set_text("Scanning for trainers...")
+                self._connection_status_label.update()
+            
+            logger.info("Auto-connect: Scanning for FTMS trainers...")
+            
+            # Scan for available trainers
+            available = await self.controller.trainer._client.scan_available(timeout_s=8.0)
+            
+            if not available:
+                logger.info("Auto-connect: No trainers found")
+                if self._connection_status_label:
+                    self._connection_status_label.set_text(
+                        "No trainer found — click Devices to scan manually"
+                    )
+                    self._connection_status_label.update()
+                return
+            
+            # Connect to first/strongest trainer (like CLI does)
+            trainer = available[0]
+            trainer_name = trainer.get("name", "Trainer")
+            trainer_address = trainer.get("address")
+            
+            if self._connection_status_label:
+                self._connection_status_label.set_text(f"Connecting to {trainer_name}...")
+                self._connection_status_label.update()
+            
+            logger.info(f"Auto-connect: Connecting to {trainer_name} at {trainer_address}")
+            await self.controller.trainer._client.connect_to_device(trainer_address)
+            
+            # Update UI to show connected state
+            if self._connection_dot:
+                self._connection_dot.set_content(
+                    '<span class="status-dot connected"></span>'
+                )
+                self._connection_dot.update()
+            if self._connection_status_label:
+                self._connection_status_label.set_text(f"Connected to {trainer_name}")
+                self._connection_status_label.update()
+            
+            logger.info(f"Auto-connect: Successfully connected to {trainer_name}")
+            
+            # Subscribe to bike data so metrics flow when session starts
+            # Note: subscription is handled by RideController.start_session()
+            
+        except DeviceNotFoundError:
+            logger.info("Auto-connect: Device not found during connection")
+            if self._connection_status_label:
+                self._connection_status_label.set_text(
+                    "Connection failed — click Devices to retry"
+                )
+                self._connection_status_label.update()
+        except Exception as e:
+            logger.warning(f"Auto-connect failed: {e}")
+            if self._connection_status_label:
+                self._connection_status_label.set_text(
+                    "Connection error — click Devices to retry"
+                )
+                self._connection_status_label.update()
 
     def _mode_card(
         self, title: str, description: str, path: str, shortcut: str
@@ -582,13 +1161,47 @@ class WebUI:
 
     async def _scan_trainers(self) -> None:
         """Scan for available trainers."""
-        ui.notify("Scanning for trainers...")
-        # TODO: Implement scanning
+
+        async def scan_fn() -> List[Dict[str, Any]]:
+            return await self.controller.trainer._client.scan_available(timeout_s=8.0)
+
+        async def connect_fn(address: str) -> None:
+            await self.controller.trainer._client.connect_to_device(address)
+
+        def on_connected() -> None:
+            # Refresh the devices page to show updated connection status
+            ui.navigate.to("/devices")
+
+        dialog = ScanDialog(
+            title="Trainers",
+            device_type="trainer",
+            scan_fn=scan_fn,
+            connect_fn=connect_fn,
+            on_connected=on_connected,
+        )
+        dialog.show()
 
     async def _scan_hr(self) -> None:
         """Scan for HR monitors."""
-        ui.notify("Scanning for HR monitors...")
-        # TODO: Implement scanning
+
+        async def scan_fn() -> List[Dict[str, Any]]:
+            return await self.controller.hr_service.scan_available(timeout_s=8.0)
+
+        async def connect_fn(address: str) -> None:
+            await self.controller.hr_service._client.connect_to_device(address)
+
+        def on_connected() -> None:
+            # Refresh the devices page to show updated connection status
+            ui.navigate.to("/devices")
+
+        dialog = ScanDialog(
+            title="Heart Rate Monitors",
+            device_type="heart rate monitor",
+            scan_fn=scan_fn,
+            connect_fn=connect_fn,
+            on_connected=on_connected,
+        )
+        dialog.show()
 
     def _render_history(self) -> None:
         """Render the session history page."""
