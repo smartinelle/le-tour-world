@@ -6,6 +6,7 @@ export class RideApiClient {
     pauseUrl = "/api/ride/toggle-pause",
     ergTargetUrl = "/api/ride/erg-target",
     simGradeUrl = "/api/ride/sim-grade",
+    routesUrl = "/api/ride/routes",
     routeUrl = "/api/ride/route",
   } = {}) {
     this.snapshotUrl = snapshotUrl;
@@ -14,6 +15,7 @@ export class RideApiClient {
     this.pauseUrl = pauseUrl;
     this.ergTargetUrl = ergTargetUrl;
     this.simGradeUrl = simGradeUrl;
+    this.routesUrl = routesUrl;
     this.routeUrl = routeUrl;
   }
 
@@ -28,8 +30,8 @@ export class RideApiClient {
     return source;
   }
 
-  startRide(mode) {
-    return this.postJson(this.startUrl, { mode });
+  startRide(mode, routeId = null) {
+    return this.postJson(this.startUrl, { mode, route_id: routeId });
   }
 
   stopRide() {
@@ -48,8 +50,18 @@ export class RideApiClient {
     return this.postJson(this.simGradeUrl, { delta });
   }
 
-  async getRoute() {
-    const response = await fetch(this.routeUrl);
+  async getRoutes() {
+    const response = await fetch(this.routesUrl);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json();
+  }
+
+  async getRoute(routeId = null) {
+    const url = new URL(this.routeUrl, window.location.origin);
+    if (routeId) url.searchParams.set("route_id", routeId);
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(await response.text());
     }

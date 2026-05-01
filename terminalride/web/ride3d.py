@@ -9,7 +9,7 @@ from typing import Protocol
 from fastapi import HTTPException, Request
 from starlette.responses import FileResponse, HTMLResponse
 
-from terminalride.domain.routes import default_demo_route
+from terminalride.domain.routes import RouteSpecError, available_routes, route_by_id
 from terminalride.domain.ride_runtime import RideRuntime
 from terminalride.domain.state import RideMode
 
@@ -259,6 +259,31 @@ RIDE3D_HTML = """<!doctype html>
       text-transform: uppercase;
     }
 
+    .route-select-label {
+      color: var(--muted);
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      margin: 10px 0 6px;
+      text-transform: uppercase;
+    }
+
+    .route-select {
+      appearance: none;
+      background: #fffefd;
+      border: 1px solid rgba(17, 24, 39, 0.14);
+      border-radius: 8px;
+      color: var(--text);
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 750;
+      margin-bottom: 12px;
+      min-height: 40px;
+      padding: 8px 10px;
+      width: 100%;
+    }
+
     .back {
       position: fixed;
       left: 18px;
@@ -326,11 +351,14 @@ RIDE3D_HTML = """<!doctype html>
       <span id="sim-grade" class="control-value">Grade --</span>
       <button class="action" data-sim-delta="0.5">+0.5%</button>
     </div>
+    <div id="route-hud"></div>
   </section>
 
   <section id="start-panel" class="start-panel">
     <strong>Start a ride</strong>
     <p>Launch a local session here and the road will move from the same snapshot stream.</p>
+    <label class="route-select-label" for="route-select">Route</label>
+    <select id="route-select" class="route-select"></select>
     <div class="actions">
       <button class="action primary" data-start-mode="free">Free Ride</button>
       <button class="action" data-start-mode="erg">ERG</button>
@@ -356,9 +384,11 @@ def parse_ride_mode(value: object) -> RideMode:
 
 def parse_delta(value: object, label: str) -> float:
     """Parse a browser-supplied numeric delta."""
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        raise HTTPException(status_code=400, detail=f"Invalid {label} delta")
     try:
         return float(value)
-    except (TypeError, ValueError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid {label} delta") from exc
 
 
@@ -384,16 +414,38 @@ def attach_ride3d_routes(
     async def ride_motion_script() -> FileResponse:
         return FileResponse(STATIC_DIR / "ride_motion.js", media_type="text/javascript")
 
+    @web_app.get("/api/ride/routes")
+    async def ride_routes() -> list[dict[str, object]]:
+        return [
+            {
+                "id": route.route_id,
+                "title": route.title,
+                "description": route.description,
+                "distance_m": route.distance_m,
+                "segment_count": len(route.segments),
+            }
+            for route in available_routes()
+        ]
+
     @web_app.get("/api/ride/route")
-    async def ride_route() -> dict[str, object]:
-        return default_demo_route().to_dict()
+    async def ride_route(request: Request) -> dict[str, object]:
+        try:
+            route = route_by_id(request.query_params.get("route_id"))
+        except RouteSpecError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return route.to_dict()
 
     @web_app.post("/api/ride/start")
     async def start_ride(request: Request) -> dict[str, object]:
         body = await request.json()
         mode = parse_ride_mode(body.get("mode"))
+        route_id = body.get("route_id")
+        try:
+            route = route_by_id(str(route_id) if route_id else None)
+        except RouteSpecError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         runtime = runtime_provider()
-        runtime.set_route_profile(default_demo_route())
+        runtime.set_route_profile(route)
         return runtime.start_session(mode).to_dict()
 
     @web_app.post("/api/ride/stop")

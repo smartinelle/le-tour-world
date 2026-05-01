@@ -26,6 +26,8 @@ class RouteSegment:
     name: str
     length_m: float
     grade_pct: float
+    turn_deg: float = 0.0
+    road_width_m: float = 8.6
     kind: str = "rolling"
     surface: str = "asphalt"
     scenery: str = "fields"
@@ -36,6 +38,8 @@ class RouteSegment:
             "name": self.name,
             "length_m": self.length_m,
             "grade_pct": self.grade_pct,
+            "turn_deg": self.turn_deg,
+            "road_width_m": self.road_width_m,
             "kind": self.kind,
             "surface": self.surface,
             "scenery": self.scenery,
@@ -72,6 +76,8 @@ class RoutePosition:
     segment_progress: float
     segment_remaining_m: float
     next_segment: RouteSegment
+    heading_deg: float
+    curve_strength: float
 
     def to_dict(self) -> dict[str, object]:
         """Serialize for browser and API clients."""
@@ -83,6 +89,8 @@ class RoutePosition:
             "segment_progress": self.segment_progress,
             "segment_remaining_m": self.segment_remaining_m,
             "next_segment": self.next_segment.to_dict(),
+            "heading_deg": self.heading_deg,
+            "curve_strength": self.curve_strength,
         }
 
 
@@ -111,9 +119,12 @@ class RideRoute:
 
         route_distance_m = distance_m % self.distance_m if self.distance_m else 0
         distance_cursor_m = route_distance_m
+        heading_deg = 0.0
         for index, segment in enumerate(self.segments):
             next_segment = self.segments[(index + 1) % len(self.segments)]
             if route_distance_m < segment.length_m:
+                segment_progress = route_distance_m / segment.length_m
+                curve_strength = _clamp(segment.turn_deg / 60.0, -1.0, 1.0)
                 return RoutePosition(
                     distance_m=distance_m,
                     route_distance_m=distance_cursor_m,
@@ -121,11 +132,14 @@ class RideRoute:
                         distance_cursor_m / self.distance_m if self.distance_m else 0.0
                     ),
                     segment=segment,
-                    segment_progress=route_distance_m / segment.length_m,
+                    segment_progress=segment_progress,
                     segment_remaining_m=segment.length_m - route_distance_m,
                     next_segment=next_segment,
+                    heading_deg=heading_deg + segment.turn_deg * segment_progress,
+                    curve_strength=curve_strength,
                 )
             route_distance_m -= segment.length_m
+            heading_deg += segment.turn_deg
 
         last_segment = self.segments[-1]
         return RoutePosition(
@@ -136,6 +150,8 @@ class RideRoute:
             segment_progress=1.0,
             segment_remaining_m=0.0,
             next_segment=self.segments[0],
+            heading_deg=heading_deg,
+            curve_strength=0.0,
         )
 
     def grade_at(self, distance_m: float) -> float:
@@ -199,6 +215,10 @@ class RouteProfile(Protocol):
         ...
 
 
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return min(max(value, minimum), maximum)
+
+
 def _required_string(data: dict[str, object], key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -211,6 +231,12 @@ def _number(data: dict[str, object], key: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise RouteSpecError(f"Route spec field '{key}' must be a number")
     return value
+
+
+def _optional_number(data: dict[str, object], key: str, default: float) -> float:
+    if key not in data:
+        return default
+    return _number(data, key)
 
 
 def _choice(data: dict[str, object], key: str, allowed: frozenset[str]) -> str:
@@ -244,12 +270,22 @@ def route_from_spec(data: dict[str, object]) -> RideRoute:
             name=_required_string(segment_data, "name"),
             length_m=_number(segment_data, "length_m"),
             grade_pct=_number(segment_data, "grade_pct"),
+            turn_deg=_optional_number(segment_data, "turn_deg", 0.0),
+            road_width_m=_optional_number(segment_data, "road_width_m", 8.6),
             kind=_choice(segment_data, "kind", ALLOWED_SEGMENT_KINDS),
             surface=_choice(segment_data, "surface", ALLOWED_SURFACES),
             scenery=_choice(segment_data, "scenery", ALLOWED_SCENERY),
         )
         if segment.length_m <= 0:
             raise RouteSpecError(f"Route segment {index} length_m must be positive")
+        if not -120 <= segment.turn_deg <= 120:
+            raise RouteSpecError(
+                f"Route segment {index} turn_deg must be between -120 and 120"
+            )
+        if not 4 <= segment.road_width_m <= 14:
+            raise RouteSpecError(
+                f"Route segment {index} road_width_m must be between 4 and 14"
+            )
         segments.append(segment)
 
     return RideRoute(
@@ -276,9 +312,11 @@ def load_route_spec(path: Path | str) -> RideRoute:
     return route_from_spec(data)
 
 
-def default_demo_route() -> RideRoute:
-    """Return the built-in route used by local demos and the 3D prototype."""
-    route_file = files("terminalride.assets.routes").joinpath(DEFAULT_ROUTE_SPEC)
+def load_bundled_route_spec(spec_name: str) -> RideRoute:
+    """Load one packaged route spec by filename."""
+    if spec_name not in available_route_specs():
+        raise RouteSpecError(f"Unknown bundled route spec: {spec_name}")
+    route_file = files("terminalride.assets.routes").joinpath(spec_name)
     return load_route_spec(str(route_file))
 
 
@@ -294,6 +332,29 @@ def available_route_specs() -> tuple[str, ...]:
     )
 
 
+def available_routes() -> tuple[RideRoute, ...]:
+    """Return all bundled route specs as domain routes."""
+    return tuple(
+        load_bundled_route_spec(spec_name) for spec_name in available_route_specs()
+    )
+
+
+def route_by_id(route_id: str | None) -> RideRoute:
+    """Return a bundled route by route id."""
+    if route_id is None or not route_id.strip():
+        return default_demo_route()
+
+    for route in available_routes():
+        if route.route_id == route_id:
+            return route
+    raise RouteSpecError(f"Unknown route id: {route_id}")
+
+
+def default_demo_route() -> RideRoute:
+    """Return the built-in route used by local demos and the 3D prototype."""
+    return load_bundled_route_spec(DEFAULT_ROUTE_SPEC)
+
+
 __all__ = [
     "ALLOWED_SCENERY",
     "ALLOWED_SEGMENT_KINDS",
@@ -306,8 +367,11 @@ __all__ = [
     "ROUTE_SPEC_VERSION",
     "RouteSpecError",
     "RouteSegment",
+    "available_routes",
     "available_route_specs",
     "default_demo_route",
+    "load_bundled_route_spec",
     "load_route_spec",
+    "route_by_id",
     "route_from_spec",
 ]

@@ -13,6 +13,8 @@ function normalizeSegments(segments) {
       name: String(segment.name || "Route segment"),
       lengthM: Math.max(1, numeric(segment.lengthM ?? segment.length_m, 1)),
       gradePct: numeric(segment.gradePct ?? segment.grade_pct),
+      turnDeg: numeric(segment.turnDeg ?? segment.turn_deg),
+      roadWidthM: clamp(numeric(segment.roadWidthM ?? segment.road_width_m, 8.6), 4, 14),
       kind: String(segment.kind || "rolling"),
       surface: String(segment.surface || "asphalt"),
       scenery: String(segment.scenery || "fields"),
@@ -46,6 +48,9 @@ export class RideMotionModel {
     this.routeSegmentName = "Route segment";
     this.routeSegmentKind = "rolling";
     this.routeSurface = "asphalt";
+    this.routeHeadingDeg = 0;
+    this.routeCurveStrength = 0;
+    this.roadWidthM = 8.6;
     this.routeSegmentProgress = 0;
     this.routeSegmentRemainingM = 0;
     this.nextSegmentName = "Route segment";
@@ -56,7 +61,13 @@ export class RideMotionModel {
     this.roadPitch = 0;
     this.cameraBob = 0;
     this.cameraPitch = 0;
+    this.cameraRoll = 0;
+    this.cameraLookX = 0;
     this.horizonLift = 0;
+    this.worldYaw = 0;
+    this.roadScaleX = 1;
+    this.shoulderSpreadM = 5.4;
+    this.sceneryDrift = 0;
   }
 
   updateFromSnapshot(snapshot) {
@@ -69,6 +80,9 @@ export class RideMotionModel {
     this.routeSegmentName = routeSegment.name;
     this.routeSegmentKind = routeSegment.kind;
     this.routeSurface = routeSegment.surface;
+    this.routeHeadingDeg = routeSegment.headingDeg;
+    this.routeCurveStrength = routeSegment.curveStrength;
+    this.roadWidthM = routeSegment.roadWidthM;
     this.routeSegmentProgress = routeSegment.progress;
     this.routeSegmentRemainingM = routeSegment.remainingM;
     this.nextSegmentName = routeSegment.nextName;
@@ -95,6 +109,9 @@ export class RideMotionModel {
         remainingM: 0,
         nextName: "Route segment",
         nextGradePct: 0,
+        headingDeg: 0,
+        curveStrength: 0,
+        roadWidthM: 8.6,
         kind: "rolling",
         surface: "asphalt",
         scenery: "fields",
@@ -103,18 +120,24 @@ export class RideMotionModel {
 
     let routeDistanceM = numeric(distanceM) % this.routeLengthM;
     if (routeDistanceM < 0) routeDistanceM += this.routeLengthM;
+    let completedHeadingDeg = 0;
 
     for (let index = 0; index < this.routeSegments.length; index += 1) {
       const segment = this.routeSegments[index];
       if (routeDistanceM < segment.lengthM) {
         const nextSegment =
           this.routeSegments[(index + 1) % this.routeSegments.length];
+        const progress = routeDistanceM / segment.lengthM;
+        const headingDeg = completedHeadingDeg + segment.turnDeg * progress;
         return {
           name: segment.name,
           gradePct: segment.gradePct,
           kind: segment.kind,
           surface: segment.surface,
-          progress: routeDistanceM / segment.lengthM,
+          headingDeg,
+          curveStrength: clamp(segment.turnDeg / 60, -1, 1),
+          roadWidthM: segment.roadWidthM,
+          progress,
           remainingM: segment.lengthM - routeDistanceM,
           nextName: nextSegment.name,
           nextGradePct: nextSegment.gradePct,
@@ -122,6 +145,7 @@ export class RideMotionModel {
         };
       }
       routeDistanceM -= segment.lengthM;
+      completedHeadingDeg += segment.turnDeg;
     }
 
     const lastSegment = this.routeSegments[this.routeSegments.length - 1];
@@ -132,6 +156,11 @@ export class RideMotionModel {
       remainingM: 0,
       nextName: this.routeSegments[0].name,
       nextGradePct: this.routeSegments[0].gradePct,
+      headingDeg: completedHeadingDeg,
+      curveStrength: 0,
+      roadWidthM: lastSegment.roadWidthM,
+      kind: lastSegment.kind,
+      surface: lastSegment.surface,
       scenery: lastSegment.scenery,
     };
   }
@@ -150,7 +179,15 @@ export class RideMotionModel {
     this.roadPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
     this.cameraBob = Math.sin(nowMs * 0.004) * 0.03 * Math.min(this.speedMps, 10);
     this.cameraPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
+    this.cameraRoll = clamp(-this.routeCurveStrength * 0.08, -0.08, 0.08);
+    this.cameraLookX = clamp(this.routeCurveStrength * 4.5, -4.5, 4.5);
     this.horizonLift = clamp(this.gradePct * 0.08, -0.8, 0.8);
+    this.worldYaw = clamp(-this.routeHeadingDeg * 0.012, -0.75, 0.75);
+    this.roadScaleX = clamp(this.roadWidthM / 8.6, 0.48, 1.65);
+    this.shoulderSpreadM = this.roadWidthM / 2 + 1.1;
+    this.sceneryDrift =
+      Math.sin((this.routeHeadingDeg * Math.PI) / 180) * 5 +
+      this.routeCurveStrength * 4;
     return this.state();
   }
 
@@ -167,6 +204,9 @@ export class RideMotionModel {
       routeSegmentName: this.routeSegmentName,
       routeSegmentKind: this.routeSegmentKind,
       routeSurface: this.routeSurface,
+      routeHeadingDeg: this.routeHeadingDeg,
+      routeCurveStrength: this.routeCurveStrength,
+      roadWidthM: this.roadWidthM,
       routeSegmentProgress: this.routeSegmentProgress,
       routeSegmentRemainingM: this.routeSegmentRemainingM,
       nextSegmentName: this.nextSegmentName,
@@ -177,7 +217,13 @@ export class RideMotionModel {
       roadPitch: this.roadPitch,
       cameraBob: this.cameraBob,
       cameraPitch: this.cameraPitch,
+      cameraRoll: this.cameraRoll,
+      cameraLookX: this.cameraLookX,
       horizonLift: this.horizonLift,
+      worldYaw: this.worldYaw,
+      roadScaleX: this.roadScaleX,
+      shoulderSpreadM: this.shoulderSpreadM,
+      sceneryDrift: this.sceneryDrift,
     };
   }
 }

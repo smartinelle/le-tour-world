@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "forest_climb_loop",
+  "title": "Forest Climb Loop",
+  "description": "A compact climbing loop with switchbacks, ridge exposure, and a fast village descent.",
+  "segments": [
+    {
+      "name": "Trailhead Roll",
+      "length_m": 300,
+      "grade_pct": 1.2,
+      "turn_deg": 22,
+      "road_width_m": 8.2,
+      "kind": "warmup",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Switchback One",
+      "length_m": 260,
+      "grade_pct": 6.1,
+      "turn_deg": -58,
+      "road_width_m": 6.4,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Ridge Traverse",
+      "length_m": 410,
+      "grade_pct": 3.8,
+      "turn_deg": 38,
+      "road_width_m": 7.0,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "ridge"
+    },
+    {
+      "name": "Old Mill Drop",
+      "length_m": 520,
+      "grade_pct": -4.4,
+      "turn_deg": -28,
+      "road_width_m": 8.8,
+      "kind": "descent",
+      "surface": "asphalt",
+      "scenery": "village"
+    },
+    {
+      "name": "Creek Recovery",
+      "length_m": 360,
+      "grade_pct": -0.8,
+      "turn_deg": 26,
+      "road_width_m": 9.2,
+      "kind": "recovery",
+      "surface": "gravel",
+      "scenery": "river"
+    }
+  ]
+}

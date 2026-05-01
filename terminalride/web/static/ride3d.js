@@ -87,6 +87,7 @@ road.position.z = -54;
 roadGroup.add(road);
 
 const shoulderMaterial = new THREE.MeshLambertMaterial({ color: 0xb7c5ac });
+const shoulders = [];
 for (const x of [-5.4, 5.4]) {
   const shoulder = new THREE.Mesh(
     new THREE.PlaneGeometry(2, 260),
@@ -94,6 +95,8 @@ for (const x of [-5.4, 5.4]) {
   );
   shoulder.rotation.x = -Math.PI / 2;
   shoulder.position.set(x, 0.02, -54);
+  shoulder.userData.side = x < 0 ? -1 : 1;
+  shoulders.push(shoulder);
   roadGroup.add(shoulder);
 }
 
@@ -109,13 +112,37 @@ roadGroup.add(laneGroup);
 
 const railMaterial = new THREE.MeshLambertMaterial({ color: 0x566052 });
 const postGeometry = new THREE.BoxGeometry(0.12, 0.9, 0.12);
+const railPosts = [];
 for (const x of [-6.75, 6.75]) {
   for (let i = 0; i < 30; i += 1) {
     const post = new THREE.Mesh(postGeometry, railMaterial);
     post.position.set(x, 0.48, 9 - i * 8.5);
+    post.userData.side = x < 0 ? -1 : 1;
+    railPosts.push(post);
     roadGroup.add(post);
   }
 }
+
+const curveChevronGroup = new THREE.Group();
+const chevronMaterial = new THREE.MeshLambertMaterial({
+  color: 0xf97316,
+  transparent: true,
+  opacity: 0,
+});
+const chevronGeometry = new THREE.BoxGeometry(0.95, 0.2, 0.08);
+for (let i = 0; i < 7; i += 1) {
+  const chevron = new THREE.Group();
+  const top = new THREE.Mesh(chevronGeometry, chevronMaterial);
+  const bottom = new THREE.Mesh(chevronGeometry, chevronMaterial);
+  top.rotation.z = 0.55;
+  bottom.rotation.z = -0.55;
+  top.position.y = 0.16;
+  bottom.position.y = -0.16;
+  chevron.add(top, bottom);
+  chevron.position.set(5.9, 1.2, -16 - i * 8);
+  curveChevronGroup.add(chevron);
+}
+roadGroup.add(curveChevronGroup);
 
 const segmentGate = new THREE.Group();
 const gateMaterial = new THREE.MeshLambertMaterial({
@@ -158,6 +185,38 @@ for (let i = 0; i < 9; i += 1) {
 }
 scene.add(hills);
 
+const pacerGroup = new THREE.Group();
+const pacerColors = [0xf97316, 0x2563eb, 0x16a34a, 0xe11d48, 0x9333ea];
+for (let i = 0; i < 5; i += 1) {
+  const rider = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.16, 0.42, 5, 10),
+    new THREE.MeshLambertMaterial({ color: pacerColors[i] }),
+  );
+  const helmet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 12, 8),
+    new THREE.MeshLambertMaterial({ color: 0xf8fafc }),
+  );
+  const bikeMaterial = new THREE.MeshLambertMaterial({ color: 0x111827 });
+  const wheelGeometry = new THREE.TorusGeometry(0.18, 0.025, 6, 16);
+  const frontWheel = new THREE.Mesh(wheelGeometry, bikeMaterial);
+  const rearWheel = new THREE.Mesh(wheelGeometry, bikeMaterial);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.055, 0.055), bikeMaterial);
+  body.position.y = 0.88;
+  helmet.position.y = 1.28;
+  frontWheel.rotation.y = Math.PI / 2;
+  rearWheel.rotation.y = Math.PI / 2;
+  frontWheel.position.set(0.34, 0.28, 0);
+  rearWheel.position.set(-0.34, 0.28, 0);
+  frame.position.y = 0.54;
+  rider.add(body, helmet, frontWheel, rearWheel, frame);
+  rider.userData.lane = (i - 2) * 0.58;
+  rider.userData.depth = -18 - i * 9;
+  rider.userData.phase = i * 0.8;
+  pacerGroup.add(rider);
+}
+roadGroup.add(pacerGroup);
+
 const hud = {
   statusPanel: document.querySelector(".status"),
   power: document.querySelector("#power"),
@@ -174,11 +233,16 @@ const hud = {
   ergTarget: document.querySelector("#erg-target"),
   simControls: document.querySelector("#sim-controls"),
   simGrade: document.querySelector("#sim-grade"),
+  routeHud: document.querySelector("#route-hud"),
+  routeSelect: document.querySelector("#route-select"),
 };
 
 const rideClient = new RideApiClient();
 let motion = new RideMotionModel({ dashSpacing: 7.8 });
 let activeScenery = "fields";
+let routeProfile = { update() {} };
+let elevationProfile = { update() {} };
+let selectedRouteId = null;
 
 function createRouteProfile(parent) {
   const profile = document.createElement("div");
@@ -238,7 +302,106 @@ function createRouteProfile(parent) {
   };
 }
 
-const routeProfile = createRouteProfile(hud.statusPanel);
+function createElevationProfile(parent, route) {
+  const ns = "http://www.w3.org/2000/svg";
+  const panel = document.createElement("div");
+  const label = document.createElement("span");
+  const svg = document.createElementNS(ns, "svg");
+  const elevationLine = document.createElementNS(ns, "polyline");
+  const segmentLineGroup = document.createElementNS(ns, "g");
+  const cursor = document.createElementNS(ns, "circle");
+
+  const routeLengthM = Math.max(1, Number(route.distance_m) || 1);
+  const elevationPoints = [{ distanceM: 0, elevationM: 0 }];
+  let cursorDistanceM = 0;
+  let elevationM = 0;
+  route.segments.forEach((segment) => {
+    const lengthM = Number(segment.length_m) || 0;
+    elevationM += (lengthM * (Number(segment.grade_pct) || 0)) / 100;
+    cursorDistanceM += lengthM;
+    elevationPoints.push({ distanceM: cursorDistanceM, elevationM });
+  });
+
+  const minElevationM = Math.min(
+    ...elevationPoints.map((point) => point.elevationM),
+  );
+  const maxElevationM = Math.max(
+    ...elevationPoints.map((point) => point.elevationM),
+  );
+  const elevationRangeM = Math.max(1, maxElevationM - minElevationM);
+  const xForDistance = (distanceM) => 10 + (distanceM / routeLengthM) * 300;
+  const yForElevation = (valueM) =>
+    58 - ((valueM - minElevationM) / elevationRangeM) * 42;
+  const pointString = elevationPoints
+    .map((point) => `${xForDistance(point.distanceM)},${yForElevation(point.elevationM)}`)
+    .join(" ");
+
+  panel.hidden = true;
+  Object.assign(panel.style, {
+    marginTop: "12px",
+  });
+  Object.assign(label.style, {
+    display: "block",
+    fontSize: "0.68rem",
+    fontWeight: "800",
+    letterSpacing: "0.08em",
+    lineHeight: "1",
+    marginBottom: "6px",
+    opacity: "0.72",
+    textTransform: "uppercase",
+  });
+  svg.setAttribute("viewBox", "0 0 320 72");
+  svg.setAttribute("aria-hidden", "true");
+  Object.assign(svg.style, {
+    display: "block",
+    height: "72px",
+    width: "100%",
+  });
+  elevationLine.setAttribute("points", pointString);
+  elevationLine.setAttribute("fill", "none");
+  elevationLine.setAttribute("stroke", "var(--accent)");
+  elevationLine.setAttribute("stroke-linecap", "round");
+  elevationLine.setAttribute("stroke-linejoin", "round");
+  elevationLine.setAttribute("stroke-width", "4");
+  cursor.setAttribute("r", "4.5");
+  cursor.setAttribute("fill", "#111827");
+  cursor.setAttribute("stroke", "#ffffff");
+  cursor.setAttribute("stroke-width", "2");
+
+  cursorDistanceM = 0;
+  route.segments.slice(0, -1).forEach((segment) => {
+    cursorDistanceM += Number(segment.length_m) || 0;
+    const marker = document.createElementNS(ns, "line");
+    const markerX = xForDistance(cursorDistanceM);
+    marker.setAttribute("x1", String(markerX));
+    marker.setAttribute("x2", String(markerX));
+    marker.setAttribute("y1", "14");
+    marker.setAttribute("y2", "62");
+    marker.setAttribute("stroke", "rgba(17, 24, 39, 0.18)");
+    marker.setAttribute("stroke-width", "1");
+    segmentLineGroup.append(marker);
+  });
+
+  svg.append(segmentLineGroup, elevationLine, cursor);
+  panel.append(label, svg);
+  parent.append(panel);
+
+  return {
+    update(sceneState, active) {
+      panel.hidden = false;
+      label.textContent = route.title;
+      const routeDistanceM =
+        ((sceneState.distanceM % routeLengthM) + routeLengthM) % routeLengthM;
+      const currentElevationM =
+        elevationPoints.reduce((current, point) => {
+          return point.distanceM <= routeDistanceM ? point.elevationM : current;
+        }, 0) || 0;
+      cursor.setAttribute("cx", String(xForDistance(routeDistanceM)));
+      cursor.setAttribute("cy", String(yForElevation(currentElevationM)));
+      cursor.style.opacity = active ? "1" : "0.38";
+    },
+  };
+}
 
 function applyScenery(scenery) {
   if (scenery === activeScenery) return;
@@ -265,6 +428,49 @@ function updateSegmentGate(sceneState) {
     sceneState.nextSegmentGradePct >= 0 ? 0xea580c : 0x38bdf8,
   );
   segmentGate.position.z = (1 - opacity) * -8;
+}
+
+function updateRoadGeometry(sceneState) {
+  road.scale.x = sceneState.roadScaleX;
+  shoulders.forEach((shoulder) => {
+    shoulder.position.x = shoulder.userData.side * sceneState.shoulderSpreadM;
+  });
+  railPosts.forEach((post) => {
+    post.position.x = post.userData.side * (sceneState.shoulderSpreadM + 1.35);
+  });
+}
+
+function updateCurveChevrons(sceneState) {
+  const curve = sceneState.routeCurveStrength;
+  const side = curve >= 0 ? 1 : -1;
+  const opacity = Math.min(Math.abs(curve) * 1.25, 0.9);
+  chevronMaterial.opacity = opacity;
+  curveChevronGroup.visible = opacity > 0.04;
+  curveChevronGroup.children.forEach((chevron, index) => {
+    chevron.position.x = side * (sceneState.shoulderSpreadM + 1.45);
+    chevron.position.z = -16 - index * 8 + sceneState.roadOffset * 0.45;
+    chevron.rotation.y = side > 0 ? -0.45 : 0.45;
+    chevron.scale.setScalar(1 + opacity * 0.25);
+  });
+}
+
+function updatePacerRiders(sceneState, now) {
+  pacerGroup.visible = sceneState.active;
+  pacerGroup.children.forEach((rider, index) => {
+    const lane = rider.userData.lane;
+    const phase = rider.userData.phase;
+    const depth =
+      rider.userData.depth +
+      Math.sin(now * 0.001 + phase) * 1.4 +
+      sceneState.routeCurveStrength * index;
+    rider.position.set(
+      lane + sceneState.routeCurveStrength * 0.9,
+      0,
+      depth + sceneState.roadOffset * 0.28,
+    );
+    rider.rotation.y = sceneState.worldYaw * 0.5;
+    rider.rotation.z = Math.sin(now * 0.006 + phase) * 0.035;
+  });
 }
 
 function formatValue(value, fallback = "--") {
@@ -298,12 +504,14 @@ function updateHud(snapshot) {
     ? `${snapshot.mode || "free"} mode · ${sceneState.routeSegmentName} · ${sceneState.gradePct.toFixed(1)}%`
     : "Start a session to drive the road";
   routeProfile.update(sceneState, snapshot.active);
+  elevationProfile.update(sceneState, snapshot.active);
 
   hud.startPanel.hidden = Boolean(snapshot.active);
   hud.activeControls.hidden = !snapshot.active;
   hud.pauseButton.textContent = snapshot.paused ? "Resume" : "Pause";
   hud.ergControls.hidden = !snapshot.active || snapshot.mode !== "erg";
   hud.simControls.hidden = !snapshot.active || snapshot.mode !== "sim";
+  hud.routeSelect.disabled = Boolean(snapshot.active);
   hud.ergTarget.textContent = `Target ${snapshot.erg_target_w ?? "--"}W`;
   hud.simGrade.textContent = `Grade ${
     snapshot.sim_grade_pct === null || snapshot.sim_grade_pct === undefined
@@ -317,7 +525,9 @@ function attachControls() {
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {
-        updateHud(await rideClient.startRide(button.dataset.startMode));
+        updateHud(
+          await rideClient.startRide(button.dataset.startMode, selectedRouteId),
+        );
       } finally {
         button.disabled = false;
       }
@@ -348,6 +558,10 @@ function attachControls() {
       updateHud(await rideClient.adjustSimGrade(button.dataset.simDelta));
       button.blur();
     });
+  });
+
+  hud.routeSelect.addEventListener("change", async () => {
+    await loadRoute(hud.routeSelect.value);
   });
 }
 
@@ -381,25 +595,65 @@ function frame(now) {
   });
 
   roadGroup.rotation.x = sceneState.roadPitch;
+  roadGroup.rotation.y = sceneState.worldYaw;
+  updateRoadGeometry(sceneState);
   hills.position.y = sceneState.horizonLift;
+  hills.position.x = sceneState.sceneryDrift;
   hills.rotation.y = sceneState.routeSegmentProgress * 0.08;
   applyScenery(sceneState.scenery);
   applySurface(sceneState.routeSurface);
   updateSegmentGate(sceneState);
+  updateCurveChevrons(sceneState);
+  updatePacerRiders(sceneState, now);
   camera.position.y = 3.6 + sceneState.cameraBob;
-  camera.lookAt(0, 0.35 + sceneState.cameraPitch, -22);
+  camera.lookAt(sceneState.cameraLookX, 0.35 + sceneState.cameraPitch, -22);
+  camera.rotation.z += sceneState.cameraRoll;
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
 window.addEventListener("resize", resize);
 
-async function initializeRide3d() {
-  const route = await rideClient.getRoute();
+function populateRouteSelect(routes) {
+  hud.routeSelect.replaceChildren();
+  routes.forEach((route) => {
+    const option = document.createElement("option");
+    option.value = route.id;
+    option.textContent = `${route.title} · ${(route.distance_m / 1000).toFixed(1)} km`;
+    hud.routeSelect.append(option);
+  });
+}
+
+async function loadRoute(routeId) {
+  const route = await rideClient.getRoute(routeId);
+  selectedRouteId = route.id;
+  hud.routeSelect.value = route.id;
   motion = new RideMotionModel({
     dashSpacing: 7.8,
     routeSegments: route.segments,
   });
+  hud.routeHud.replaceChildren();
+  routeProfile = createRouteProfile(hud.routeHud);
+  elevationProfile = createElevationProfile(hud.routeHud, route);
+  updateHud({
+    active: false,
+    paused: false,
+    mode: null,
+    distance_m: 0,
+    power_w: null,
+    speed_mps: null,
+    cadence_rpm: null,
+    hr_bpm: null,
+    session_state: "inactive",
+    erg_target_w: null,
+    sim_grade_pct: null,
+  });
+}
+
+async function initializeRide3d() {
+  const routes = await rideClient.getRoutes();
+  populateRouteSelect(routes);
+  await loadRoute(routes[0]?.id ?? null);
   attachControls();
   resize();
   connectSnapshots();

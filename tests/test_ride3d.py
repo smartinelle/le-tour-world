@@ -32,6 +32,33 @@ def test_ride3d_route_endpoint_returns_default_route():
     assert payload["segments"][0]["length_m"] == 420
 
 
+def test_ride3d_route_endpoint_selects_route_by_id():
+    """3D route API can serve a selected bundled route."""
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: None)  # type: ignore[arg-type]
+    response = TestClient(app).get("/api/ride/route?route_id=forest_climb_loop")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "forest_climb_loop"
+    assert payload["segments"][1]["name"] == "Switchback One"
+
+
+def test_ride3d_routes_endpoint_lists_bundled_routes():
+    """Browser clients can populate route selection without hardcoded maps."""
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: None)  # type: ignore[arg-type]
+    response = TestClient(app).get("/api/ride/routes")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [route["id"] for route in payload] == [
+        "demo_rolling_route",
+        "forest_climb_loop",
+    ]
+    assert payload[0]["segment_count"] == 5
+
+
 def test_ride3d_page_consumes_snapshot_stream():
     """3D prototype is a browser-only snapshot stream consumer."""
     assert '<script type="module" src="/static/ride3d.js"></script>' in RIDE3D_HTML
@@ -67,7 +94,21 @@ def test_ride3d_page_has_session_controls():
     assert '"/api/ride/erg-target"' in RIDE_CLIENT_JS
     assert '"/api/ride/sim-grade"' in RIDE_CLIENT_JS
     assert '"/api/ride/route"' in RIDE_CLIENT_JS
-    assert "getRoute()" in RIDE_CLIENT_JS
+    assert '"/api/ride/routes"' in RIDE_CLIENT_JS
+    assert "getRoute(routeId = null)" in RIDE_CLIENT_JS
+    assert "getRoutes()" in RIDE_CLIENT_JS
+
+
+def test_ride3d_page_has_route_selection_controls():
+    """Route choice is UI state that is sent to the start endpoint."""
+    assert 'id="route-select"' in RIDE3D_HTML
+    assert 'id="route-hud"' in RIDE3D_HTML
+    assert "populateRouteSelect(routes)" in RIDE3D_JS
+    assert "await loadRoute(routes[0]?.id ?? null)" in RIDE3D_JS
+    assert 'hud.routeSelect.addEventListener("change"' in RIDE3D_JS
+    assert "selectedRouteId" in RIDE3D_JS
+    assert "startRide(mode, routeId = null)" in RIDE_CLIENT_JS
+    assert "route_id: routeId" in RIDE_CLIENT_JS
 
 
 def test_ride3d_motion_model_owns_scene_motion():
@@ -99,6 +140,9 @@ def test_ride3d_motion_model_defines_distance_route_segments():
     assert "routeSegmentName" in RIDE_MOTION_JS
     assert "routeSegmentKind" in RIDE_MOTION_JS
     assert "routeSurface" in RIDE_MOTION_JS
+    assert "routeHeadingDeg" in RIDE_MOTION_JS
+    assert "routeCurveStrength" in RIDE_MOTION_JS
+    assert "roadWidthM" in RIDE_MOTION_JS
     assert "routeSegmentProgress" in RIDE_MOTION_JS
     assert "routeSegmentRemainingM" in RIDE_MOTION_JS
     assert "routeGradePct" in RIDE_MOTION_JS
@@ -110,12 +154,43 @@ def test_ride3d_motion_model_defines_distance_route_segments():
 
 def test_ride3d_hud_and_scene_use_route_segment_state():
     """Route segment state feeds HUD text and scene variation."""
-    assert "const route = await rideClient.getRoute()" in RIDE3D_JS
+    assert "const route = await rideClient.getRoute(routeId)" in RIDE3D_JS
     assert "routeSegments: route.segments" in RIDE3D_JS
     assert "sceneState.routeSegmentName" in RIDE3D_JS
     assert "sceneState.gradePct.toFixed(1)" in RIDE3D_JS
     assert "sceneState.routeSegmentProgress" in RIDE3D_JS
     assert "hills.rotation.y = sceneState.routeSegmentProgress" in RIDE3D_JS
+
+
+def test_ride3d_uses_route_geometry_for_road_shape():
+    """Route geometry affects road width, yaw, camera look, and curve signage."""
+    assert "turnDeg" in RIDE_MOTION_JS
+    assert "roadWidthM" in RIDE_MOTION_JS
+    assert "headingDeg" in RIDE_MOTION_JS
+    assert "curveStrength" in RIDE_MOTION_JS
+    assert "roadGroup.rotation.y = sceneState.worldYaw" in RIDE3D_JS
+    assert "road.scale.x = sceneState.roadScaleX" in RIDE3D_JS
+    assert "sceneState.shoulderSpreadM" in RIDE3D_JS
+    assert "camera.lookAt(sceneState.cameraLookX" in RIDE3D_JS
+    assert "camera.rotation.z += sceneState.cameraRoll" in RIDE3D_JS
+
+
+def test_ride3d_renders_curve_chevrons_from_route_geometry():
+    """Curve metadata produces a visible route cue without BLE coupling."""
+    assert "const curveChevronGroup = new THREE.Group()" in RIDE3D_JS
+    assert "function updateCurveChevrons(sceneState)" in RIDE3D_JS
+    assert "sceneState.routeCurveStrength" in RIDE3D_JS
+    assert "chevronMaterial.opacity" in RIDE3D_JS
+    assert "updateCurveChevrons(sceneState)" in RIDE3D_JS
+
+
+def test_ride3d_renders_pacer_riders_from_motion_state():
+    """A small rider pack gives the route a Zwift-like sense of scale."""
+    assert "const pacerGroup = new THREE.Group()" in RIDE3D_JS
+    assert "new THREE.CapsuleGeometry" in RIDE3D_JS
+    assert "function updatePacerRiders(sceneState, now)" in RIDE3D_JS
+    assert "pacerGroup.visible = sceneState.active" in RIDE3D_JS
+    assert "updatePacerRiders(sceneState, now)" in RIDE3D_JS
 
 
 def test_ride3d_scenery_palette_tracks_route_segment():
@@ -139,13 +214,23 @@ def test_ride3d_surface_palette_tracks_route_segment():
 def test_ride3d_builds_route_profile_hud_from_motion_state():
     """Route profile HUD stays browser-side and uses render state."""
     assert "function createRouteProfile(parent)" in RIDE3D_JS
-    assert "const routeProfile = createRouteProfile(hud.statusPanel)" in RIDE3D_JS
+    assert "routeProfile = createRouteProfile(hud.routeHud)" in RIDE3D_JS
     assert "routeProfile.update(sceneState, snapshot.active)" in RIDE3D_JS
     assert "sceneState.routeSegmentProgress * 100" in RIDE3D_JS
     assert "sceneState.routeSegmentName" in RIDE3D_JS
     assert "sceneState.nextSegmentName" in RIDE3D_JS
     assert "sceneState.routeSegmentRemainingM" in RIDE3D_JS
     assert "sceneState.nextSegmentGradePct.toFixed(1)" in RIDE3D_JS
+
+
+def test_ride3d_builds_elevation_profile_from_route_spec():
+    """Elevation profile is generated from route data, not hardcoded DOM."""
+    assert "function createElevationProfile(parent, route)" in RIDE3D_JS
+    assert "route.segments.forEach((segment)" in RIDE3D_JS
+    assert "Number(segment.grade_pct)" in RIDE3D_JS
+    assert 'document.createElementNS(ns, "polyline")' in RIDE3D_JS
+    assert "elevationProfile.update(sceneState, snapshot.active)" in RIDE3D_JS
+    assert "elevationProfile = createElevationProfile(hud.routeHud, route)" in RIDE3D_JS
 
 
 def test_ride3d_renders_segment_gate_from_route_state():
