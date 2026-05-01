@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
-from starlette.responses import HTMLResponse
+from fastapi import HTTPException, Request
+from starlette.responses import FileResponse, HTMLResponse
+
+from terminalride.devices.base import HrSample
+from terminalride.domain.fake_samples import FakeTrainerSampleSource
+from terminalride.domain.ride_controller import RideController
+from terminalride.domain.state import RideMode
 
 
 class RouteApp(Protocol):
@@ -16,6 +23,15 @@ class RouteApp(Protocol):
     ) -> Callable[[Callable[..., object]], Callable[..., object]]:
         """Register a GET route."""
         ...
+
+    def post(
+        self, path: str
+    ) -> Callable[[Callable[..., object]], Callable[..., object]]:
+        """Register a POST route."""
+        ...
+
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 RIDE3D_HTML = """<!doctype html>
@@ -39,6 +55,10 @@ RIDE3D_HTML = """<!doctype html>
 
     * {
       box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
     }
 
     html,
@@ -123,6 +143,66 @@ RIDE3D_HTML = """<!doctype html>
       text-decoration: none;
     }
 
+    .start-panel {
+      position: fixed;
+      left: 18px;
+      top: 50%;
+      width: min(360px, calc(100vw - 36px));
+      transform: translateY(-50%);
+      border: 1px solid rgba(17, 24, 39, 0.12);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+      padding: 14px;
+      backdrop-filter: blur(16px);
+    }
+
+    .start-panel strong {
+      display: block;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .start-panel p {
+      margin: 7px 0 12px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.4;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .action {
+      border: 1px solid rgba(17, 24, 39, 0.12);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      cursor: pointer;
+      padding: 10px 12px;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .action.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .action:disabled {
+      cursor: wait;
+      opacity: 0.64;
+    }
+
+    .active-controls {
+      margin-top: 12px;
+    }
+
     .back {
       position: fixed;
       left: 18px;
@@ -155,7 +235,7 @@ RIDE3D_HTML = """<!doctype html>
       }
 
       .back {
-        bottom: 112px;
+        bottom: 164px;
       }
     }
   </style>
@@ -174,190 +254,97 @@ RIDE3D_HTML = """<!doctype html>
   <section class="status" aria-live="polite">
     <strong id="state">Waiting for ride data</strong>
     <span id="mode">Snapshot stream</span>
+    <div id="active-controls" class="active-controls actions" hidden>
+      <button id="stop-ride" class="action">Stop Ride</button>
+    </div>
+  </section>
+
+  <section id="start-panel" class="start-panel">
+    <strong>Start a ride</strong>
+    <p>Launch a local session here and the road will move from the same snapshot stream.</p>
+    <div class="actions">
+      <button class="action primary" data-start-mode="free">Free Ride</button>
+      <button class="action" data-start-mode="erg">ERG</button>
+      <button class="action" data-start-mode="sim">SIM</button>
+    </div>
   </section>
 
   <a class="back" href="/">Home</a>
 
-  <script type="module">
-    import * as THREE from "https://esm.sh/three@0.164.1";
-
-    const canvas = document.querySelector("#scene");
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      preserveDrawingBuffer: true,
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0xd9edf7, 1);
-
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xd9edf7, 42, 150);
-
-    const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 240);
-    camera.position.set(0, 3.6, 7.6);
-    camera.lookAt(0, 0.35, -22);
-
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x5d6b4f, 2.4);
-    scene.add(hemi);
-
-    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-    sun.position.set(-10, 18, 8);
-    scene.add(sun);
-
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(220, 260),
-      new THREE.MeshLambertMaterial({ color: 0x8fae76 })
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.z = -54;
-    scene.add(ground);
-
-    const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(8.6, 260),
-      new THREE.MeshLambertMaterial({ color: 0x202421 })
-    );
-    road.rotation.x = -Math.PI / 2;
-    road.position.y = 0.015;
-    road.position.z = -54;
-    scene.add(road);
-
-    const shoulderMaterial = new THREE.MeshLambertMaterial({ color: 0xb7c5ac });
-    for (const x of [-5.4, 5.4]) {
-      const shoulder = new THREE.Mesh(new THREE.PlaneGeometry(2, 260), shoulderMaterial);
-      shoulder.rotation.x = -Math.PI / 2;
-      shoulder.position.set(x, 0.02, -54);
-      scene.add(shoulder);
-    }
-
-    const laneGroup = new THREE.Group();
-    const dashMaterial = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
-    for (let i = 0; i < 34; i += 1) {
-      const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 3.4), dashMaterial);
-      dash.rotation.x = -Math.PI / 2;
-      dash.position.set(0, 0.035, 8 - i * 7.8);
-      laneGroup.add(dash);
-    }
-    scene.add(laneGroup);
-
-    const railMaterial = new THREE.MeshLambertMaterial({ color: 0x566052 });
-    const postGeometry = new THREE.BoxGeometry(0.12, 0.9, 0.12);
-    for (const x of [-6.75, 6.75]) {
-      for (let i = 0; i < 30; i += 1) {
-        const post = new THREE.Mesh(postGeometry, railMaterial);
-        post.position.set(x, 0.48, 9 - i * 8.5);
-        scene.add(post);
-      }
-    }
-
-    const hills = new THREE.Group();
-    const hillMaterial = new THREE.MeshLambertMaterial({ color: 0x6f8b61 });
-    for (let i = 0; i < 9; i += 1) {
-      const hill = new THREE.Mesh(new THREE.ConeGeometry(14 + i * 1.4, 8 + i, 5), hillMaterial);
-      hill.position.set(i % 2 === 0 ? -22 - i * 4 : 22 + i * 4, 3.5, -38 - i * 12);
-      hill.rotation.y = i * 0.37;
-      hills.add(hill);
-    }
-    scene.add(hills);
-
-    const hud = {
-      power: document.querySelector("#power"),
-      speed: document.querySelector("#speed"),
-      cadence: document.querySelector("#cadence"),
-      hr: document.querySelector("#heart-rate"),
-      distance: document.querySelector("#distance"),
-      state: document.querySelector("#state"),
-      mode: document.querySelector("#mode"),
-    };
-
-    let ride = {
-      active: false,
-      paused: false,
-      mode: null,
-      speed_mps: 0,
-      power_w: null,
-      cadence_rpm: null,
-      hr_bpm: null,
-      distance_m: 0,
-      session_state: "inactive",
-    };
-
-    function formatValue(value, fallback = "--") {
-      return value === null || value === undefined ? fallback : String(value);
-    }
-
-    function updateHud(snapshot) {
-      ride = snapshot;
-      hud.power.textContent = formatValue(snapshot.power_w);
-      hud.speed.textContent = snapshot.speed_mps ? (snapshot.speed_mps * 3.6).toFixed(1) : "--";
-      hud.cadence.textContent = formatValue(snapshot.cadence_rpm);
-      hud.hr.textContent = formatValue(snapshot.hr_bpm);
-      hud.distance.textContent = snapshot.distance_m ? `${(snapshot.distance_m / 1000).toFixed(2)} km` : "--";
-
-      const state = snapshot.session_state || "inactive";
-      hud.state.textContent = state === "active"
-        ? "Live ride stream"
-        : state === "paused"
-          ? "Ride paused"
-          : "Waiting for ride data";
-      hud.mode.textContent = snapshot.active
-        ? `${snapshot.mode || "free"} mode · ${snapshot.trainer_name || "demo source"}`
-        : "Start a session to drive the road";
-    }
-
-    function connectSnapshots() {
-      const source = new EventSource("/api/ride/snapshots");
-      source.addEventListener("snapshot", event => {
-        updateHud(JSON.parse(event.data));
-      });
-      source.onerror = () => {
-        hud.state.textContent = "Snapshot stream disconnected";
-      };
-    }
-
-    function resize() {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    }
-
-    let last = performance.now();
-    let roadOffset = 0;
-
-    function frame(now) {
-      const dt = Math.min(0.06, (now - last) / 1000);
-      last = now;
-
-      const speed = ride.active && !ride.paused ? Math.max(0, ride.speed_mps || 0) : 0;
-      roadOffset = (roadOffset + speed * dt) % 7.8;
-      laneGroup.children.forEach((dash, index) => {
-        dash.position.z = 8 - index * 7.8 + roadOffset;
-        if (dash.position.z > 12) dash.position.z -= 34 * 7.8;
-      });
-
-      camera.position.y = 3.6 + Math.sin(now * 0.004) * 0.03 * Math.min(speed, 10);
-      camera.lookAt(0, 0.35, -22);
-      renderer.render(scene, camera);
-      requestAnimationFrame(frame);
-    }
-
-    window.addEventListener("resize", resize);
-    resize();
-    connectSnapshots();
-    requestAnimationFrame(frame);
-  </script>
+  <script type="module" src="/static/ride3d.js"></script>
 </body>
 </html>
 """
 
 
-def attach_ride3d_routes(web_app: RouteApp) -> None:
+def parse_ride_mode(value: object) -> RideMode:
+    """Parse a browser-supplied ride mode."""
+    try:
+        return RideMode(str(value or RideMode.FREE.value).lower())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Unsupported ride mode") from exc
+
+
+def attach_ride3d_routes(
+    web_app: RouteApp,
+    controller_provider: Callable[[], RideController],
+) -> None:
     """Attach the Three.js prototype route."""
+    fake_source: FakeTrainerSampleSource | None = None
+
+    def stop_fake_source() -> None:
+        nonlocal fake_source
+        if fake_source is None:
+            return
+        fake_source.stop()
+        fake_source = None
+
+    def start_fake_source(controller: RideController) -> None:
+        nonlocal fake_source
+        if controller.trainer.is_connected:
+            return
+        stop_fake_source()
+
+        hr_handler = controller.handle_hr_sample
+        if controller.hr_service.is_connected:
+
+            def ignore_hr_sample(sample: HrSample) -> None:
+                return None
+
+            hr_handler = ignore_hr_sample
+
+        fake_source = FakeTrainerSampleSource(
+            bike_handler=controller.handle_bike_sample,
+            hr_handler=hr_handler,
+            snapshot_provider=controller.snapshot,
+            interval_s=1.0,
+        )
+        fake_source.start()
 
     @web_app.get("/ride3d")
     async def ride3d() -> HTMLResponse:
         return HTMLResponse(RIDE3D_HTML)
 
+    @web_app.get("/static/ride3d.js")
+    async def ride3d_script() -> FileResponse:
+        return FileResponse(STATIC_DIR / "ride3d.js", media_type="text/javascript")
 
-__all__ = ["RIDE3D_HTML", "attach_ride3d_routes"]
+    @web_app.post("/api/ride/start")
+    async def start_ride(request: Request) -> dict[str, object]:
+        body = await request.json()
+        mode = parse_ride_mode(body.get("mode"))
+        controller = controller_provider()
+        stop_fake_source()
+        controller.start_session(mode, "Simulated Trainer")
+        start_fake_source(controller)
+        return controller.snapshot().to_dict()
+
+    @web_app.post("/api/ride/stop")
+    async def stop_ride() -> dict[str, object]:
+        controller = controller_provider()
+        stop_fake_source()
+        controller.stop_session()
+        return controller.snapshot().to_dict()
+
+
+__all__ = ["RIDE3D_HTML", "attach_ride3d_routes", "parse_ride_mode"]

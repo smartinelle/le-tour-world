@@ -853,7 +853,7 @@ class WebUI:
         """Set up the web UI routes and pages."""
         if not getattr(app, "_terminalride_snapshot_routes_attached", False):
             attach_snapshot_routes(app, get_controller)
-            attach_ride3d_routes(app)
+            attach_ride3d_routes(app, get_controller)
             app._terminalride_snapshot_routes_attached = True
 
         # =====================================================================
