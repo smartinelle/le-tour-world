@@ -2,9 +2,10 @@
 - 
 
 ## Testing
-- [ ] `python -m pytest -q`
-- [ ] `ruff check .`
-- [ ] `black .`
+- [ ] `uv run pytest -q`
+- [ ] `uv run ruff check .`
+- [ ] `uv run black --check .`
+- [ ] `uv run mypy terminalride`
 - [ ] Other (describe): 
 
 ## Documentation & ADRs
