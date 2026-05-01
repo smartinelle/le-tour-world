@@ -12,8 +12,8 @@ from typing import Optional, List, Dict, Any, Callable
 
 from nicegui import ui, app
 
-from ..domain.fake_samples import FakeTrainerSampleSource
 from ..domain.ride_controller import RideController, RideMode
+from ..domain.ride_runtime import RideRuntime
 from ..config import get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
 from ..supabase_client import is_supabase_configured
@@ -768,6 +768,16 @@ def _get_shared_controller() -> RideController:
     return app._shared_controller
 
 
+def _get_shared_runtime() -> RideRuntime:
+    """Get or create the shared RideRuntime singleton."""
+    controller = _get_shared_controller()
+    runtime = getattr(app, "_shared_runtime", None)
+    if runtime is None or runtime.controller is not controller:
+        app._shared_runtime = RideRuntime(controller)
+        logger.info("Created shared RideRuntime instance (local mode)")
+    return app._shared_runtime
+
+
 def _get_user_controller() -> RideController:
     """Get or create a per-user RideController instance.
 
@@ -792,9 +802,18 @@ def _get_user_controller() -> RideController:
         user = AuthManager.get_current_user()
         user_id = user.get("id", "unknown") if user else "unknown"
         app.storage.user["controller"] = RideController()
+        app.storage.user["runtime"] = RideRuntime(app.storage.user["controller"])
         logger.info(f"Created RideController for user {user_id}")
+    elif "runtime" not in app.storage.user:
+        app.storage.user["runtime"] = RideRuntime(app.storage.user["controller"])
 
     return app.storage.user["controller"]
+
+
+def _get_user_runtime() -> RideRuntime:
+    """Get or create a per-user RideRuntime instance."""
+    _get_user_controller()
+    return app.storage.user["runtime"]
 
 
 def get_controller() -> RideController:
@@ -811,6 +830,13 @@ def get_controller() -> RideController:
     return _get_shared_controller()
 
 
+def get_runtime() -> RideRuntime:
+    """Get the runtime that owns sample-source lifecycle for this context."""
+    if is_supabase_configured() and AuthManager.is_authenticated():
+        return _get_user_runtime()
+    return _get_shared_runtime()
+
+
 class WebUI:
     """Web-based UI for TerminalRide."""
 
@@ -818,7 +844,6 @@ class WebUI:
         # Controller is now retrieved dynamically per request
         # Don't store a reference here - get it fresh each time
         self._update_task: Optional[Any] = None
-        self._fake_source: Optional[FakeTrainerSampleSource] = None
         self._auto_connect_attempted: bool = False
 
         # UI element references
@@ -842,6 +867,11 @@ class WebUI:
         """
         return get_controller()
 
+    @property
+    def runtime(self) -> RideRuntime:
+        """Get the ride runtime for the current context."""
+        return get_runtime()
+
     def _auto_connect_enabled(self) -> bool:
         """True when automatic BLE scanning is explicitly enabled."""
         flag = os.getenv("TERMINALRIDE_ENABLE_BLE", "").lower()
@@ -853,7 +883,7 @@ class WebUI:
         """Set up the web UI routes and pages."""
         if not getattr(app, "_terminalride_snapshot_routes_attached", False):
             attach_snapshot_routes(app, get_controller)
-            attach_ride3d_routes(app, get_controller)
+            attach_ride3d_routes(app, get_runtime)
             app._terminalride_snapshot_routes_attached = True
 
         # =====================================================================
@@ -1276,56 +1306,21 @@ class WebUI:
 
     def _start_session(self, mode: RideMode) -> None:
         """Start a training session."""
-        trainer_name = "Simulated Trainer"  # Will be real when connected
-        if self.controller.trainer.is_connected:
-            trainer_name = self.controller.trainer.device_info.get(
-                "name", "Connected Trainer"
-            )
-
-        self.controller.start_session(mode, trainer_name)
+        self.runtime.start_session(mode)
 
         if self._status_label:
-            self._status_label.set_text("Session active")
+            label = (
+                "Session active"
+                if self.controller.trainer.is_connected
+                else "Session active (demo data)"
+            )
+            self._status_label.set_text(label)
 
         if self.controller.trainer.is_connected:
             ui.timer(0.0, lambda: self._prepare_trainer_for_session(mode), once=True)
-            self._stop_fake_samples()
-        else:
-            self._start_fake_samples()
 
         # Start UI update loop in NiceGUI's page context.
         self._update_task = ui.timer(0.1, self._update_metrics, active=True)
-
-    def _start_fake_samples(self) -> None:
-        """Start no-hardware development samples for the active session."""
-        self._stop_fake_samples()
-
-        hr_handler = self.controller.handle_hr_sample
-        if self.controller.hr_service.is_connected:
-
-            def ignore_hr_sample(sample):
-                return None
-
-            hr_handler = ignore_hr_sample
-
-        self._fake_source = FakeTrainerSampleSource(
-            bike_handler=self.controller.handle_bike_sample,
-            hr_handler=hr_handler,
-            snapshot_provider=self.controller.snapshot,
-            interval_s=1.0,
-        )
-        self._fake_source.start()
-        logger.info("Started fake trainer sample source")
-
-        if self._status_label:
-            self._status_label.set_text("Session active (demo data)")
-
-    def _stop_fake_samples(self) -> None:
-        """Stop the no-hardware development sample source if it is running."""
-        if self._fake_source is None:
-            return
-        self._fake_source.stop()
-        self._fake_source = None
 
     async def _prepare_trainer_for_session(self, mode: RideMode) -> None:
         """Attach connected trainer data to the active ride session."""
@@ -1404,18 +1399,19 @@ class WebUI:
 
     def _adjust_target(self, delta: int) -> None:
         """Adjust ERG target power."""
-        self.controller.adjust_erg_target(delta)
+        self.runtime.adjust_erg_target(delta)
 
     def _toggle_pause(self) -> None:
         """Toggle session pause."""
-        paused = self.controller.toggle_pause()
+        snapshot = self.runtime.toggle_pause()
         if self._status_label:
-            self._status_label.set_text("Paused" if paused else "Session active")
+            self._status_label.set_text(
+                "Paused" if snapshot.paused else "Session active"
+            )
 
     def _stop_session(self) -> None:
         """Stop the current session."""
-        self._stop_fake_samples()
-        self.controller.stop_session()
+        self.runtime.stop_session()
         if self._update_task:
             self._update_task.cancel()
 
@@ -1424,9 +1420,8 @@ class WebUI:
 
     def _exit_session(self) -> None:
         """Exit session without saving."""
-        self._stop_fake_samples()
         if self.controller.is_active:
-            self.controller.stop_session()
+            self.runtime.stop_session()
         if self._update_task:
             self._update_task.cancel()
         ui.navigate.to("/")

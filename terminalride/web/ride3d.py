@@ -9,9 +9,7 @@ from typing import Protocol
 from fastapi import HTTPException, Request
 from starlette.responses import FileResponse, HTMLResponse
 
-from terminalride.devices.base import HrSample
-from terminalride.domain.fake_samples import FakeTrainerSampleSource
-from terminalride.domain.ride_controller import RideController
+from terminalride.domain.ride_runtime import RideRuntime
 from terminalride.domain.state import RideMode
 
 
@@ -203,6 +201,21 @@ RIDE3D_HTML = """<!doctype html>
       margin-top: 12px;
     }
 
+    .mode-controls {
+      margin-top: 8px;
+    }
+
+    .control-value {
+      align-items: center;
+      color: var(--muted);
+      display: inline-flex;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      min-height: 38px;
+      text-transform: uppercase;
+    }
+
     .back {
       position: fixed;
       left: 18px;
@@ -255,7 +268,18 @@ RIDE3D_HTML = """<!doctype html>
     <strong id="state">Waiting for ride data</strong>
     <span id="mode">Snapshot stream</span>
     <div id="active-controls" class="active-controls actions" hidden>
+      <button id="pause-ride" class="action">Pause</button>
       <button id="stop-ride" class="action">Stop Ride</button>
+    </div>
+    <div id="erg-controls" class="mode-controls actions" hidden>
+      <button class="action" data-erg-delta="-10">-10W</button>
+      <span id="erg-target" class="control-value">Target --</span>
+      <button class="action" data-erg-delta="10">+10W</button>
+    </div>
+    <div id="sim-controls" class="mode-controls actions" hidden>
+      <button class="action" data-sim-delta="-0.5">-0.5%</button>
+      <span id="sim-grade" class="control-value">Grade --</span>
+      <button class="action" data-sim-delta="0.5">+0.5%</button>
     </div>
   </section>
 
@@ -285,41 +309,19 @@ def parse_ride_mode(value: object) -> RideMode:
         raise HTTPException(status_code=400, detail="Unsupported ride mode") from exc
 
 
+def parse_delta(value: object, label: str) -> float:
+    """Parse a browser-supplied numeric delta."""
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {label} delta") from exc
+
+
 def attach_ride3d_routes(
     web_app: RouteApp,
-    controller_provider: Callable[[], RideController],
+    runtime_provider: Callable[[], RideRuntime],
 ) -> None:
     """Attach the Three.js prototype route."""
-    fake_source: FakeTrainerSampleSource | None = None
-
-    def stop_fake_source() -> None:
-        nonlocal fake_source
-        if fake_source is None:
-            return
-        fake_source.stop()
-        fake_source = None
-
-    def start_fake_source(controller: RideController) -> None:
-        nonlocal fake_source
-        if controller.trainer.is_connected:
-            return
-        stop_fake_source()
-
-        hr_handler = controller.handle_hr_sample
-        if controller.hr_service.is_connected:
-
-            def ignore_hr_sample(sample: HrSample) -> None:
-                return None
-
-            hr_handler = ignore_hr_sample
-
-        fake_source = FakeTrainerSampleSource(
-            bike_handler=controller.handle_bike_sample,
-            hr_handler=hr_handler,
-            snapshot_provider=controller.snapshot,
-            interval_s=1.0,
-        )
-        fake_source.start()
 
     @web_app.get("/ride3d")
     async def ride3d() -> HTMLResponse:
@@ -333,18 +335,27 @@ def attach_ride3d_routes(
     async def start_ride(request: Request) -> dict[str, object]:
         body = await request.json()
         mode = parse_ride_mode(body.get("mode"))
-        controller = controller_provider()
-        stop_fake_source()
-        controller.start_session(mode, "Simulated Trainer")
-        start_fake_source(controller)
-        return controller.snapshot().to_dict()
+        return runtime_provider().start_session(mode).to_dict()
 
     @web_app.post("/api/ride/stop")
     async def stop_ride() -> dict[str, object]:
-        controller = controller_provider()
-        stop_fake_source()
-        controller.stop_session()
-        return controller.snapshot().to_dict()
+        return runtime_provider().stop_session().to_dict()
+
+    @web_app.post("/api/ride/toggle-pause")
+    async def toggle_pause() -> dict[str, object]:
+        return runtime_provider().toggle_pause().to_dict()
+
+    @web_app.post("/api/ride/erg-target")
+    async def adjust_erg_target(request: Request) -> dict[str, object]:
+        body = await request.json()
+        delta = int(parse_delta(body.get("delta"), "ERG target"))
+        return runtime_provider().adjust_erg_target(delta).to_dict()
+
+    @web_app.post("/api/ride/sim-grade")
+    async def adjust_sim_grade(request: Request) -> dict[str, object]:
+        body = await request.json()
+        delta = parse_delta(body.get("delta"), "SIM grade")
+        return runtime_provider().adjust_sim_grade(delta).to_dict()
 
 
-__all__ = ["RIDE3D_HTML", "attach_ride3d_routes", "parse_ride_mode"]
+__all__ = ["RIDE3D_HTML", "attach_ride3d_routes", "parse_delta", "parse_ride_mode"]

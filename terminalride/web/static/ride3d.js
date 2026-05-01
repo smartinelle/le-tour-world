@@ -98,6 +98,11 @@ const hud = {
   mode: document.querySelector("#mode"),
   startPanel: document.querySelector("#start-panel"),
   activeControls: document.querySelector("#active-controls"),
+  pauseButton: document.querySelector("#pause-ride"),
+  ergControls: document.querySelector("#erg-controls"),
+  ergTarget: document.querySelector("#erg-target"),
+  simControls: document.querySelector("#sim-controls"),
+  simGrade: document.querySelector("#sim-grade"),
 };
 
 let ride = {
@@ -145,6 +150,15 @@ function updateHud(snapshot) {
 
   hud.startPanel.hidden = Boolean(snapshot.active);
   hud.activeControls.hidden = !snapshot.active;
+  hud.pauseButton.textContent = snapshot.paused ? "Resume" : "Pause";
+  hud.ergControls.hidden = !snapshot.active || snapshot.mode !== "erg";
+  hud.simControls.hidden = !snapshot.active || snapshot.mode !== "sim";
+  hud.ergTarget.textContent = `Target ${snapshot.erg_target_w ?? "--"}W`;
+  hud.simGrade.textContent = `Grade ${
+    snapshot.sim_grade_pct === null || snapshot.sim_grade_pct === undefined
+      ? "--"
+      : snapshot.sim_grade_pct.toFixed(1)
+  }%`;
 }
 
 async function postRideAction(path, payload = {}) {
@@ -177,6 +191,30 @@ function attachControls() {
   stopButton.addEventListener("click", async () => {
     await postRideAction("/api/ride/stop");
     stopButton.blur();
+  });
+
+  const pauseButton = document.querySelector("#pause-ride");
+  pauseButton.addEventListener("click", async () => {
+    await postRideAction("/api/ride/toggle-pause");
+    pauseButton.blur();
+  });
+
+  document.querySelectorAll("[data-erg-delta]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await postRideAction("/api/ride/erg-target", {
+        delta: button.dataset.ergDelta,
+      });
+      button.blur();
+    });
+  });
+
+  document.querySelectorAll("[data-sim-delta]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await postRideAction("/api/ride/sim-grade", {
+        delta: button.dataset.simDelta,
+      });
+      button.blur();
+    });
   });
 }
 

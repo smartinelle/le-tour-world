@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from terminalride.domain.state import RideMode
-from terminalride.web.ride3d import RIDE3D_HTML, parse_ride_mode
+from terminalride.web.ride3d import RIDE3D_HTML, parse_delta, parse_ride_mode
 
 RIDE3D_JS = Path("terminalride/web/static/ride3d.js").read_text()
 
@@ -26,8 +26,14 @@ def test_ride3d_page_has_session_controls():
     assert 'data-start-mode="erg"' in RIDE3D_HTML
     assert 'data-start-mode="sim"' in RIDE3D_HTML
     assert 'id="stop-ride"' in RIDE3D_HTML
+    assert 'id="pause-ride"' in RIDE3D_HTML
+    assert 'id="erg-controls"' in RIDE3D_HTML
+    assert 'id="sim-controls"' in RIDE3D_HTML
     assert 'postRideAction("/api/ride/start"' in RIDE3D_JS
     assert 'postRideAction("/api/ride/stop")' in RIDE3D_JS
+    assert 'postRideAction("/api/ride/toggle-pause")' in RIDE3D_JS
+    assert 'postRideAction("/api/ride/erg-target"' in RIDE3D_JS
+    assert 'postRideAction("/api/ride/sim-grade"' in RIDE3D_JS
 
 
 def test_parse_ride_mode():
@@ -41,5 +47,19 @@ def test_parse_ride_mode_rejects_unknown_mode():
     """Unsupported ride mode strings return a 400 response."""
     with pytest.raises(HTTPException) as exc_info:
         parse_ride_mode("climb")
+
+    assert exc_info.value.status_code == 400
+
+
+def test_parse_delta():
+    """Browser-supplied numeric deltas are parsed as floats."""
+    assert parse_delta("10", "test") == 10.0
+    assert parse_delta("-0.5", "test") == -0.5
+
+
+def test_parse_delta_rejects_invalid_values():
+    """Invalid deltas return a 400 response."""
+    with pytest.raises(HTTPException) as exc_info:
+        parse_delta("watts", "test")
 
     assert exc_info.value.status_code == 400
