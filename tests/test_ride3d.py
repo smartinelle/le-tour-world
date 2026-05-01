@@ -80,6 +80,7 @@ def test_ride3d_motion_model_defines_distance_route_segments():
     assert "routeGradePct" in RIDE_MOTION_JS
     assert "nextSegmentName" in RIDE_MOTION_JS
     assert "nextSegmentGradePct" in RIDE_MOTION_JS
+    assert "segmentGateAlpha" in RIDE_MOTION_JS
     assert "scenery" in RIDE_MOTION_JS
 
 
@@ -111,6 +112,15 @@ def test_ride3d_builds_route_profile_hud_from_motion_state():
     assert "sceneState.nextSegmentName" in RIDE3D_JS
     assert "sceneState.routeSegmentRemainingM" in RIDE3D_JS
     assert "sceneState.nextSegmentGradePct.toFixed(1)" in RIDE3D_JS
+
+
+def test_ride3d_renders_segment_gate_from_route_state():
+    """Upcoming segment state drives a lightweight route gate."""
+    assert "const segmentGate = new THREE.Group()" in RIDE3D_JS
+    assert "function updateSegmentGate(sceneState)" in RIDE3D_JS
+    assert "sceneState.segmentGateAlpha" in RIDE3D_JS
+    assert "sceneState.nextSegmentGradePct >= 0" in RIDE3D_JS
+    assert "updateSegmentGate(sceneState)" in RIDE3D_JS
 
 
 def test_parse_ride_mode():

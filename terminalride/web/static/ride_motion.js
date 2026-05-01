@@ -54,6 +54,7 @@ export class RideMotionModel {
     this.routeSegmentRemainingM = 0;
     this.nextSegmentName = "Pine Rise";
     this.nextSegmentGradePct = 3.2;
+    this.segmentGateAlpha = 0;
     this.scenery = "fields";
     this.roadOffset = 0;
     this.roadPitch = 0;
@@ -74,6 +75,9 @@ export class RideMotionModel {
     this.routeSegmentRemainingM = routeSegment.remainingM;
     this.nextSegmentName = routeSegment.nextName;
     this.nextSegmentGradePct = routeSegment.nextGradePct;
+    this.segmentGateAlpha = this.active
+      ? clamp((this.routeSegmentProgress - 0.72) / 0.28, 0, 1)
+      : 0;
     this.scenery = routeSegment.scenery;
     this.gradePct =
       this.active && this.mode === "sim"
@@ -163,6 +167,7 @@ export class RideMotionModel {
       routeSegmentRemainingM: this.routeSegmentRemainingM,
       nextSegmentName: this.nextSegmentName,
       nextSegmentGradePct: this.nextSegmentGradePct,
+      segmentGateAlpha: this.segmentGateAlpha,
       scenery: this.scenery,
       roadOffset: this.roadOffset,
       roadPitch: this.roadPitch,

@@ -111,6 +111,30 @@ for (const x of [-6.75, 6.75]) {
   }
 }
 
+const segmentGate = new THREE.Group();
+const gateMaterial = new THREE.MeshLambertMaterial({
+  color: 0xf8fafc,
+  transparent: true,
+  opacity: 0,
+});
+const gateAccentMaterial = new THREE.MeshLambertMaterial({
+  color: 0xea580c,
+  transparent: true,
+  opacity: 0,
+});
+const gatePostGeometry = new THREE.BoxGeometry(0.16, 2.4, 0.16);
+const gateBarGeometry = new THREE.BoxGeometry(8.4, 0.16, 0.16);
+for (const x of [-4.7, 4.7]) {
+  const gatePost = new THREE.Mesh(gatePostGeometry, gateMaterial);
+  gatePost.position.set(x, 1.2, -23);
+  segmentGate.add(gatePost);
+}
+const gateBar = new THREE.Mesh(gateBarGeometry, gateAccentMaterial);
+gateBar.position.set(0, 2.4, -23);
+segmentGate.add(gateBar);
+segmentGate.visible = false;
+roadGroup.add(segmentGate);
+
 const hills = new THREE.Group();
 const hillMaterial = new THREE.MeshLambertMaterial({ color: 0x6f8b61 });
 for (let i = 0; i < 9; i += 1) {
@@ -220,6 +244,17 @@ function applyScenery(scenery) {
   groundMaterial.color.setHex(palette.ground);
   shoulderMaterial.color.setHex(palette.shoulder);
   hillMaterial.color.setHex(palette.hills);
+}
+
+function updateSegmentGate(sceneState) {
+  const opacity = sceneState.segmentGateAlpha;
+  segmentGate.visible = opacity > 0.02;
+  gateMaterial.opacity = opacity * 0.75;
+  gateAccentMaterial.opacity = opacity;
+  gateAccentMaterial.color.setHex(
+    sceneState.nextSegmentGradePct >= 0 ? 0xea580c : 0x38bdf8,
+  );
+  segmentGate.position.z = (1 - opacity) * -8;
 }
 
 function formatValue(value, fallback = "--") {
@@ -339,6 +374,7 @@ function frame(now) {
   hills.position.y = sceneState.horizonLift;
   hills.rotation.y = sceneState.routeSegmentProgress * 0.08;
   applyScenery(sceneState.scenery);
+  updateSegmentGate(sceneState);
   camera.position.y = 3.6 + sceneState.cameraBob;
   camera.lookAt(0, 0.35 + sceneState.cameraPitch, -22);
   renderer.render(scene, camera);
