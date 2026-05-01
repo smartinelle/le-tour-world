@@ -1,4 +1,5 @@
 import * as THREE from "https://esm.sh/three@0.164.1";
+import { RideApiClient } from "/static/ride_client.js";
 
 const canvas = document.querySelector("#scene");
 const renderer = new THREE.WebGLRenderer({
@@ -105,6 +106,8 @@ const hud = {
   simGrade: document.querySelector("#sim-grade"),
 };
 
+const rideClient = new RideApiClient();
+
 let ride = {
   active: false,
   paused: false,
@@ -161,26 +164,12 @@ function updateHud(snapshot) {
   }%`;
 }
 
-async function postRideAction(path, payload = {}) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  updateHud(await response.json());
-}
-
 function attachControls() {
   document.querySelectorAll("[data-start-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {
-        await postRideAction("/api/ride/start", {
-          mode: button.dataset.startMode,
-        });
+        updateHud(await rideClient.startRide(button.dataset.startMode));
       } finally {
         button.disabled = false;
       }
@@ -189,43 +178,38 @@ function attachControls() {
 
   const stopButton = document.querySelector("#stop-ride");
   stopButton.addEventListener("click", async () => {
-    await postRideAction("/api/ride/stop");
+    updateHud(await rideClient.stopRide());
     stopButton.blur();
   });
 
   const pauseButton = document.querySelector("#pause-ride");
   pauseButton.addEventListener("click", async () => {
-    await postRideAction("/api/ride/toggle-pause");
+    updateHud(await rideClient.togglePause());
     pauseButton.blur();
   });
 
   document.querySelectorAll("[data-erg-delta]").forEach((button) => {
     button.addEventListener("click", async () => {
-      await postRideAction("/api/ride/erg-target", {
-        delta: button.dataset.ergDelta,
-      });
+      updateHud(await rideClient.adjustErgTarget(button.dataset.ergDelta));
       button.blur();
     });
   });
 
   document.querySelectorAll("[data-sim-delta]").forEach((button) => {
     button.addEventListener("click", async () => {
-      await postRideAction("/api/ride/sim-grade", {
-        delta: button.dataset.simDelta,
-      });
+      updateHud(await rideClient.adjustSimGrade(button.dataset.simDelta));
       button.blur();
     });
   });
 }
 
 function connectSnapshots() {
-  const source = new EventSource("/api/ride/snapshots");
-  source.addEventListener("snapshot", (event) => {
-    updateHud(JSON.parse(event.data));
+  rideClient.connectSnapshots({
+    onSnapshot: updateHud,
+    onError: () => {
+      hud.state.textContent = "Snapshot stream disconnected";
+    },
   });
-  source.onerror = () => {
-    hud.state.textContent = "Snapshot stream disconnected";
-  };
 }
 
 function resize() {

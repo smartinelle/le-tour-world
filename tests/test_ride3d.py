@@ -9,15 +9,20 @@ from terminalride.domain.state import RideMode
 from terminalride.web.ride3d import RIDE3D_HTML, parse_delta, parse_ride_mode
 
 RIDE3D_JS = Path("terminalride/web/static/ride3d.js").read_text()
+RIDE_CLIENT_JS = Path("terminalride/web/static/ride_client.js").read_text()
 
 
 def test_ride3d_page_consumes_snapshot_stream():
     """3D prototype is a browser-only snapshot stream consumer."""
     assert '<script type="module" src="/static/ride3d.js"></script>' in RIDE3D_HTML
-    assert 'new EventSource("/api/ride/snapshots")' in RIDE3D_JS
+    assert 'import { RideApiClient } from "/static/ride_client.js"' in RIDE3D_JS
+    assert "new EventSource(this.snapshotUrl)" in RIDE_CLIENT_JS
+    assert '"/api/ride/snapshots"' in RIDE_CLIENT_JS
     assert "https://esm.sh/three" in RIDE3D_JS
     assert "speed_mps" in RIDE3D_JS
     assert "canvas" in RIDE3D_HTML
+    assert "fetch(" not in RIDE3D_JS
+    assert "EventSource(" not in RIDE3D_JS
 
 
 def test_ride3d_page_has_session_controls():
@@ -29,11 +34,16 @@ def test_ride3d_page_has_session_controls():
     assert 'id="pause-ride"' in RIDE3D_HTML
     assert 'id="erg-controls"' in RIDE3D_HTML
     assert 'id="sim-controls"' in RIDE3D_HTML
-    assert 'postRideAction("/api/ride/start"' in RIDE3D_JS
-    assert 'postRideAction("/api/ride/stop")' in RIDE3D_JS
-    assert 'postRideAction("/api/ride/toggle-pause")' in RIDE3D_JS
-    assert 'postRideAction("/api/ride/erg-target"' in RIDE3D_JS
-    assert 'postRideAction("/api/ride/sim-grade"' in RIDE3D_JS
+    assert "rideClient.startRide" in RIDE3D_JS
+    assert "rideClient.stopRide" in RIDE3D_JS
+    assert "rideClient.togglePause" in RIDE3D_JS
+    assert "rideClient.adjustErgTarget" in RIDE3D_JS
+    assert "rideClient.adjustSimGrade" in RIDE3D_JS
+    assert '"/api/ride/start"' in RIDE_CLIENT_JS
+    assert '"/api/ride/stop"' in RIDE_CLIENT_JS
+    assert '"/api/ride/toggle-pause"' in RIDE_CLIENT_JS
+    assert '"/api/ride/erg-target"' in RIDE_CLIENT_JS
+    assert '"/api/ride/sim-grade"' in RIDE_CLIENT_JS
 
 
 def test_parse_ride_mode():

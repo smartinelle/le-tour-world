@@ -331,6 +331,10 @@ def attach_ride3d_routes(
     async def ride3d_script() -> FileResponse:
         return FileResponse(STATIC_DIR / "ride3d.js", media_type="text/javascript")
 
+    @web_app.get("/static/ride_client.js")
+    async def ride_client_script() -> FileResponse:
+        return FileResponse(STATIC_DIR / "ride_client.js", media_type="text/javascript")
+
     @web_app.post("/api/ride/start")
     async def start_ride(request: Request) -> dict[str, object]:
         body = await request.json()
