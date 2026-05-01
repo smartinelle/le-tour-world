@@ -7,16 +7,19 @@ Supports multi-user authentication via Supabase.
 
 import asyncio
 import logging
+import os
 from typing import Optional, List, Dict, Any, Callable
 
 from nicegui import ui, app
 
+from ..domain.fake_samples import FakeTrainerSampleSource
 from ..domain.ride_controller import RideController, RideMode
 from ..config import get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
 from ..supabase_client import is_supabase_configured
 from .auth import AuthManager
 from .pages import render_login_page
+from .snapshot_stream import attach_snapshot_routes
 
 logger = logging.getLogger(__name__)
 
@@ -814,6 +817,7 @@ class WebUI:
         # Controller is now retrieved dynamically per request
         # Don't store a reference here - get it fresh each time
         self._update_task: Optional[Any] = None
+        self._fake_source: Optional[FakeTrainerSampleSource] = None
         self._auto_connect_attempted: bool = False
 
         # UI element references
@@ -837,8 +841,18 @@ class WebUI:
         """
         return get_controller()
 
+    def _auto_connect_enabled(self) -> bool:
+        """True when automatic BLE scanning is explicitly enabled."""
+        flag = os.getenv("TERMINALRIDE_ENABLE_BLE", "").lower()
+        return (
+            flag in {"1", "true", "yes"} and get_config().settings.auto_connect_trainer
+        )
+
     def setup(self) -> None:
         """Set up the web UI routes and pages."""
+        if not getattr(app, "_terminalride_snapshot_routes_attached", False):
+            attach_snapshot_routes(app, get_controller)
+            app._terminalride_snapshot_routes_attached = True
 
         # =====================================================================
         # Authentication Routes
@@ -1037,8 +1051,10 @@ class WebUI:
                         "name", "Trainer"
                     )
                     status = f"Connected to {trainer_name}"
-                else:
+                elif self._auto_connect_enabled():
                     status = "Searching for trainer..."
+                else:
+                    status = "No trainer connected — sessions use demo data"
                 self._connection_status_label = ui.label(status).classes(
                     "text-gray-600"
                 )
@@ -1066,7 +1082,7 @@ class WebUI:
 
         # Auto-connect if not already connected (like CLI does on startup)
         # Use a NiceGUI timer so UI updates run with a valid page slot.
-        if not self.controller.trainer.is_connected:
+        if not self.controller.trainer.is_connected and self._auto_connect_enabled():
             ui.timer(0.1, self._auto_connect_trainer, once=True)
 
     async def _auto_connect_trainer(self) -> None:
@@ -1083,9 +1099,7 @@ class WebUI:
             logger.info("Auto-connect: Scanning for FTMS trainers...")
 
             # Scan for available trainers
-            available = await self.controller.trainer._client.scan_available(
-                timeout_s=8.0
-            )
+            available = await self.controller.trainer.scan_available(timeout_s=8.0)
 
             if not available:
                 logger.info("Auto-connect: No trainers found")
@@ -1110,7 +1124,7 @@ class WebUI:
             logger.info(
                 f"Auto-connect: Connecting to {trainer_name} at {trainer_address}"
             )
-            await self.controller.trainer._client.connect_to_device(trainer_address)
+            await self.controller.trainer.connect_to_device(trainer_address)
 
             # Update UI to show connected state
             if self._connection_dot:
@@ -1267,9 +1281,43 @@ class WebUI:
 
         if self.controller.trainer.is_connected:
             ui.timer(0.0, lambda: self._prepare_trainer_for_session(mode), once=True)
+            self._stop_fake_samples()
+        else:
+            self._start_fake_samples()
 
         # Start UI update loop in NiceGUI's page context.
         self._update_task = ui.timer(0.1, self._update_metrics, active=True)
+
+    def _start_fake_samples(self) -> None:
+        """Start no-hardware development samples for the active session."""
+        self._stop_fake_samples()
+
+        hr_handler = self.controller.handle_hr_sample
+        if self.controller.hr_service.is_connected:
+
+            def ignore_hr_sample(sample):
+                return None
+
+            hr_handler = ignore_hr_sample
+
+        self._fake_source = FakeTrainerSampleSource(
+            bike_handler=self.controller.handle_bike_sample,
+            hr_handler=hr_handler,
+            snapshot_provider=self.controller.snapshot,
+            interval_s=1.0,
+        )
+        self._fake_source.start()
+        logger.info("Started fake trainer sample source")
+
+        if self._status_label:
+            self._status_label.set_text("Session active (demo data)")
+
+    def _stop_fake_samples(self) -> None:
+        """Stop the no-hardware development sample source if it is running."""
+        if self._fake_source is None:
+            return
+        self._fake_source.stop()
+        self._fake_source = None
 
     async def _prepare_trainer_for_session(self, mode: RideMode) -> None:
         """Attach connected trainer data to the active ride session."""
@@ -1358,6 +1406,7 @@ class WebUI:
 
     def _stop_session(self) -> None:
         """Stop the current session."""
+        self._stop_fake_samples()
         self.controller.stop_session()
         if self._update_task:
             self._update_task.cancel()
@@ -1367,6 +1416,7 @@ class WebUI:
 
     def _exit_session(self) -> None:
         """Exit session without saving."""
+        self._stop_fake_samples()
         if self.controller.is_active:
             self.controller.stop_session()
         if self._update_task:
@@ -1476,10 +1526,10 @@ class WebUI:
         """Scan for available trainers."""
 
         async def scan_fn() -> List[Dict[str, Any]]:
-            return await self.controller.trainer._client.scan_available(timeout_s=8.0)
+            return await self.controller.trainer.scan_available(timeout_s=8.0)
 
         async def connect_fn(address: str) -> None:
-            await self.controller.trainer._client.connect_to_device(address)
+            await self.controller.trainer.connect_to_device(address)
 
         def on_connected() -> None:
             # Refresh the devices page to show updated connection status
@@ -1501,7 +1551,7 @@ class WebUI:
             return await self.controller.hr_service.scan_available(timeout_s=8.0)
 
         async def connect_fn(address: str) -> None:
-            await self.controller.hr_service._client.connect_to_device(address)
+            await self.controller.hr_service.connect_to_device(address)
 
         def on_connected() -> None:
             # Refresh the devices page to show updated connection status
@@ -1596,5 +1646,7 @@ def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
         favicon="🚴",
         dark=False,
         reload=False,
+        show=False,
+        loop="asyncio",
         storage_secret="terminalride-dev-secret-change-in-production",
     )

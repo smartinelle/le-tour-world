@@ -21,6 +21,110 @@ class TestRideControllerBasics:
         assert controller.state.mode is None
         assert controller.state.session_id is None
 
+    def test_snapshot_inactive(self):
+        """Inactive snapshot exposes default state and connection flags."""
+        trainer = MagicMock()
+        trainer.is_connected = False
+        trainer.device_info = {}
+        hr_service = MagicMock()
+        hr_service.is_connected = False
+        hr_service.device_info = {}
+        controller = RideController(trainer=trainer, hr_service=hr_service)
+
+        snapshot = controller.snapshot()
+
+        assert snapshot.session_state == "inactive"
+        assert snapshot.active is False
+        assert snapshot.paused is False
+        assert snapshot.mode is None
+        assert snapshot.elapsed_s == 0.0
+        assert snapshot.trainer_connected is False
+        assert snapshot.hr_connected is False
+
+    def test_snapshot_active(self):
+        """Active snapshot includes lifecycle state and trainer connection."""
+        trainer = MagicMock()
+        trainer.is_connected = True
+        trainer.device_info = {"name": "KICKR Core"}
+        hr_service = MagicMock()
+        hr_service.is_connected = False
+        hr_service.device_info = {}
+        controller = RideController(trainer=trainer, hr_service=hr_service)
+
+        session_id = controller.start_session(RideMode.FREE, "Fallback Trainer")
+        snapshot = controller.snapshot()
+
+        assert snapshot.session_state == "active"
+        assert snapshot.active is True
+        assert snapshot.session_id == session_id
+        assert snapshot.mode == RideMode.FREE
+        assert snapshot.trainer_connected is True
+        assert snapshot.trainer_name == "KICKR Core"
+        assert snapshot.elapsed_s >= 0.0
+
+    def test_snapshot_paused(self):
+        """Paused snapshot reflects paused session state."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+
+        controller.pause()
+        snapshot = controller.snapshot()
+
+        assert snapshot.session_state == "paused"
+        assert snapshot.active is True
+        assert snapshot.paused is True
+
+    def test_snapshot_erg(self):
+        """ERG snapshot includes target power."""
+        controller = RideController()
+        controller.start_session(RideMode.ERG)
+        controller.set_erg_target(225)
+
+        snapshot = controller.snapshot()
+
+        assert snapshot.mode == RideMode.ERG
+        assert snapshot.erg_target_w == 225
+
+    def test_snapshot_sim(self):
+        """SIM snapshot includes road grade."""
+        controller = RideController()
+        controller.start_session(RideMode.SIM)
+        controller.set_sim_grade(4.5)
+
+        snapshot = controller.snapshot()
+
+        assert snapshot.mode == RideMode.SIM
+        assert snapshot.sim_grade_pct == 4.5
+
+    def test_snapshot_live_sample_updates(self):
+        """Snapshot reflects latest bike and HR samples."""
+        trainer = MagicMock()
+        trainer.is_connected = False
+        trainer.device_info = {}
+        hr_service = MagicMock()
+        hr_service.is_connected = True
+        hr_service.device_info = {"name": "Polar H10"}
+        controller = RideController(trainer=trainer, hr_service=hr_service)
+        controller.start_session(RideMode.FREE)
+
+        controller.handle_bike_sample(
+            {
+                "ts": time.time(),
+                "power_w": 210,
+                "cadence_rpm": 88,
+                "speed_mps": 9.2,
+            }
+        )
+        controller.handle_hr_sample({"ts": time.time(), "hr_bpm": 147})
+        snapshot = controller.snapshot()
+
+        assert snapshot.power_w == 210
+        assert snapshot.cadence_rpm == 88
+        assert snapshot.speed_mps == 9.2
+        assert snapshot.hr_bpm == 147
+        assert snapshot.hr_connected is True
+        assert snapshot.hr_name == "Polar H10"
+
     def test_start_session_free(self, tmp_path):
         """Start a FREE mode session."""
         controller = RideController()

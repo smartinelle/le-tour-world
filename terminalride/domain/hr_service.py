@@ -10,7 +10,6 @@ import logging
 from typing import Callable, Dict, Any, List, Optional
 
 from terminalride.devices.base import HrSample
-from terminalride.devices.hr_client import HrClient
 from terminalride.devices.hr_parse import ParsedHrData
 from .events import (
     DomainEvent,
@@ -21,6 +20,7 @@ from .events import (
 )
 
 logger = logging.getLogger(__name__)
+HrClient: Optional[type[Any]] = None
 
 
 class HrService:
@@ -34,7 +34,7 @@ class HrService:
     """
 
     def __init__(self) -> None:
-        self._client = HrClient()
+        self._client: Optional[Any] = None
         self._subscribers: List[Callable[[DomainEvent], None]] = []
         self._last_hr: Optional[int] = None
         self._last_contact: Optional[bool] = None
@@ -61,11 +61,13 @@ class HrService:
     @property
     def is_connected(self) -> bool:
         """True if HR device is connected."""
-        return self._client.is_connected
+        return self._client is not None and bool(self._client.is_connected)
 
     @property
     def device_info(self) -> Dict[str, Any]:
         """HR device information (name, battery, sensor location, etc.)."""
+        if self._client is None:
+            return {}
         return self._client.device_info
 
     @property
@@ -89,7 +91,7 @@ class HrService:
             List of device info dicts with name, address, rssi.
         """
         try:
-            return await self._client.scan_available(timeout_s=timeout_s)
+            return await self._get_client().scan_available(timeout_s=timeout_s)
         except Exception as e:
             logger.error(f"HR scan failed: {e}")
             self._emit(
@@ -112,11 +114,36 @@ class HrService:
             device_name: Optional specific device name to connect to.
         """
         try:
-            await self._client.scan_and_connect(
+            client = self._get_client()
+            await client.scan_and_connect(
                 timeout_s=timeout_s,
                 device_name=device_name,
             )
-            info = self._client.device_info
+            info = client.device_info
+            self._emit(
+                DeviceConnected(
+                    name=info.get("name", "Unknown HR"),
+                    device_type="hr",
+                    address=info.get("address"),
+                    rssi=info.get("rssi"),
+                )
+            )
+        except Exception as e:
+            logger.error(f"HR connection failed: {e}")
+            self._emit(
+                ErrorEvent(
+                    code="HR_E_CONNECTION_FAILED",
+                    message=str(e),
+                )
+            )
+            raise
+
+    async def connect_to_device(self, address: str) -> None:
+        """Connect to an HR monitor by BLE address."""
+        try:
+            client = self._get_client()
+            await client.connect_to_device(address)
+            info = client.device_info
             self._emit(
                 DeviceConnected(
                     name=info.get("name", "Unknown HR"),
@@ -137,7 +164,8 @@ class HrService:
 
     async def disconnect(self) -> None:
         """Disconnect from HR monitor."""
-        await self._client.disconnect()
+        if self._client is not None:
+            await self._client.disconnect()
         self._last_hr = None
         self._last_contact = None
         self._emit(DeviceDisconnected(device_type="hr"))
@@ -159,7 +187,18 @@ class HrService:
         def _raw_handler(parsed: ParsedHrData) -> None:
             self._last_contact = parsed.sensor_contact_detected
 
-        await self._client.subscribe_hr_data(_sample_handler, _raw_handler)
+        await self._get_client().subscribe_hr_data(_sample_handler, _raw_handler)
+
+    def _get_client(self) -> Any:
+        """Return the BLE client, importing bleak only when hardware is used."""
+        global HrClient
+        if self._client is None:
+            if HrClient is None:
+                from terminalride.devices.hr_client import HrClient as Client
+
+                HrClient = Client
+            self._client = HrClient()
+        return self._client
 
 
 # Singleton instance management

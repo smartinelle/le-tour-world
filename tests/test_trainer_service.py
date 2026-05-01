@@ -30,6 +30,7 @@ class TestTrainerServiceBasics:
             MockClient.return_value = mock_client
 
             service = TrainerService()
+            service._client = mock_client
 
             assert service.is_connected is True
 
@@ -41,6 +42,7 @@ class TestTrainerServiceBasics:
             MockClient.return_value = mock_client
 
             service = TrainerService()
+            service._client = mock_client
 
             assert service.has_control is True
 
@@ -52,6 +54,7 @@ class TestTrainerServiceBasics:
             MockClient.return_value = mock_client
 
             service = TrainerService()
+            service._client = mock_client
 
             assert service.device_info == {
                 "name": "Wahoo KICKR",
@@ -109,6 +112,42 @@ class TestTrainerServiceConnect:
     """Test connection functionality."""
 
     @pytest.mark.asyncio
+    async def test_scan_available_success(self):
+        """Test successful scan returns trainer devices."""
+        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.scan_available = AsyncMock(
+                return_value=[{"name": "Wahoo KICKR", "address": "12:34", "rssi": -45}]
+            )
+            MockClient.return_value = mock_client
+
+            service = TrainerService()
+            devices = await service.scan_available(timeout_s=5.0)
+
+            assert len(devices) == 1
+            assert devices[0]["name"] == "Wahoo KICKR"
+            mock_client.scan_available.assert_called_once_with(timeout_s=5.0)
+
+    @pytest.mark.asyncio
+    async def test_scan_available_error_emits_event(self):
+        """Test scan failure emits ErrorEvent and returns no devices."""
+        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.scan_available = AsyncMock(side_effect=Exception("BLE error"))
+            MockClient.return_value = mock_client
+
+            service = TrainerService()
+            service._client = mock_client
+            handler = Mock()
+            service.subscribe(handler)
+
+            devices = await service.scan_available()
+
+            assert devices == []
+            handler.assert_called_once()
+            assert handler.call_args[0][0].code == "TRAINER_E_SCAN_FAILED"
+
+    @pytest.mark.asyncio
     async def test_scan_and_connect_success(self):
         """Test successful connection emits DeviceConnected."""
         with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
@@ -122,6 +161,7 @@ class TestTrainerServiceConnect:
             MockClient.return_value = mock_client
 
             service = TrainerService()
+            service._client = mock_client
             handler = Mock()
             service.subscribe(handler)
 
@@ -150,6 +190,30 @@ class TestTrainerServiceConnect:
 
             mock_client.scan_and_connect.assert_called_once_with(timeout_s=30.0)
 
+    @pytest.mark.asyncio
+    async def test_connect_to_device_success(self):
+        """Test connecting by address emits DeviceConnected."""
+        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.connect_to_device = AsyncMock()
+            mock_client.device_info = {
+                "name": "Wahoo KICKR",
+                "address": "12:34:56:78:90:AB",
+                "rssi": -45,
+            }
+            MockClient.return_value = mock_client
+
+            service = TrainerService()
+            handler = Mock()
+            service.subscribe(handler)
+
+            await service.connect_to_device("12:34:56:78:90:AB")
+
+            mock_client.connect_to_device.assert_called_once_with("12:34:56:78:90:AB")
+            event = handler.call_args[0][0]
+            assert isinstance(event, DeviceConnected)
+            assert event.name == "Wahoo KICKR"
+
 
 class TestTrainerServiceDisconnect:
     """Test disconnection functionality."""
@@ -163,6 +227,7 @@ class TestTrainerServiceDisconnect:
             MockClient.return_value = mock_client
 
             service = TrainerService()
+            service._client = mock_client
             handler = Mock()
             service.subscribe(handler)
 

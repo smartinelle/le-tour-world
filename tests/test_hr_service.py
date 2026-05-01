@@ -32,6 +32,7 @@ class TestHrServiceBasics:
             MockClient.return_value = mock_client
 
             service = HrService()
+            service._client = mock_client
 
             assert service.is_connected is True
 
@@ -43,6 +44,7 @@ class TestHrServiceBasics:
             MockClient.return_value = mock_client
 
             service = HrService()
+            service._client = mock_client
 
             assert service.device_info == {"name": "Polar H10", "battery_percent": 85}
 
@@ -222,6 +224,31 @@ class TestHrServiceConnect:
             event = handler.call_args[0][0]
             assert isinstance(event, ErrorEvent)
             assert event.code == "HR_E_CONNECTION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_connect_to_device_success(self):
+        """Test successful address connection emits DeviceConnected."""
+        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.connect_to_device = AsyncMock()
+            mock_client.device_info = {
+                "name": "Polar H10",
+                "address": "AA:BB:CC:DD:EE:FF",
+                "rssi": -50,
+            }
+            MockClient.return_value = mock_client
+
+            service = HrService()
+            handler = Mock()
+            service.subscribe(handler)
+
+            await service.connect_to_device("AA:BB:CC:DD:EE:FF")
+
+            mock_client.connect_to_device.assert_called_once_with("AA:BB:CC:DD:EE:FF")
+            event = handler.call_args[0][0]
+            assert isinstance(event, DeviceConnected)
+            assert event.name == "Polar H10"
+            assert event.device_type == "hr"
 
 
 class TestHrServiceDisconnect:

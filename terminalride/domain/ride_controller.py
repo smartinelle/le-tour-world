@@ -21,7 +21,7 @@ from terminalride.store.models import SampleModel, SessionModel, TrainingMode
 
 from .hr_service import HrService
 from .session_service import SessionService, get_session_service
-from .state import RideMetrics, RideMode, RideState
+from .state import RideMetrics, RideMode, RideSnapshot, RideState
 from .trainer_service import TrainerService
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,39 @@ class RideController:
     def is_paused(self) -> bool:
         """True while an active session is paused."""
         return self._state.paused
+
+    def snapshot(self) -> RideSnapshot:
+        """Return a UI-neutral snapshot of current ride state and metrics."""
+        session_state = "inactive"
+        if self.is_active:
+            session_state = "paused" if self.is_paused else "active"
+
+        elapsed_s = self._metrics.elapsed_s
+        if self.is_active:
+            elapsed_s = self._elapsed_s()
+
+        trainer_info = self.trainer.device_info if self.trainer.is_connected else {}
+        hr_info = self.hr_service.device_info if self.hr_service.is_connected else {}
+
+        return RideSnapshot(
+            session_state=session_state,
+            active=self.is_active,
+            paused=self.is_paused,
+            session_id=self._state.session_id,
+            mode=self._state.mode,
+            elapsed_s=elapsed_s,
+            power_w=self._metrics.power_w,
+            cadence_rpm=self._metrics.cadence_rpm,
+            speed_mps=self._metrics.speed_mps,
+            distance_m=self._metrics.distance_m,
+            hr_bpm=self._metrics.hr_bpm,
+            erg_target_w=self._metrics.erg_target_w,
+            sim_grade_pct=self._metrics.sim_grade_pct,
+            trainer_connected=self.trainer.is_connected,
+            trainer_name=trainer_info.get("name") or self._state.trainer_name,
+            hr_connected=self.hr_service.is_connected,
+            hr_name=hr_info.get("name"),
+        )
 
     def start_session(
         self,
@@ -151,6 +184,8 @@ class RideController:
         self._state.active = False
         self._state.paused = False
         self._state.ended_at = datetime.now(UTC)
+        self._metrics.elapsed_s = self._elapsed_s()
+        self._started_monotonic = None
         self._last_sample_ts = None
         self._notify_state()
         return saved_session_id
@@ -370,4 +405,4 @@ class RideController:
         return float(sum(values) / len(values))
 
 
-__all__ = ["RideController", "RideMetrics", "RideMode", "RideState"]
+__all__ = ["RideController", "RideMetrics", "RideMode", "RideSnapshot", "RideState"]
