@@ -3,14 +3,33 @@
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from starlette.testclient import TestClient
 
 from terminalride.domain.state import RideMode
-from terminalride.web.ride3d import RIDE3D_HTML, parse_delta, parse_ride_mode
+from terminalride.web.ride3d import (
+    RIDE3D_HTML,
+    attach_ride3d_routes,
+    parse_delta,
+    parse_ride_mode,
+)
 
 RIDE3D_JS = Path("terminalride/web/static/ride3d.js").read_text()
 RIDE_CLIENT_JS = Path("terminalride/web/static/ride_client.js").read_text()
 RIDE_MOTION_JS = Path("terminalride/web/static/ride_motion.js").read_text()
+
+
+def test_ride3d_route_endpoint_returns_default_route():
+    """3D route API exposes route data as a browser contract."""
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: None)  # type: ignore[arg-type]
+    response = TestClient(app).get("/api/ride/route")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "demo_rolling_route"
+    assert payload["segments"][0]["name"] == "Valley Rollers"
+    assert payload["segments"][0]["length_m"] == 420
 
 
 def test_ride3d_page_consumes_snapshot_stream():
@@ -47,6 +66,8 @@ def test_ride3d_page_has_session_controls():
     assert '"/api/ride/toggle-pause"' in RIDE_CLIENT_JS
     assert '"/api/ride/erg-target"' in RIDE_CLIENT_JS
     assert '"/api/ride/sim-grade"' in RIDE_CLIENT_JS
+    assert '"/api/ride/route"' in RIDE_CLIENT_JS
+    assert "getRoute()" in RIDE_CLIENT_JS
 
 
 def test_ride3d_motion_model_owns_scene_motion():
@@ -72,7 +93,8 @@ def test_ride3d_uses_grade_aware_render_state():
 
 def test_ride3d_motion_model_defines_distance_route_segments():
     """Route segments turn distance into render state for the browser scene."""
-    assert "export const DEFAULT_ROUTE_SEGMENTS" in RIDE_MOTION_JS
+    assert "DEFAULT_ROUTE_SEGMENTS" not in RIDE_MOTION_JS
+    assert "routeSegments = []" in RIDE_MOTION_JS
     assert "segmentForDistance(distanceM)" in RIDE_MOTION_JS
     assert "routeSegmentName" in RIDE_MOTION_JS
     assert "routeSegmentProgress" in RIDE_MOTION_JS
@@ -86,6 +108,8 @@ def test_ride3d_motion_model_defines_distance_route_segments():
 
 def test_ride3d_hud_and_scene_use_route_segment_state():
     """Route segment state feeds HUD text and scene variation."""
+    assert "const route = await rideClient.getRoute()" in RIDE3D_JS
+    assert "routeSegments: route.segments" in RIDE3D_JS
     assert "sceneState.routeSegmentName" in RIDE3D_JS
     assert "sceneState.gradePct.toFixed(1)" in RIDE3D_JS
     assert "sceneState.routeSegmentProgress" in RIDE3D_JS

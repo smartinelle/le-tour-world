@@ -7,20 +7,12 @@ function numeric(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export const DEFAULT_ROUTE_SEGMENTS = [
-  { name: "Valley Rollers", lengthM: 420, gradePct: 0.4, scenery: "fields" },
-  { name: "Pine Rise", lengthM: 360, gradePct: 3.2, scenery: "forest" },
-  { name: "Mill Descent", lengthM: 320, gradePct: -2.1, scenery: "village" },
-  { name: "Ridge Steps", lengthM: 460, gradePct: 5.6, scenery: "ridge" },
-  { name: "River Run", lengthM: 520, gradePct: -0.6, scenery: "river" },
-];
-
 function normalizeSegments(segments) {
   return segments
     .map((segment) => ({
       name: String(segment.name || "Route segment"),
-      lengthM: Math.max(1, numeric(segment.lengthM, 1)),
-      gradePct: numeric(segment.gradePct),
+      lengthM: Math.max(1, numeric(segment.lengthM ?? segment.length_m, 1)),
+      gradePct: numeric(segment.gradePct ?? segment.grade_pct),
       scenery: String(segment.scenery || "fields"),
     }))
     .filter((segment) => segment.lengthM > 0);
@@ -31,7 +23,7 @@ export class RideMotionModel {
     dashSpacing = 7.8,
     maxDt = 0.06,
     speedResponse = 7.5,
-    routeSegments = DEFAULT_ROUTE_SEGMENTS,
+    routeSegments = [],
   } = {}) {
     this.dashSpacing = dashSpacing;
     this.maxDt = maxDt;
@@ -49,11 +41,11 @@ export class RideMotionModel {
     this.distanceM = 0;
     this.gradePct = 0;
     this.routeGradePct = 0;
-    this.routeSegmentName = "Valley Rollers";
+    this.routeSegmentName = "Route segment";
     this.routeSegmentProgress = 0;
     this.routeSegmentRemainingM = 0;
-    this.nextSegmentName = "Pine Rise";
-    this.nextSegmentGradePct = 3.2;
+    this.nextSegmentName = "Route segment";
+    this.nextSegmentGradePct = 0;
     this.segmentGateAlpha = 0;
     this.scenery = "fields";
     this.roadOffset = 0;

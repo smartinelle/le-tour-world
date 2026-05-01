@@ -6,6 +6,7 @@ export class RideApiClient {
     pauseUrl = "/api/ride/toggle-pause",
     ergTargetUrl = "/api/ride/erg-target",
     simGradeUrl = "/api/ride/sim-grade",
+    routeUrl = "/api/ride/route",
   } = {}) {
     this.snapshotUrl = snapshotUrl;
     this.startUrl = startUrl;
@@ -13,6 +14,7 @@ export class RideApiClient {
     this.pauseUrl = pauseUrl;
     this.ergTargetUrl = ergTargetUrl;
     this.simGradeUrl = simGradeUrl;
+    this.routeUrl = routeUrl;
   }
 
   connectSnapshots({ onSnapshot, onError }) {
@@ -44,6 +46,14 @@ export class RideApiClient {
 
   adjustSimGrade(delta) {
     return this.postJson(this.simGradeUrl, { delta });
+  }
+
+  async getRoute() {
+    const response = await fetch(this.routeUrl);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json();
   }
 
   async postJson(path, payload = {}) {

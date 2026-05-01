@@ -9,6 +9,7 @@ from typing import Protocol
 from fastapi import HTTPException, Request
 from starlette.responses import FileResponse, HTMLResponse
 
+from terminalride.domain.routes import default_demo_route
 from terminalride.domain.ride_runtime import RideRuntime
 from terminalride.domain.state import RideMode
 
@@ -347,6 +348,10 @@ def attach_ride3d_routes(
     @web_app.get("/static/ride_motion.js")
     async def ride_motion_script() -> FileResponse:
         return FileResponse(STATIC_DIR / "ride_motion.js", media_type="text/javascript")
+
+    @web_app.get("/api/ride/route")
+    async def ride_route() -> dict[str, object]:
+        return default_demo_route().to_dict()
 
     @web_app.post("/api/ride/start")
     async def start_ride(request: Request) -> dict[str, object]:

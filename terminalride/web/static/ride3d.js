@@ -171,7 +171,7 @@ const hud = {
 };
 
 const rideClient = new RideApiClient();
-const motion = new RideMotionModel({ dashSpacing: 7.8 });
+let motion = new RideMotionModel({ dashSpacing: 7.8 });
 let activeScenery = "fields";
 
 function createRouteProfile(parent) {
@@ -382,7 +382,20 @@ function frame(now) {
 }
 
 window.addEventListener("resize", resize);
-attachControls();
-resize();
-connectSnapshots();
-requestAnimationFrame(frame);
+
+async function initializeRide3d() {
+  const route = await rideClient.getRoute();
+  motion = new RideMotionModel({
+    dashSpacing: 7.8,
+    routeSegments: route.segments,
+  });
+  attachControls();
+  resize();
+  connectSnapshots();
+  requestAnimationFrame(frame);
+}
+
+initializeRide3d().catch((error) => {
+  hud.state.textContent = "Route data unavailable";
+  throw error;
+});
