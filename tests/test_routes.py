@@ -1,6 +1,16 @@
 """Tests for route profile domain models."""
 
-from terminalride.domain.routes import default_demo_route
+import json
+
+import pytest
+
+from terminalride.domain.routes import (
+    RouteSpecError,
+    available_route_specs,
+    default_demo_route,
+    load_route_spec,
+    route_from_spec,
+)
 
 
 def test_default_demo_route_serializes_segments():
@@ -20,6 +30,107 @@ def test_default_demo_route_serializes_segments():
     }
     assert payload["start"]["segment"]["name"] == "Valley Rollers"
     assert payload["upcoming"][0]["segment_kind"] == "warmup"
+
+
+def test_default_demo_route_is_loaded_from_bundled_spec():
+    """Default route comes from the external route spec package asset."""
+    assert available_route_specs() == ("demo_rolling_route.json",)
+
+    route = default_demo_route()
+
+    assert route.title == "Rolling Demo Route"
+    assert route.segments[-1].surface == "gravel"
+
+
+def test_route_spec_loader_accepts_file_specs(tmp_path):
+    """Route specs can be loaded from disk without touching UI code."""
+    route_file = tmp_path / "route.json"
+    route_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "test_route",
+                "title": "Test Route",
+                "description": "A test route.",
+                "segments": [
+                    {
+                        "name": "Start",
+                        "length_m": 100,
+                        "grade_pct": 1.5,
+                        "kind": "rolling",
+                        "surface": "asphalt",
+                        "scenery": "fields",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    route = load_route_spec(route_file)
+
+    assert route.route_id == "test_route"
+    assert route.grade_at(10) == 1.5
+
+
+def test_route_spec_rejects_empty_segments():
+    """Invalid map specs fail before they can drive SIM or renderers."""
+    with pytest.raises(RouteSpecError, match="segments"):
+        route_from_spec(
+            {
+                "schema_version": 1,
+                "id": "empty",
+                "title": "Empty",
+                "description": "No route.",
+                "segments": [],
+            }
+        )
+
+
+def test_route_spec_rejects_non_positive_segment_length():
+    """Segment distances must remain usable for route progress math."""
+    with pytest.raises(RouteSpecError, match="length_m"):
+        route_from_spec(
+            {
+                "schema_version": 1,
+                "id": "bad_length",
+                "title": "Bad Length",
+                "description": "Invalid segment length.",
+                "segments": [
+                    {
+                        "name": "Broken",
+                        "length_m": 0,
+                        "grade_pct": 0,
+                        "kind": "rolling",
+                        "surface": "asphalt",
+                        "scenery": "fields",
+                    }
+                ],
+            }
+        )
+
+
+def test_route_spec_rejects_unknown_surface():
+    """Renderer-facing metadata is constrained to supported values."""
+    with pytest.raises(RouteSpecError, match="surface"):
+        route_from_spec(
+            {
+                "schema_version": 1,
+                "id": "bad_surface",
+                "title": "Bad Surface",
+                "description": "Invalid segment surface.",
+                "segments": [
+                    {
+                        "name": "Broken",
+                        "length_m": 100,
+                        "grade_pct": 0,
+                        "kind": "rolling",
+                        "surface": "snow",
+                        "scenery": "fields",
+                    }
+                ],
+            }
+        )
 
 
 def test_default_demo_route_supports_distance_lookup():

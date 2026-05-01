@@ -2,8 +2,21 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from importlib.resources import files
+from pathlib import Path
 from typing import Protocol
+
+ROUTE_SPEC_VERSION = 1
+DEFAULT_ROUTE_SPEC = "demo_rolling_route.json"
+ALLOWED_SEGMENT_KINDS = frozenset({"warmup", "rolling", "climb", "descent", "recovery"})
+ALLOWED_SURFACES = frozenset({"asphalt", "gravel", "dirt"})
+ALLOWED_SCENERY = frozenset({"fields", "forest", "village", "ridge", "river"})
+
+
+class RouteSpecError(ValueError):
+    """Raised when a route spec cannot be converted into a route."""
 
 
 @dataclass(frozen=True)
@@ -186,62 +199,115 @@ class RouteProfile(Protocol):
         ...
 
 
+def _required_string(data: dict[str, object], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise RouteSpecError(f"Route spec field '{key}' must be a non-empty string")
+    return value
+
+
+def _number(data: dict[str, object], key: str) -> float:
+    value = data.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise RouteSpecError(f"Route spec field '{key}' must be a number")
+    return value
+
+
+def _choice(data: dict[str, object], key: str, allowed: frozenset[str]) -> str:
+    value = _required_string(data, key)
+    if value not in allowed:
+        allowed_values = ", ".join(sorted(allowed))
+        raise RouteSpecError(
+            f"Route spec field '{key}' must be one of: {allowed_values}"
+        )
+    return value
+
+
+def route_from_spec(data: dict[str, object]) -> RideRoute:
+    """Build and validate a route from a JSON-compatible spec."""
+    schema_version = data.get("schema_version", ROUTE_SPEC_VERSION)
+    if schema_version != ROUTE_SPEC_VERSION:
+        raise RouteSpecError(
+            f"Unsupported route spec schema_version: {schema_version!r}"
+        )
+
+    segments_data = data.get("segments")
+    if not isinstance(segments_data, list) or not segments_data:
+        raise RouteSpecError("Route spec field 'segments' must be a non-empty list")
+
+    segments: list[RouteSegment] = []
+    for index, segment_data in enumerate(segments_data):
+        if not isinstance(segment_data, dict):
+            raise RouteSpecError(f"Route segment {index} must be an object")
+
+        segment = RouteSegment(
+            name=_required_string(segment_data, "name"),
+            length_m=_number(segment_data, "length_m"),
+            grade_pct=_number(segment_data, "grade_pct"),
+            kind=_choice(segment_data, "kind", ALLOWED_SEGMENT_KINDS),
+            surface=_choice(segment_data, "surface", ALLOWED_SURFACES),
+            scenery=_choice(segment_data, "scenery", ALLOWED_SCENERY),
+        )
+        if segment.length_m <= 0:
+            raise RouteSpecError(f"Route segment {index} length_m must be positive")
+        segments.append(segment)
+
+    return RideRoute(
+        route_id=_required_string(data, "id"),
+        title=_required_string(data, "title"),
+        description=_required_string(data, "description"),
+        segments=tuple(segments),
+    )
+
+
+def load_route_spec(path: Path | str) -> RideRoute:
+    """Load a route spec from disk."""
+    route_path = Path(path)
+    try:
+        with route_path.open(encoding="utf-8") as route_file:
+            data = json.load(route_file)
+    except OSError as exc:
+        raise RouteSpecError(f"Could not read route spec: {route_path}") from exc
+    except json.JSONDecodeError as exc:
+        raise RouteSpecError(f"Route spec is not valid JSON: {route_path}") from exc
+
+    if not isinstance(data, dict):
+        raise RouteSpecError("Route spec root must be an object")
+    return route_from_spec(data)
+
+
 def default_demo_route() -> RideRoute:
     """Return the built-in route used by local demos and the 3D prototype."""
-    return RideRoute(
-        route_id="demo_rolling_route",
-        title="Rolling Demo Route",
-        description="A compact loop with rolling terrain, one climb, and varied scenery.",
-        segments=(
-            RouteSegment(
-                name="Valley Rollers",
-                length_m=420,
-                grade_pct=0.4,
-                kind="warmup",
-                surface="asphalt",
-                scenery="fields",
-            ),
-            RouteSegment(
-                name="Pine Rise",
-                length_m=360,
-                grade_pct=3.2,
-                kind="climb",
-                surface="asphalt",
-                scenery="forest",
-            ),
-            RouteSegment(
-                name="Mill Descent",
-                length_m=320,
-                grade_pct=-2.1,
-                kind="descent",
-                surface="asphalt",
-                scenery="village",
-            ),
-            RouteSegment(
-                name="Ridge Steps",
-                length_m=460,
-                grade_pct=5.6,
-                kind="climb",
-                surface="asphalt",
-                scenery="ridge",
-            ),
-            RouteSegment(
-                name="River Run",
-                length_m=520,
-                grade_pct=-0.6,
-                kind="recovery",
-                surface="gravel",
-                scenery="river",
-            ),
-        ),
+    route_file = files("terminalride.assets.routes").joinpath(DEFAULT_ROUTE_SPEC)
+    return load_route_spec(str(route_file))
+
+
+def available_route_specs() -> tuple[str, ...]:
+    """Return bundled route spec names."""
+    route_files = files("terminalride.assets.routes")
+    return tuple(
+        sorted(
+            route_file.name
+            for route_file in route_files.iterdir()
+            if route_file.name.endswith(".json")
+        )
     )
 
 
 __all__ = [
+    "ALLOWED_SCENERY",
+    "ALLOWED_SEGMENT_KINDS",
+    "ALLOWED_SURFACES",
+    "DEFAULT_ROUTE_SPEC",
     "RideRoute",
     "RoutePoint",
     "RoutePosition",
     "RouteProfile",
+    "ROUTE_SPEC_VERSION",
+    "RouteSpecError",
     "RouteSegment",
+    "available_route_specs",
     "default_demo_route",
+    "load_route_spec",
+    "route_from_spec",
 ]
