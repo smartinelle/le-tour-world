@@ -186,6 +186,101 @@ for (let i = 0; i < 9; i += 1) {
 }
 scene.add(hills);
 
+const propMaterials = {
+  trunk: new THREE.MeshLambertMaterial({ color: 0x5b3b24 }),
+  foliage: new THREE.MeshLambertMaterial({ color: 0x1f6b3b }),
+  wall: new THREE.MeshLambertMaterial({ color: 0xd8c3a5 }),
+  roof: new THREE.MeshLambertMaterial({ color: 0x8f3c2e }),
+  rock: new THREE.MeshLambertMaterial({ color: 0x7b8176 }),
+  field: new THREE.MeshLambertMaterial({ color: 0xd8b35c }),
+  water: new THREE.MeshLambertMaterial({
+    color: 0x1d8db8,
+    transparent: true,
+    opacity: 0.82,
+  }),
+};
+
+function createTreeProp() {
+  const prop = new THREE.Group();
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.12, 0.7, 7),
+    propMaterials.trunk,
+  );
+  const crown = new THREE.Mesh(
+    new THREE.ConeGeometry(0.52, 1.25, 7),
+    propMaterials.foliage,
+  );
+  trunk.position.y = 0.35;
+  crown.position.y = 1.18;
+  prop.add(trunk, crown);
+  return prop;
+}
+
+function createVillageProp() {
+  const prop = new THREE.Group();
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.62, 0.8), propMaterials.wall);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.72, 0.42, 4), propMaterials.roof);
+  wall.position.y = 0.31;
+  roof.position.y = 0.83;
+  roof.rotation.y = Math.PI / 4;
+  prop.add(wall, roof);
+  return prop;
+}
+
+function createRockProp() {
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(0.42, 0),
+    propMaterials.rock,
+  );
+  rock.position.y = 0.38;
+  rock.scale.set(1.25, 0.72, 0.9);
+  return rock;
+}
+
+function createFieldProp() {
+  const bale = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.34, 0.56, 14),
+    propMaterials.field,
+  );
+  bale.position.y = 0.34;
+  bale.rotation.z = Math.PI / 2;
+  return bale;
+}
+
+const roadsidePropGroup = new THREE.Group();
+const roadsideProps = [];
+for (let i = 0; i < 30; i += 1) {
+  const prop = new THREE.Group();
+  const variants = {
+    fields: createFieldProp(),
+    forest: createTreeProp(),
+    village: createVillageProp(),
+    ridge: createRockProp(),
+    river: createTreeProp(),
+  };
+  Object.values(variants).forEach((variant) => {
+    variant.visible = false;
+    prop.add(variant);
+  });
+  prop.userData = {
+    side: i % 2 === 0 ? -1 : 1,
+    sampleIndex: 4 + i,
+    variants,
+    scale: 0.72 + (i % 5) * 0.08,
+  };
+  roadsideProps.push(prop);
+  roadsidePropGroup.add(prop);
+}
+roadGroup.add(roadsidePropGroup);
+
+const riverRibbon = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.2, 150),
+  propMaterials.water,
+);
+riverRibbon.rotation.x = -Math.PI / 2;
+riverRibbon.visible = false;
+roadGroup.add(riverRibbon);
+
 const pacerGroup = new THREE.Group();
 const pacerColors = [0xf97316, 0x2563eb, 0x16a34a, 0xe11d48, 0x9333ea];
 for (let i = 0; i < 5; i += 1) {
@@ -469,6 +564,7 @@ function normalizeRouteSegments(route) {
       Math.max(Number(segment.road_width_m) || 8.6, 4),
       14,
     ),
+    scenery: String(segment.scenery || "fields"),
   }));
 }
 
@@ -495,6 +591,7 @@ function buildRoutePath(route) {
         elevationM,
         headingRad,
         roadWidthM: segment.roadWidthM,
+        scenery: segment.scenery,
       });
       headingRad += turnStepRad;
       x += Math.sin(headingRad) * stepM;
@@ -511,6 +608,7 @@ function buildRoutePath(route) {
     elevationM,
     headingRad,
     roadWidthM: segments.at(-1)?.roadWidthM ?? 8.6,
+    scenery: segments.at(-1)?.scenery ?? "fields",
   });
 
   return {
@@ -541,6 +639,7 @@ function sampleRoutePath(routePath, distanceM) {
           current.headingRad + (next.headingRad - current.headingRad) * progress,
         roadWidthM:
           current.roadWidthM + (next.roadWidthM - current.roadWidthM) * progress,
+        scenery: current.scenery,
       };
     }
   }
@@ -566,6 +665,7 @@ function visibleRouteSamples(routePath, distanceM) {
       z: -(dx * forwardX + dz * forwardZ),
       headingRad: sample.headingRad - origin.headingRad,
       roadWidthM: sample.roadWidthM,
+      scenery: sample.scenery,
     });
   }
 
@@ -627,7 +727,7 @@ function updateLaneMarkers(samples) {
   });
 }
 
-function updateSegmentGate(sceneState) {
+function updateSegmentGate(sceneState, samples) {
   const opacity = sceneState.segmentGateAlpha;
   segmentGate.visible = opacity > 0.02;
   gateMaterial.opacity = opacity * 0.75;
@@ -635,7 +735,14 @@ function updateSegmentGate(sceneState) {
   gateAccentMaterial.color.setHex(
     sceneState.nextSegmentGradePct >= 0 ? 0xea580c : 0x38bdf8,
   );
-  segmentGate.position.z = (1 - opacity) * -8;
+  const sampleIndex = Math.min(
+    samples.length - 1,
+    Math.max(4, Math.round(sceneState.routeSegmentRemainingM / 5.2)),
+  );
+  const sample = samples[sampleIndex];
+  segmentGate.position.set(sample.x, sample.y, sample.z);
+  segmentGate.rotation.y = -sample.headingRad;
+  segmentGate.scale.x = Math.max(0.68, sample.roadWidthM / 8.6);
 }
 
 function updateRoadGeometry(sceneState) {
@@ -667,6 +774,53 @@ function updateRoadGeometry(sceneState) {
       sample.z + Math.sin(sample.headingRad) * side * edgeM,
     );
   });
+  return samples;
+}
+
+function activePropVariant(scenery) {
+  if (scenery === "forest") return "forest";
+  if (scenery === "village") return "village";
+  if (scenery === "ridge") return "ridge";
+  if (scenery === "river") return "river";
+  return "fields";
+}
+
+function updateRoadsideProps(sceneState, samples) {
+  roadsideProps.forEach((prop, index) => {
+    const sample = samples[prop.userData.sampleIndex % samples.length];
+    const variantKey = activePropVariant(sample.scenery || sceneState.scenery);
+    const side = prop.userData.side;
+    const offsetM = sample.roadWidthM / 2 + 3.5 + (index % 4) * 0.85;
+    prop.position.set(
+      sample.x + Math.cos(sample.headingRad) * side * offsetM,
+      sample.y,
+      sample.z + Math.sin(sample.headingRad) * side * offsetM,
+    );
+    prop.rotation.y = -sample.headingRad + side * 0.18;
+    prop.scale.setScalar(prop.userData.scale);
+    Object.entries(prop.userData.variants).forEach(([key, variant]) => {
+      variant.visible = key === variantKey;
+    });
+  });
+
+  riverRibbon.visible = samples.some((sample) => sample.scenery === "river");
+  if (riverRibbon.visible) {
+    const near = samples[3];
+    const far = samples[samples.length - 1];
+    const side = 1;
+    const nearOffsetM = near.roadWidthM / 2 + 5.8;
+    const farOffsetM = far.roadWidthM / 2 + 5.8;
+    riverRibbon.position.set(
+      (near.x + Math.cos(near.headingRad) * side * nearOffsetM +
+        far.x + Math.cos(far.headingRad) * side * farOffsetM) /
+        2,
+      0.018,
+      (near.z + Math.sin(near.headingRad) * side * nearOffsetM +
+        far.z + Math.sin(far.headingRad) * side * farOffsetM) /
+        2,
+    );
+    riverRibbon.rotation.z = -near.headingRad;
+  }
 }
 
 function updateCurveChevrons(sceneState) {
@@ -833,13 +987,14 @@ function frame(now) {
 
   roadGroup.rotation.x = sceneState.roadPitch;
   roadGroup.rotation.y = 0;
-  updateRoadGeometry(sceneState);
+  const roadSamples = updateRoadGeometry(sceneState);
+  updateRoadsideProps(sceneState, roadSamples);
   hills.position.y = sceneState.horizonLift;
   hills.position.x = sceneState.sceneryDrift;
   hills.rotation.y = sceneState.routeSegmentProgress * 0.08;
   applyScenery(sceneState.scenery);
   applySurface(sceneState.routeSurface);
-  updateSegmentGate(sceneState);
+  updateSegmentGate(sceneState, roadSamples);
   updateCurveChevrons(sceneState);
   updatePacerRiders(sceneState, now);
   updateCockpit(sceneState, now);

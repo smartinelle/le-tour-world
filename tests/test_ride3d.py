@@ -214,6 +214,26 @@ def test_ride3d_renders_player_cockpit_from_motion_state():
     assert "updateCockpit(sceneState, now)" in RIDE3D_JS
 
 
+def test_ride3d_renders_scenery_props_from_route_samples():
+    """Roadside objects use the same route samples as the road ribbon."""
+    assert "const roadsidePropGroup = new THREE.Group()" in RIDE3D_JS
+    assert 'scenery: String(segment.scenery || "fields")' in RIDE3D_JS
+    assert "scenery: sample.scenery" in RIDE3D_JS
+    assert "function activePropVariant(scenery)" in RIDE3D_JS
+    assert "function updateRoadsideProps(sceneState, samples)" in RIDE3D_JS
+    assert "activePropVariant(sample.scenery || sceneState.scenery)" in RIDE3D_JS
+    assert "sample.roadWidthM / 2 + 3.5" in RIDE3D_JS
+    assert "updateRoadsideProps(sceneState, roadSamples)" in RIDE3D_JS
+
+
+def test_ride3d_renders_river_ribbon_for_river_segments():
+    """River scenery gets a lightweight water ribbon alongside the route."""
+    assert "const riverRibbon = new THREE.Mesh(" in RIDE3D_JS
+    assert "propMaterials.water" in RIDE3D_JS
+    assert 'samples.some((sample) => sample.scenery === "river")' in RIDE3D_JS
+    assert "near.roadWidthM / 2 + 5.8" in RIDE3D_JS
+
+
 def test_ride3d_scenery_palette_tracks_route_segment():
     """Segment scenery updates the lightweight world palette."""
     assert "const sceneryPalettes" in RIDE3D_JS
@@ -257,10 +277,12 @@ def test_ride3d_builds_elevation_profile_from_route_spec():
 def test_ride3d_renders_segment_gate_from_route_state():
     """Upcoming segment state drives a lightweight route gate."""
     assert "const segmentGate = new THREE.Group()" in RIDE3D_JS
-    assert "function updateSegmentGate(sceneState)" in RIDE3D_JS
+    assert "function updateSegmentGate(sceneState, samples)" in RIDE3D_JS
     assert "sceneState.segmentGateAlpha" in RIDE3D_JS
     assert "sceneState.nextSegmentGradePct >= 0" in RIDE3D_JS
-    assert "updateSegmentGate(sceneState)" in RIDE3D_JS
+    assert "sceneState.routeSegmentRemainingM / 5.2" in RIDE3D_JS
+    assert "segmentGate.position.set(sample.x, sample.y, sample.z)" in RIDE3D_JS
+    assert "updateSegmentGate(sceneState, roadSamples)" in RIDE3D_JS
 
 
 def test_parse_ride_mode():
