@@ -17,7 +17,6 @@ from .base import (
 )
 from .ftms_parse import parse_indoor_bike_data
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -50,6 +49,7 @@ class FtmsClient:
         self._has_control = False
         self._device_info: Dict[str, Any] = {}
         self._bike_data_callback: Optional[Callable[[BikeSample], None]] = None
+        self._bike_data_notify_active = False
         self._reconnect_task: Optional[asyncio.Task[None]] = None
         self._reconnect_delay = 1.0  # Start with 1s, exponential backoff
         self._notify_count = 0
@@ -191,6 +191,8 @@ class FtmsClient:
         self._device = None
         self._has_control = False
         self._device_info = {}
+        self._bike_data_callback = None
+        self._bike_data_notify_active = False
 
     async def subscribe_bike_data(self, callback: Callable[[BikeSample], None]) -> None:
         """Subscribe to live bike data notifications.
@@ -202,6 +204,9 @@ class FtmsClient:
             raise ConnectionError("Not connected to trainer")
 
         self._bike_data_callback = callback
+        if self._bike_data_notify_active:
+            logger.debug("Bike data notifications already active; updated callback")
+            return
 
         async def notification_handler(sender: int, data: bytearray) -> None:
             try:
@@ -247,8 +252,10 @@ class FtmsClient:
                         ),
                     )
 
-                # Call user callback
-                callback(sample)
+                # Call the latest user callback. This keeps repeated session
+                # starts idempotent without registering duplicate BLE notifies.
+                if self._bike_data_callback is not None:
+                    self._bike_data_callback(sample)
 
             except Exception as e:
                 try:
@@ -261,6 +268,7 @@ class FtmsClient:
         await self._client.start_notify(
             self.INDOOR_BIKE_DATA_UUID, notification_handler
         )
+        self._bike_data_notify_active = True
         logger.info("Subscribed to bike data notifications")
 
     async def request_control(self) -> None:
@@ -413,6 +421,7 @@ class FtmsClient:
 
                     # Re-subscribe to notifications if callback exists
                     if self._bike_data_callback:
+                        self._bike_data_notify_active = False
                         await self.subscribe_bike_data(self._bike_data_callback)
 
                     # Reset delay on successful reconnection

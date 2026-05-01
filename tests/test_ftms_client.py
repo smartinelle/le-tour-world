@@ -97,6 +97,38 @@ class TestFtmsClient:
             await client.request_control()
 
     @pytest.mark.asyncio
+    async def test_subscribe_bike_data_is_idempotent(self):
+        """Repeated subscriptions update the callback without duplicate notifies."""
+        client = FtmsClient()
+        mock_ble = AsyncMock()
+        mock_ble.is_connected = True
+        client._client = mock_ble
+
+        first_callback = Mock()
+        second_callback = Mock()
+
+        await client.subscribe_bike_data(first_callback)
+        await client.subscribe_bike_data(second_callback)
+
+        mock_ble.start_notify.assert_awaited_once()
+        assert client._bike_data_callback is second_callback
+
+    @pytest.mark.asyncio
+    async def test_disconnect_clears_bike_data_subscription_state(self):
+        """Explicit disconnect allows a future connection to subscribe again."""
+        client = FtmsClient()
+        mock_ble = AsyncMock()
+        mock_ble.is_connected = True
+        client._client = mock_ble
+        client._bike_data_callback = Mock()
+        client._bike_data_notify_active = True
+
+        await client.disconnect()
+
+        assert client._bike_data_callback is None
+        assert client._bike_data_notify_active is False
+
+    @pytest.mark.asyncio
     async def test_control_operations_without_control(self):
         """Test that control operations fail without control."""
         client = FtmsClient()

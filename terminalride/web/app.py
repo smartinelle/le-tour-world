@@ -450,7 +450,7 @@ class ScanDialog:
         """Show the scanning dialog and start scanning."""
         self._create_dialog()
         self._dialog.open()
-        asyncio.create_task(self._run_scan())
+        ui.timer(0.1, self._run_scan, once=True)
 
     def _create_dialog(self) -> None:
         """Create the dialog UI with clean, modern design."""
@@ -561,7 +561,7 @@ class ScanDialog:
             .style("padding: 1rem; transition: all 0.2s ease;")
             .on(
                 "click",
-                lambda d=device: asyncio.create_task(self._connect_to_device(d)),
+                lambda d=device: self._connect_to_device(d),
             )
             .on(
                 "mouseenter",
@@ -621,7 +621,7 @@ class ScanDialog:
 
                 ui.button(
                     "Scan Again",
-                    on_click=lambda: asyncio.create_task(self._rescan()),
+                    on_click=self._rescan,
                 ).classes("btn-primary mt-4")
 
     def _show_error(self, message: str) -> None:
@@ -640,7 +640,7 @@ class ScanDialog:
 
             ui.button(
                 "Try Again",
-                on_click=lambda: asyncio.create_task(self._rescan()),
+                on_click=self._rescan,
             ).classes("btn-primary mt-4")
 
     async def _rescan(self) -> None:
@@ -741,7 +741,7 @@ class ScanDialog:
             with ui.row().classes("gap-2 mt-4"):
                 ui.button(
                     "Scan Again",
-                    on_click=lambda: asyncio.create_task(self._rescan()),
+                    on_click=self._rescan,
                 ).classes("btn-secondary")
 
     def _cancel(self) -> None:
@@ -813,7 +813,7 @@ class WebUI:
     def __init__(self) -> None:
         # Controller is now retrieved dynamically per request
         # Don't store a reference here - get it fresh each time
-        self._update_task: Optional[asyncio.Task] = None
+        self._update_task: Optional[Any] = None
         self._auto_connect_attempted: bool = False
 
         # UI element references
@@ -858,8 +858,7 @@ class WebUI:
             """Handle OAuth callback from Supabase/Google."""
             # Get tokens from URL fragment (Supabase returns them in hash)
             # NiceGUI can't read hash directly, so we use JS
-            ui.html(
-                """
+            ui.html("""
                 <script>
                     // Extract tokens from URL hash
                     const hash = window.location.hash.substring(1);
@@ -887,8 +886,7 @@ class WebUI:
                 <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
                     <p>Completing login...</p>
                 </div>
-            """
-            )
+            """)
 
         @app.post("/auth/complete")
         async def auth_complete(request):
@@ -1067,9 +1065,9 @@ class WebUI:
                 )
 
         # Auto-connect if not already connected (like CLI does on startup)
-        # Use create_task so page renders immediately while scan runs in background
+        # Use a NiceGUI timer so UI updates run with a valid page slot.
         if not self.controller.trainer.is_connected:
-            asyncio.create_task(self._auto_connect_trainer())
+            ui.timer(0.1, self._auto_connect_trainer, once=True)
 
     async def _auto_connect_trainer(self) -> None:
         """Automatically scan and connect to first available trainer.
@@ -1126,8 +1124,8 @@ class WebUI:
 
             logger.info(f"Auto-connect: Successfully connected to {trainer_name}")
 
-            # Subscribe to bike data so metrics flow when session starts
-            # Note: subscription is handled by RideController.start_session()
+            # Bike data is subscribed when a session starts so the controller
+            # receives samples for the active session.
 
         except DeviceNotFoundError:
             logger.info("Auto-connect: Device not found during connection")
@@ -1258,60 +1256,95 @@ class WebUI:
         """Start a training session."""
         trainer_name = "Simulated Trainer"  # Will be real when connected
         if self.controller.trainer.is_connected:
-            trainer_name = "Connected Trainer"
+            trainer_name = self.controller.trainer.device_info.get(
+                "name", "Connected Trainer"
+            )
 
         self.controller.start_session(mode, trainer_name)
 
         if self._status_label:
             self._status_label.set_text("Session active")
 
-        # Start UI update loop
-        self._update_task = asyncio.create_task(self._update_loop())
+        if self.controller.trainer.is_connected:
+            ui.timer(0.0, lambda: self._prepare_trainer_for_session(mode), once=True)
 
-    async def _update_loop(self) -> None:
-        """Update UI with current metrics."""
-        while self.controller.is_active:
-            metrics = self.controller.metrics
+        # Start UI update loop in NiceGUI's page context.
+        self._update_task = ui.timer(0.1, self._update_metrics, active=True)
 
-            # Update power
-            if self._power_label:
-                power = metrics.power_w if metrics.power_w else "---"
-                self._power_label.set_text(str(power))
+    async def _prepare_trainer_for_session(self, mode: RideMode) -> None:
+        """Attach connected trainer data to the active ride session."""
+        try:
+            if not self.controller.trainer.is_connected:
+                return
 
-            # Update cadence
-            if self._cadence_label:
-                cad = metrics.cadence_rpm if metrics.cadence_rpm else "--"
-                self._cadence_label.set_text(f"{cad} rpm")
+            await self.controller.trainer.subscribe_samples(
+                self.controller.handle_bike_sample
+            )
 
-            # Update HR
-            if self._hr_label:
-                hr = metrics.hr_bpm if metrics.hr_bpm else "--"
-                self._hr_label.set_text(f"{hr} bpm")
-
-            # Update speed
-            if self._speed_label:
-                if metrics.speed_mps:
-                    speed_kph = metrics.speed_mps * 3.6
-                    self._speed_label.set_text(f"{speed_kph:.1f} km/h")
+            if mode in {RideMode.ERG, RideMode.SIM}:
+                await self.controller.trainer.request_control()
+                if mode is RideMode.ERG:
+                    await self.controller.trainer.set_target_power(
+                        self.controller.metrics.erg_target_w
+                    )
                 else:
-                    self._speed_label.set_text("-- km/h")
+                    await self.controller.trainer.set_simulation(
+                        self.controller.metrics.sim_grade_pct
+                    )
 
-            # Update distance
-            if self._distance_label:
-                dist_km = metrics.distance_m / 1000
-                self._distance_label.set_text(f"{dist_km:.2f} km")
+            logger.info("Trainer sample stream attached to active session")
+        except Exception as e:
+            logger.warning(f"Failed to prepare trainer for session: {e}")
+            if self._status_label:
+                self._status_label.set_text("Trainer data unavailable")
 
-            # Update time
-            if self._time_label:
-                elapsed = int(metrics.elapsed_s)
-                mins, secs = divmod(elapsed, 60)
-                self._time_label.set_text(f"{mins:02d}:{secs:02d}")
+    def _update_metrics(self) -> None:
+        """Update UI with current metrics."""
+        if not self.controller.is_active:
+            if self._update_task:
+                self._update_task.cancel()
+                self._update_task = None
+            return
 
-            # Update target for ERG
-            if self._target_label:
-                self._target_label.set_text(f"Target: {metrics.erg_target_w}W")
+        metrics = self.controller.metrics
 
-            await asyncio.sleep(0.1)  # 10Hz update
+        # Update power
+        if self._power_label:
+            power = metrics.power_w if metrics.power_w else "---"
+            self._power_label.set_text(str(power))
+
+        # Update cadence
+        if self._cadence_label:
+            cad = metrics.cadence_rpm if metrics.cadence_rpm else "--"
+            self._cadence_label.set_text(f"{cad} rpm")
+
+        # Update HR
+        if self._hr_label:
+            hr = metrics.hr_bpm if metrics.hr_bpm else "--"
+            self._hr_label.set_text(f"{hr} bpm")
+
+        # Update speed
+        if self._speed_label:
+            if metrics.speed_mps:
+                speed_kph = metrics.speed_mps * 3.6
+                self._speed_label.set_text(f"{speed_kph:.1f} km/h")
+            else:
+                self._speed_label.set_text("-- km/h")
+
+        # Update distance
+        if self._distance_label:
+            dist_km = metrics.distance_m / 1000
+            self._distance_label.set_text(f"{dist_km:.2f} km")
+
+        # Update time
+        if self._time_label:
+            elapsed = int(metrics.elapsed_s)
+            mins, secs = divmod(elapsed, 60)
+            self._time_label.set_text(f"{mins:02d}:{secs:02d}")
+
+        # Update target for ERG
+        if self._target_label:
+            self._target_label.set_text(f"Target: {metrics.erg_target_w}W")
 
     def _adjust_target(self, delta: int) -> None:
         """Adjust ERG target power."""
