@@ -9,6 +9,7 @@ from terminalride.devices.base import HrSample
 
 from .fake_samples import FakeTrainerSampleSource
 from .ride_controller import RideController
+from .routes import RouteProfile
 from .state import RideMode, RideSnapshot
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,21 @@ logger = logging.getLogger(__name__)
 class RideRuntime:
     """Own ride actions and local sample-source lifecycle for one controller."""
 
-    def __init__(self, controller: RideController) -> None:
+    def __init__(
+        self,
+        controller: RideController,
+        route_profile: Optional[RouteProfile] = None,
+    ) -> None:
         self.controller = controller
+        self.route_profile = route_profile
+        if route_profile is not None:
+            self.controller.set_route_profile(route_profile)
         self._fake_source: Optional[FakeTrainerSampleSource] = None
+
+    def set_route_profile(self, route_profile: Optional[RouteProfile]) -> None:
+        """Attach the route profile used by route-aware ride modes."""
+        self.route_profile = route_profile
+        self.controller.set_route_profile(route_profile)
 
     @property
     def using_fake_source(self) -> bool:

@@ -357,7 +357,9 @@ def attach_ride3d_routes(
     async def start_ride(request: Request) -> dict[str, object]:
         body = await request.json()
         mode = parse_ride_mode(body.get("mode"))
-        return runtime_provider().start_session(mode).to_dict()
+        runtime = runtime_provider()
+        runtime.set_route_profile(default_demo_route())
+        return runtime.start_session(mode).to_dict()
 
     @web_app.post("/api/ride/stop")
     async def stop_ride() -> dict[str, object]:

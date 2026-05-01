@@ -20,6 +20,7 @@ from terminalride.devices.base import BikeSample, HrSample
 from terminalride.store.models import SampleModel, SessionModel, TrainingMode
 
 from .hr_service import HrService
+from .routes import RouteProfile
 from .session_service import SessionService, get_session_service
 from .state import RideMetrics, RideMode, RideSnapshot, RideState
 from .trainer_service import TrainerService
@@ -59,6 +60,7 @@ class RideController:
         self._started_monotonic: Optional[float] = None
         self._last_sample_ts: Optional[float] = None
         self._sample_records: list[SampleModel] = []
+        self._route_profile: Optional[RouteProfile] = None
 
         self.on_metrics_update: Optional[Callable[[RideMetrics], None]] = None
         self.on_state_change: Optional[Callable[[RideState], None]] = None
@@ -149,6 +151,8 @@ class RideController:
             erg_target_w=config.settings.default_erg_power_w,
             sim_grade_pct=config.settings.default_sim_grade_pct,
         )
+        if mode is RideMode.SIM:
+            self._sync_sim_grade_from_route(notify=False)
         self._started_monotonic = time.monotonic()
         self._last_sample_ts = None
         self._sample_records = []
@@ -239,10 +243,7 @@ class RideController:
 
     def set_sim_grade(self, grade_pct: float) -> float:
         """Set SIM grade percentage, clamped to supported bounds."""
-        grade = min(
-            self.MAX_SIM_GRADE_PCT,
-            max(self.MIN_SIM_GRADE_PCT, float(grade_pct)),
-        )
+        grade = self._clamp_sim_grade(grade_pct)
         self._metrics.sim_grade_pct = grade
         self._notify_metrics()
 
@@ -259,6 +260,11 @@ class RideController:
         """Adjust SIM grade by a percentage-point delta."""
         return self.set_sim_grade(self._metrics.sim_grade_pct + delta_pct)
 
+    def set_route_profile(self, route_profile: Optional[RouteProfile]) -> None:
+        """Attach a distance-indexed route profile for SIM grade control."""
+        self._route_profile = route_profile
+        self._sync_sim_grade_from_route()
+
     def handle_bike_sample(self, sample: BikeSample) -> None:
         """Ingest one trainer sample and update live metrics."""
         sample_ts = float(sample["ts"])
@@ -271,6 +277,7 @@ class RideController:
 
         if self.is_active and not self.is_paused:
             self._accumulate_distance(sample_ts, speed_mps)
+            self._sync_sim_grade_from_route()
             self._record_sample(sample_ts)
         else:
             self._last_sample_ts = sample_ts
@@ -314,6 +321,33 @@ class RideController:
             return
 
         self._metrics.distance_m += max(0.0, speed_mps) * dt_s
+
+    def _sync_sim_grade_from_route(self, notify: bool = True) -> None:
+        if (
+            self._route_profile is None
+            or not self.is_active
+            or self._state.mode is not RideMode.SIM
+        ):
+            return
+
+        grade = self._clamp_sim_grade(
+            self._route_profile.grade_at(self._metrics.distance_m)
+        )
+        if grade == self._metrics.sim_grade_pct:
+            return
+
+        self._metrics.sim_grade_pct = grade
+        if notify:
+            self._notify_metrics()
+
+        if self.trainer.is_connected:
+            self._schedule_trainer_command(self.trainer.set_simulation(grade))
+
+    def _clamp_sim_grade(self, grade_pct: float) -> float:
+        return min(
+            self.MAX_SIM_GRADE_PCT,
+            max(self.MIN_SIM_GRADE_PCT, float(grade_pct)),
+        )
 
     def _record_sample(self, sample_ts: float) -> None:
         session_id = self._state.session_id

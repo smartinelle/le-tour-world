@@ -7,6 +7,7 @@ from terminalride.domain.ride_controller import (
     RideMode,
     RideMetrics,
 )
+from terminalride.domain.routes import default_demo_route
 
 
 class TestRideControllerBasics:
@@ -272,6 +273,42 @@ class TestSimControl:
 
         assert result == 3.5
         assert controller.metrics.sim_grade_pct == 3.5
+
+    def test_route_profile_sets_initial_sim_grade(self):
+        """SIM mode can take grade from a distance-indexed route profile."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+
+        controller.start_session(RideMode.SIM)
+
+        assert controller.metrics.sim_grade_pct == 0.4
+
+    def test_route_profile_updates_sim_grade_from_distance(self):
+        """Route profile updates SIM grade as distance crosses segments."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+        controller.start_session(RideMode.SIM)
+        start = time.time()
+
+        controller.handle_bike_sample(
+            {
+                "ts": start,
+                "power_w": 160,
+                "cadence_rpm": 80,
+                "speed_mps": 10.0,
+            }
+        )
+        controller.handle_bike_sample(
+            {
+                "ts": start + 43.0,
+                "power_w": 170,
+                "cadence_rpm": 82,
+                "speed_mps": 10.0,
+            }
+        )
+
+        assert controller.metrics.distance_m == 430.0
+        assert controller.metrics.sim_grade_pct == 3.2
 
 
 class TestSampleHandling:

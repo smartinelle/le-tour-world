@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from terminalride.domain.ride_controller import RideController
 from terminalride.domain.ride_runtime import RideRuntime
+from terminalride.domain.routes import default_demo_route
 from terminalride.domain.state import RideMode
 
 
@@ -73,3 +74,15 @@ def test_runtime_controls_return_snapshots():
     assert paused.paused is True
     assert erg.erg_target_w == 170
     assert sim.sim_grade_pct == 1.5
+
+
+def test_runtime_can_attach_route_profile():
+    """Runtime can attach a route profile without UI coupling."""
+    controller = make_controller(trainer_connected=False)
+    runtime = RideRuntime(controller)
+
+    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource"):
+        runtime.set_route_profile(default_demo_route())
+        snapshot = runtime.start_session(RideMode.SIM)
+
+    assert snapshot.sim_grade_pct == 0.4
