@@ -40,11 +40,14 @@ RIDE3D_HTML = """<!doctype html>
   <title>TerminalRide 3D</title>
   <style>
     :root {
-      --bg: #101412;
-      --panel: rgba(250, 250, 250, 0.9);
-      --text: #111827;
-      --muted: #6b7280;
+      --bg: #f4f2ee;
+      --panel: rgba(255, 254, 253, 0.92);
+      --panel-strong: #f8f6f1;
+      --text: #181b1f;
+      --muted: #667085;
+      --border: #ddd8cf;
       --accent: #ea580c;
+      --accent-dark: #ba4a03;
       --road: #202421;
       --line: #f8fafc;
       --sky: #d9edf7;
@@ -65,7 +68,7 @@ RIDE3D_HTML = """<!doctype html>
       height: 100%;
       margin: 0;
       overflow: hidden;
-      background: var(--bg);
+      background: var(--sky);
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
         "Segoe UI", sans-serif;
@@ -83,18 +86,18 @@ RIDE3D_HTML = """<!doctype html>
       right: 18px;
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 8px;
+      gap: 10px;
       pointer-events: none;
     }
 
     .metric,
     .status {
       min-width: 0;
-      border: 1px solid rgba(17, 24, 39, 0.12);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--panel);
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
-      padding: 12px 14px;
+      box-shadow: 0 18px 42px rgba(24, 27, 31, 0.1);
+      padding: 14px 16px;
       backdrop-filter: blur(16px);
     }
 
@@ -102,8 +105,9 @@ RIDE3D_HTML = """<!doctype html>
       display: block;
       color: var(--text);
       font-size: clamp(1.35rem, 3vw, 2.6rem);
+      font-variant-numeric: tabular-nums;
       line-height: 1;
-      font-weight: 650;
+      font-weight: 800;
       letter-spacing: 0;
       white-space: nowrap;
     }
@@ -113,10 +117,10 @@ RIDE3D_HTML = """<!doctype html>
       display: block;
       margin-top: 6px;
       color: var(--muted);
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       line-height: 1;
-      font-weight: 600;
-      letter-spacing: 0.08em;
+      font-weight: 800;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
     }
 
@@ -132,7 +136,7 @@ RIDE3D_HTML = """<!doctype html>
       display: block;
       font-size: 0.95rem;
       line-height: 1.35;
-      font-weight: 650;
+      font-weight: 800;
     }
 
     .status a {
@@ -147,11 +151,11 @@ RIDE3D_HTML = """<!doctype html>
       top: 50%;
       width: min(360px, calc(100vw - 36px));
       transform: translateY(-50%);
-      border: 1px solid rgba(17, 24, 39, 0.12);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--panel);
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
-      padding: 14px;
+      box-shadow: 0 18px 42px rgba(24, 27, 31, 0.1);
+      padding: 16px;
       backdrop-filter: blur(16px);
     }
 
@@ -178,18 +182,23 @@ RIDE3D_HTML = """<!doctype html>
     .action {
       border: 1px solid rgba(17, 24, 39, 0.12);
       border-radius: 8px;
-      background: #ffffff;
+      background: #fffefd;
       color: var(--text);
       cursor: pointer;
       padding: 10px 12px;
       font-size: 0.86rem;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .action.primary {
       border-color: var(--accent);
       background: var(--accent);
       color: #ffffff;
+    }
+
+    .action.primary:hover {
+      border-color: var(--accent-dark);
+      background: var(--accent-dark);
     }
 
     .action:disabled {
@@ -220,13 +229,13 @@ RIDE3D_HTML = """<!doctype html>
       position: fixed;
       left: 18px;
       bottom: 18px;
-      border: 1px solid rgba(17, 24, 39, 0.12);
+      border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--panel);
       color: var(--text);
       padding: 10px 12px;
       font-size: 0.9rem;
-      font-weight: 650;
+      font-weight: 800;
       text-decoration: none;
       backdrop-filter: blur(16px);
     }
@@ -334,6 +343,10 @@ def attach_ride3d_routes(
     @web_app.get("/static/ride_client.js")
     async def ride_client_script() -> FileResponse:
         return FileResponse(STATIC_DIR / "ride_client.js", media_type="text/javascript")
+
+    @web_app.get("/static/ride_motion.js")
+    async def ride_motion_script() -> FileResponse:
+        return FileResponse(STATIC_DIR / "ride_motion.js", media_type="text/javascript")
 
     @web_app.post("/api/ride/start")
     async def start_ride(request: Request) -> dict[str, object]:

@@ -1,5 +1,6 @@
 import * as THREE from "https://esm.sh/three@0.164.1";
 import { RideApiClient } from "/static/ride_client.js";
+import { RideMotionModel } from "/static/ride_motion.js";
 
 const canvas = document.querySelector("#scene");
 const renderer = new THREE.WebGLRenderer({
@@ -107,25 +108,14 @@ const hud = {
 };
 
 const rideClient = new RideApiClient();
-
-let ride = {
-  active: false,
-  paused: false,
-  mode: null,
-  speed_mps: 0,
-  power_w: null,
-  cadence_rpm: null,
-  hr_bpm: null,
-  distance_m: 0,
-  session_state: "inactive",
-};
+const motion = new RideMotionModel({ dashSpacing: 7.8 });
 
 function formatValue(value, fallback = "--") {
   return value === null || value === undefined ? fallback : String(value);
 }
 
 function updateHud(snapshot) {
-  ride = snapshot;
+  motion.updateFromSnapshot(snapshot);
   hud.power.textContent = snapshot.active ? formatValue(snapshot.power_w) : "--";
   hud.speed.textContent =
     snapshot.active && snapshot.speed_mps
@@ -221,21 +211,19 @@ function resize() {
 }
 
 let last = performance.now();
-let roadOffset = 0;
 
 function frame(now) {
   const dt = Math.min(0.06, (now - last) / 1000);
   last = now;
 
-  const speed = ride.active && !ride.paused ? Math.max(0, ride.speed_mps || 0) : 0;
-  roadOffset = (roadOffset + speed * dt) % 7.8;
+  const sceneState = motion.advance(dt, now);
   laneGroup.children.forEach((dash, index) => {
-    dash.position.z = 8 - index * 7.8 + roadOffset;
+    dash.position.z = 8 - index * 7.8 + sceneState.roadOffset;
     if (dash.position.z > 12) dash.position.z -= 34 * 7.8;
   });
 
-  camera.position.y = 3.6 + Math.sin(now * 0.004) * 0.03 * Math.min(speed, 10);
-  camera.lookAt(0, 0.35, -22);
+  camera.position.y = 3.6 + sceneState.cameraBob;
+  camera.lookAt(0, 0.35 + sceneState.cameraPitch, -22);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

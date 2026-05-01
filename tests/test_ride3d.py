@@ -10,14 +10,17 @@ from terminalride.web.ride3d import RIDE3D_HTML, parse_delta, parse_ride_mode
 
 RIDE3D_JS = Path("terminalride/web/static/ride3d.js").read_text()
 RIDE_CLIENT_JS = Path("terminalride/web/static/ride_client.js").read_text()
+RIDE_MOTION_JS = Path("terminalride/web/static/ride_motion.js").read_text()
 
 
 def test_ride3d_page_consumes_snapshot_stream():
     """3D prototype is a browser-only snapshot stream consumer."""
     assert '<script type="module" src="/static/ride3d.js"></script>' in RIDE3D_HTML
     assert 'import { RideApiClient } from "/static/ride_client.js"' in RIDE3D_JS
+    assert 'import { RideMotionModel } from "/static/ride_motion.js"' in RIDE3D_JS
     assert "new EventSource(this.snapshotUrl)" in RIDE_CLIENT_JS
     assert '"/api/ride/snapshots"' in RIDE_CLIENT_JS
+    assert "export class RideMotionModel" in RIDE_MOTION_JS
     assert "https://esm.sh/three" in RIDE3D_JS
     assert "speed_mps" in RIDE3D_JS
     assert "canvas" in RIDE3D_HTML
@@ -44,6 +47,17 @@ def test_ride3d_page_has_session_controls():
     assert '"/api/ride/toggle-pause"' in RIDE_CLIENT_JS
     assert '"/api/ride/erg-target"' in RIDE_CLIENT_JS
     assert '"/api/ride/sim-grade"' in RIDE_CLIENT_JS
+
+
+def test_ride3d_motion_model_owns_scene_motion():
+    """3D scene reads render-friendly motion state, not raw snapshots."""
+    assert "motion.updateFromSnapshot(snapshot)" in RIDE3D_JS
+    assert "const sceneState = motion.advance(dt, now)" in RIDE3D_JS
+    assert "sceneState.roadOffset" in RIDE3D_JS
+    assert "sceneState.cameraBob" in RIDE3D_JS
+    assert "sceneState.cameraPitch" in RIDE3D_JS
+    assert "targetSpeedMps" in RIDE_MOTION_JS
+    assert "cameraPitch" in RIDE_MOTION_JS
 
 
 def test_parse_ride_mode():
