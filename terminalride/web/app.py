@@ -2,6 +2,7 @@
 
 Clean, minimal design with orange accent.
 Big metrics for visibility from bike distance.
+Supports multi-user authentication via Supabase.
 """
 
 import asyncio
@@ -10,9 +11,12 @@ from typing import Optional, List, Dict, Any, Callable
 
 from nicegui import ui, app
 
-from ..domain.ride_controller import RideController, RideMode, RideMetrics
+from ..domain.ride_controller import RideController, RideMode
 from ..config import get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
+from ..supabase_client import is_supabase_configured
+from .auth import AuthManager
+from .pages import render_login_page
 
 logger = logging.getLogger(__name__)
 
@@ -449,31 +453,51 @@ class ScanDialog:
         asyncio.create_task(self._run_scan())
 
     def _create_dialog(self) -> None:
-        """Create the dialog UI."""
-        self._dialog = ui.dialog().props("persistent")
+        """Create the dialog UI with clean, modern design."""
+        self._dialog = ui.dialog().props("persistent maximized=false")
 
-        with self._dialog, ui.card().classes("scan-dialog"):
-            # Header
-            with ui.row().classes("scan-header w-full items-center"):
-                ui.html('<div class="scan-spinner"></div>', sanitize=False)
-                ui.label(f"Scanning for {self.title}").classes(
-                    "text-xl font-semibold text-gray-900 flex-grow"
+        with (
+            self._dialog,
+            ui.card()
+            .classes("scan-dialog")
+            .style("min-width: 400px; max-width: 500px; padding: 0; overflow: hidden;"),
+        ):
+            # Clean header with title and X button
+            with (
+                ui.row()
+                .classes("w-full items-center justify-between")
+                .style(
+                    "padding: 1.25rem 1.5rem; border-bottom: 1px solid #E5E7EB; background: #FAFAFA;"
+                )
+            ):
+                ui.label(f"Find {self.title}").classes(
+                    "text-lg font-semibold text-gray-900"
                 )
                 ui.button(icon="close", on_click=self._cancel).props(
-                    "flat round dense"
+                    "flat round dense size=sm"
+                ).classes("text-gray-500")
+
+            # Content area
+            with ui.column().classes("w-full").style("padding: 1.5rem;"):
+                # Status text (shows scanning progress)
+                self._status_label = ui.label("Scanning...").classes(
+                    "text-sm text-gray-500 mb-4"
                 )
 
-            # Status text
-            self._status_label = ui.label("Looking for devices...").classes(
-                "scan-progress scan-pulse"
-            )
+                # Device list container
+                self._device_container = ui.column().classes("w-full gap-2")
 
-            # Device list container
-            self._device_container = ui.column().classes("device-list w-full")
-
-            # Footer with cancel button
-            with ui.row().classes("w-full justify-end mt-4"):
-                ui.button("Cancel", on_click=self._cancel).classes("btn-secondary")
+            # Footer
+            with (
+                ui.row()
+                .classes("w-full justify-end")
+                .style(
+                    "padding: 1rem 1.5rem; border-top: 1px solid #E5E7EB; background: #FAFAFA;"
+                )
+            ):
+                ui.button("Cancel", on_click=self._cancel).props("flat").classes(
+                    "text-gray-600"
+                ).style("min-width: 80px")
 
     async def _run_scan(self) -> None:
         """Execute the scan and update UI with results."""
@@ -482,7 +506,7 @@ class ScanDialog:
 
         try:
             if self._status_label:
-                self._status_label.set_text("Scanning... this may take a few seconds")
+                self._status_label.set_text("Looking for nearby devices...")
 
             # Run the scan
             devices = await self.scan_fn()
@@ -494,13 +518,10 @@ class ScanDialog:
                 if devices:
                     count = len(devices)
                     self._status_label.set_text(
-                        f"Found {count} device{'s' if count != 1 else ''}. "
-                        "Tap to connect."
+                        f"Found {count} device{'s' if count != 1 else ''}"
                     )
-                    self._status_label.classes(remove="scan-pulse")
                 else:
-                    self._status_label.set_text("")
-                    self._status_label.classes(remove="scan-pulse")
+                    self._status_label.set_text("No devices found")
 
             # Update device list
             self._update_device_list()
@@ -509,8 +530,7 @@ class ScanDialog:
             logger.error(f"Scan failed: {e}")
             self._is_scanning = False
             if self._status_label:
-                self._status_label.set_text("")
-                self._status_label.classes(remove="scan-pulse")
+                self._status_label.set_text("Scan failed")
             self._show_error(str(e))
 
     def _update_device_list(self) -> None:
@@ -529,27 +549,45 @@ class ScanDialog:
                 self._create_device_item(device)
 
     def _create_device_item(self, device: Dict[str, Any]) -> None:
-        """Create a device list item."""
+        """Create a device list item with clean, clickable card design."""
         name = device.get("name", "Unknown Device")
-        address = device.get("address", "")
         rssi = device.get("rssi")
         bars = _rssi_to_bars(rssi)
 
-        with ui.element("div").classes("device-item").on(
-            "click", lambda d=device: asyncio.create_task(self._connect_to_device(d))
-        ) as item:
-            # Store reference to update classes later
+        # Clean card-style device item
+        with (
+            ui.card()
+            .classes("w-full cursor-pointer")
+            .style("padding: 1rem; transition: all 0.2s ease;")
+            .on(
+                "click",
+                lambda d=device: asyncio.create_task(self._connect_to_device(d)),
+            )
+            .on(
+                "mouseenter",
+                lambda e: e.sender.style("border-color: #EA580C; background: #FFF7ED;"),
+            )
+            .on(
+                "mouseleave",
+                lambda e: e.sender.style("border-color: #E5E7EB; background: white;"),
+            ) as item
+        ):
             device["_ui_element"] = item
 
-            with ui.element("div").classes("device-info"):
-                ui.label(name).classes("device-name")
-                ui.label(address).classes("device-address")
+            with ui.row().classes("w-full items-center justify-between"):
+                with ui.column().classes("gap-0"):
+                    ui.label(name).classes("font-medium text-gray-900")
+                    if rssi:
+                        ui.label(f"Signal: {rssi} dBm").classes("text-xs text-gray-400")
 
-            # Signal bars
-            with ui.element("div").classes("signal-bars"):
-                for i in range(1, 5):
-                    active = "active" if i <= bars else ""
-                    ui.element("div").classes(f"signal-bar {active}")
+                # Signal strength indicator
+                with ui.row().classes("items-end gap-0.5").style("height: 20px;"):
+                    for i in range(1, 5):
+                        bar_color = "#EA580C" if i <= bars else "#E5E7EB"
+                        bar_height = 4 + (i * 4)
+                        ui.element("div").style(
+                            f"width: 4px; height: {bar_height}px; background: {bar_color}; border-radius: 1px;"
+                        )
 
     def _show_empty_state(self) -> None:
         """Show empty state when no devices found."""
@@ -563,9 +601,9 @@ class ScanDialog:
                     sanitize=False,
                 )
                 ui.label(f"No {self.device_type}s found").classes("empty-state-title")
-                ui.label(
-                    "Make sure your device is powered on and in range."
-                ).classes("text-sm")
+                ui.label("Make sure your device is powered on and in range.").classes(
+                    "text-sm"
+                )
 
                 with ui.element("div").classes("empty-state-tips"):
                     ui.label("Troubleshooting tips:").classes("font-medium mb-2")
@@ -715,25 +753,69 @@ class ScanDialog:
 
 def _get_shared_controller() -> RideController:
     """Get or create the shared RideController singleton.
-    
-    Uses NiceGUI's app.storage to persist the controller across page loads,
+
+    Used in local-only mode (Supabase not configured) where there's a single user.
+    Uses NiceGUI's app storage to persist the controller across page loads,
     ensuring device connections are maintained throughout the session.
     """
-    if not hasattr(app, '_shared_controller') or app._shared_controller is None:
+    if not hasattr(app, "_shared_controller") or app._shared_controller is None:
         app._shared_controller = RideController()
-        logger.info("Created shared RideController instance")
+        logger.info("Created shared RideController instance (local mode)")
     return app._shared_controller
+
+
+def _get_user_controller() -> RideController:
+    """Get or create a per-user RideController instance.
+
+    Each authenticated user gets their own RideController stored in their
+    session storage. This ensures device connections and ride state are
+    isolated between users.
+
+    In multi-user mode with Web Bluetooth, the RideController manages state
+    while the actual BLE communication happens in the browser.
+
+    Returns:
+        RideController instance for the current user
+
+    Raises:
+        ValueError: If user is not authenticated
+    """
+    if not AuthManager.is_authenticated():
+        raise ValueError("User not authenticated - cannot get user controller")
+
+    # Store controller in user's session storage
+    if "controller" not in app.storage.user:
+        user = AuthManager.get_current_user()
+        user_id = user.get("id", "unknown") if user else "unknown"
+        app.storage.user["controller"] = RideController()
+        logger.info(f"Created RideController for user {user_id}")
+
+    return app.storage.user["controller"]
+
+
+def get_controller() -> RideController:
+    """Get the appropriate controller based on current mode.
+
+    - If Supabase is configured and user is authenticated: per-user controller
+    - Otherwise: shared singleton controller (local mode)
+
+    This provides backward compatibility for local-only usage while
+    supporting multi-user scenarios.
+    """
+    if is_supabase_configured() and AuthManager.is_authenticated():
+        return _get_user_controller()
+    return _get_shared_controller()
 
 
 class WebUI:
     """Web-based UI for TerminalRide."""
 
     def __init__(self) -> None:
-        # Use shared singleton controller instead of creating new one each time
-        self.controller = _get_shared_controller()
+        # Controller is now retrieved dynamically per request
+        # Don't store a reference here - get it fresh each time
         self._update_task: Optional[asyncio.Task] = None
         self._auto_connect_attempted: bool = False
-        
+
         # UI element references
         self._power_label: Optional[ui.label] = None
         self._cadence_label: Optional[ui.label] = None
@@ -746,85 +828,223 @@ class WebUI:
         self._connection_status_label: Optional[ui.label] = None
         self._connection_dot: Optional[ui.html] = None
 
+    @property
+    def controller(self) -> RideController:
+        """Get the controller for the current context.
+
+        This property dynamically retrieves the appropriate controller,
+        supporting both local mode (singleton) and multi-user mode (per-user).
+        """
+        return get_controller()
+
     def setup(self) -> None:
         """Set up the web UI routes and pages."""
-        
+
+        # =====================================================================
+        # Authentication Routes
+        # =====================================================================
+
+        @ui.page("/login")
+        def login_page():
+            """Login page with Google OAuth."""
+            # If already authenticated, redirect to home
+            if AuthManager.is_authenticated():
+                ui.navigate.to("/")
+                return
+            render_login_page()
+
+        @ui.page("/auth/callback")
+        async def auth_callback():
+            """Handle OAuth callback from Supabase/Google."""
+            # Get tokens from URL fragment (Supabase returns them in hash)
+            # NiceGUI can't read hash directly, so we use JS
+            ui.html(
+                """
+                <script>
+                    // Extract tokens from URL hash
+                    const hash = window.location.hash.substring(1);
+                    const params = new URLSearchParams(hash);
+                    const accessToken = params.get('access_token');
+                    const refreshToken = params.get('refresh_token');
+                    
+                    if (accessToken) {
+                        // Send tokens to server
+                        fetch('/auth/complete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                access_token: accessToken,
+                                refresh_token: refreshToken
+                            })
+                        }).then(() => {
+                            window.location.href = '/';
+                        });
+                    } else {
+                        // No tokens, redirect to login
+                        window.location.href = '/login?error=auth_failed';
+                    }
+                </script>
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
+                    <p>Completing login...</p>
+                </div>
+            """
+            )
+
+        @app.post("/auth/complete")
+        async def auth_complete(request):
+            """Complete OAuth flow by storing tokens in session."""
+            try:
+
+                body = await request.json()
+                access_token = body.get("access_token")
+                refresh_token = body.get("refresh_token")
+
+                if access_token:
+                    success = await AuthManager.handle_oauth_callback(
+                        access_token, refresh_token or ""
+                    )
+                    return {"success": success}
+                return {"success": False, "error": "No access token"}
+            except Exception as e:
+                logger.error(f"Auth complete error: {e}")
+                return {"success": False, "error": str(e)}
+
+        @ui.page("/logout")
+        async def logout_page():
+            """Log out and redirect to login."""
+            await AuthManager.logout()
+            ui.navigate.to("/login")
+
+        # =====================================================================
+        # Main Application Routes (Protected)
+        # =====================================================================
+
         @ui.page("/")
         async def home_page():
+            # If auth is configured and user not logged in, redirect
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
             await self._render_home_with_auto_connect()
 
         @ui.page("/session/{mode}")
         def session_page(mode: str):
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
             self._render_session(mode)
 
         @ui.page("/devices")
         def devices_page():
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
             self._render_devices()
 
         @ui.page("/history")
         def history_page():
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
             self._render_history()
 
         @ui.page("/settings")
         def settings_page():
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
             self._render_settings()
 
     def _render_header(self, current: str = "") -> None:
         """Render the navigation header."""
         ui.html(GLOBAL_STYLES, sanitize=False)
-        
+
         with ui.header().classes("bg-white border-b border-gray-200 px-8 py-4"):
             with ui.row().classes("w-full items-center justify-between"):
                 # Logo
-                ui.label("TerminalRide").classes(
-                    "text-xl font-semibold text-gray-900"
+                ui.link("TerminalRide", "/").classes(
+                    "text-xl font-semibold text-gray-900 no-underline"
                 )
-                
-                # Navigation
-                with ui.row().classes("gap-2"):
-                    links = [
-                        ("Home", "/"),
-                        ("Devices", "/devices"),
-                        ("History", "/history"),
-                        ("Settings", "/settings"),
-                    ]
-                    for name, path in links:
-                        active = "active" if current == name else ""
-                        ui.link(name, path).classes(f"nav-link {active}")
+
+                # Navigation + User
+                with ui.row().classes("gap-4 items-center"):
+                    # Nav links
+                    with ui.row().classes("gap-2"):
+                        links = [
+                            ("Home", "/"),
+                            ("Devices", "/devices"),
+                            ("History", "/history"),
+                            ("Settings", "/settings"),
+                        ]
+                        for name, path in links:
+                            active = "active" if current == name else ""
+                            ui.link(name, path).classes(f"nav-link {active}")
+
+                    # User section (only if authenticated)
+                    if is_supabase_configured() and AuthManager.is_authenticated():
+                        user = AuthManager.get_current_user()
+                        if user:
+                            with ui.row().classes(
+                                "gap-2 items-center ml-4 pl-4 border-l border-gray-200"
+                            ):
+                                # Avatar or initial
+                                avatar_url = user.get("avatar_url", "")
+                                if avatar_url:
+                                    ui.image(avatar_url).classes(
+                                        "w-8 h-8 rounded-full object-cover"
+                                    )
+                                else:
+                                    initial = user.get("name", "U")[0].upper()
+                                    ui.element("div").classes(
+                                        "w-8 h-8 rounded-full bg-orange-100 text-orange-600 "
+                                        "flex items-center justify-center font-medium text-sm"
+                                    ).text(initial)
+
+                                # User name (hidden on mobile)
+                                ui.label(user.get("name", "User")).classes(
+                                    "text-sm text-gray-600 hidden md:block"
+                                )
+
+                                # Logout button
+                                ui.link("Logout", "/logout").classes(
+                                    "text-sm text-gray-400 hover:text-orange-600 ml-2"
+                                )
 
     async def _render_home_with_auto_connect(self) -> None:
         """Render home page with automatic device connection on first load.
-        
+
         Mirrors CLI behavior: automatically scan and connect to trainer
         when the app first loads, providing seamless device discovery.
         """
         self._render_header("Home")
-        
-        with ui.column().classes(
-            "w-full max-w-4xl mx-auto px-8 py-16 fade-in"
-        ):
+
+        with ui.column().classes("w-full max-w-4xl mx-auto px-8 py-16 fade-in"):
             # Hero section
             ui.label("Ready to ride?").classes(
                 "text-5xl font-semibold text-gray-900 mb-4"
             )
-            ui.label(
-                "Choose a training mode to get started."
-            ).classes("text-xl text-gray-500 mb-12")
-            
+            ui.label("Choose a training mode to get started.").classes(
+                "text-xl text-gray-500 mb-12"
+            )
+
             # Connection status (will be updated dynamically)
             connected = self.controller.trainer.is_connected
-            with ui.row().classes("items-center mb-8") as status_row:
+            with ui.row().classes("items-center mb-8"):
                 dot_class = "connected" if connected else "disconnected"
                 self._connection_dot = ui.html(
                     f'<span class="status-dot {dot_class}"></span>', sanitize=False
                 )
                 if connected:
-                    trainer_name = self.controller.trainer.device_info.get("name", "Trainer")
+                    trainer_name = self.controller.trainer.device_info.get(
+                        "name", "Trainer"
+                    )
                     status = f"Connected to {trainer_name}"
                 else:
                     status = "Searching for trainer..."
-                self._connection_status_label = ui.label(status).classes("text-gray-600")
-            
+                self._connection_status_label = ui.label(status).classes(
+                    "text-gray-600"
+                )
+
             # Mode cards
             with ui.row().classes("gap-6 w-full items-stretch"):
                 self._mode_card(
@@ -845,7 +1065,7 @@ class WebUI:
                     "/session/sim",
                     "3",
                 )
-        
+
         # Auto-connect if not already connected (like CLI does on startup)
         # Use create_task so page renders immediately while scan runs in background
         if not self.controller.trainer.is_connected:
@@ -853,7 +1073,7 @@ class WebUI:
 
     async def _auto_connect_trainer(self) -> None:
         """Automatically scan and connect to first available trainer.
-        
+
         This mirrors the CLI's _connection_loop() behavior, providing
         seamless device discovery without requiring manual intervention.
         """
@@ -861,12 +1081,14 @@ class WebUI:
             if self._connection_status_label:
                 self._connection_status_label.set_text("Scanning for trainers...")
                 self._connection_status_label.update()
-            
+
             logger.info("Auto-connect: Scanning for FTMS trainers...")
-            
+
             # Scan for available trainers
-            available = await self.controller.trainer._client.scan_available(timeout_s=8.0)
-            
+            available = await self.controller.trainer._client.scan_available(
+                timeout_s=8.0
+            )
+
             if not available:
                 logger.info("Auto-connect: No trainers found")
                 if self._connection_status_label:
@@ -875,19 +1097,23 @@ class WebUI:
                     )
                     self._connection_status_label.update()
                 return
-            
+
             # Connect to first/strongest trainer (like CLI does)
             trainer = available[0]
             trainer_name = trainer.get("name", "Trainer")
             trainer_address = trainer.get("address")
-            
+
             if self._connection_status_label:
-                self._connection_status_label.set_text(f"Connecting to {trainer_name}...")
+                self._connection_status_label.set_text(
+                    f"Connecting to {trainer_name}..."
+                )
                 self._connection_status_label.update()
-            
-            logger.info(f"Auto-connect: Connecting to {trainer_name} at {trainer_address}")
+
+            logger.info(
+                f"Auto-connect: Connecting to {trainer_name} at {trainer_address}"
+            )
             await self.controller.trainer._client.connect_to_device(trainer_address)
-            
+
             # Update UI to show connected state
             if self._connection_dot:
                 self._connection_dot.set_content(
@@ -897,12 +1123,12 @@ class WebUI:
             if self._connection_status_label:
                 self._connection_status_label.set_text(f"Connected to {trainer_name}")
                 self._connection_status_label.update()
-            
+
             logger.info(f"Auto-connect: Successfully connected to {trainer_name}")
-            
+
             # Subscribe to bike data so metrics flow when session starts
             # Note: subscription is handled by RideController.start_session()
-            
+
         except DeviceNotFoundError:
             logger.info("Auto-connect: Device not found during connection")
             if self._connection_status_label:
@@ -922,8 +1148,10 @@ class WebUI:
         self, title: str, description: str, path: str, shortcut: str
     ) -> None:
         """Render a training mode card."""
-        with ui.card().classes("metric-card flex-1 h-full cursor-pointer").on(
-            "click", lambda: ui.navigate.to(path)
+        with (
+            ui.card()
+            .classes("metric-card flex-1 h-full cursor-pointer")
+            .on("click", lambda: ui.navigate.to(path))
         ):
             ui.label(shortcut).classes(
                 "text-sm font-medium text-orange-600 bg-orange-50 "
@@ -935,41 +1163,39 @@ class WebUI:
     def _render_session(self, mode: str) -> None:
         """Render the full-screen session view with BIG metrics."""
         ui.html(GLOBAL_STYLES, sanitize=False)
-        
+
         mode_enum = {
             "free": RideMode.FREE,
             "erg": RideMode.ERG,
             "sim": RideMode.SIM,
         }.get(mode, RideMode.FREE)
-        
+
         mode_title = {"free": "Free Ride", "erg": "ERG Mode", "sim": "SIM Mode"}.get(
             mode, "Free Ride"
         )
-        
+
         with ui.column().classes("session-view"):
             # Top bar
-            with ui.row().classes(
-                "w-full justify-between items-center px-4 py-2"
-            ):
-                ui.button(
-                    "← Exit", on_click=lambda: self._exit_session()
-                ).classes("btn-secondary").props("flat")
-                
+            with ui.row().classes("w-full justify-between items-center px-4 py-2"):
+                ui.button("← Exit", on_click=lambda: self._exit_session()).classes(
+                    "btn-secondary"
+                ).props("flat")
+
                 ui.label(mode_title).classes("text-lg font-medium text-gray-600")
-                
+
                 self._time_label = ui.label("00:00").classes(
                     "text-2xl font-semibold text-gray-900"
                 )
-            
+
             ui.html('<div class="divider"></div>', sanitize=False)
-            
+
             # Main metric (POWER - biggest)
             with ui.column().classes("main-metric slide-up"):
                 with ui.row().classes("items-end justify-center"):
                     self._power_label = ui.label("---").classes("metric-value accent")
                     ui.label("W").classes("metric-unit")
                 ui.label("Power").classes("metric-label")
-                
+
                 # Target indicator for ERG mode
                 if mode == "erg":
                     with ui.row().classes("items-center gap-4 mt-8"):
@@ -982,9 +1208,9 @@ class WebUI:
                         ui.button(
                             "+", on_click=lambda: self._adjust_target(10)
                         ).classes("btn-secondary").props("round")
-            
+
             ui.html('<div class="divider"></div>', sanitize=False)
-            
+
             # Secondary metrics grid
             with ui.row().classes("secondary-metrics"):
                 with ui.column().classes("metric-card"):
@@ -992,39 +1218,39 @@ class WebUI:
                         "text-4xl font-semibold text-gray-900"
                     )
                     ui.label("Cadence").classes("metric-label")
-                
+
                 with ui.column().classes("metric-card"):
                     self._hr_label = ui.label("--").classes(
                         "text-4xl font-semibold text-gray-900"
                     )
                     ui.label("Heart Rate").classes("metric-label")
-                
+
                 with ui.column().classes("metric-card"):
                     self._speed_label = ui.label("--").classes(
                         "text-4xl font-semibold text-gray-900"
                     )
                     ui.label("Speed").classes("metric-label")
-                
+
                 with ui.column().classes("metric-card"):
                     self._distance_label = ui.label("--").classes(
                         "text-4xl font-semibold text-gray-900"
                     )
                     ui.label("Distance").classes("metric-label")
-            
+
             # Control bar
             with ui.row().classes("control-bar mt-auto"):
-                ui.button(
-                    "⏸ Pause", on_click=lambda: self._toggle_pause()
-                ).classes("btn-secondary")
-                ui.button(
-                    "■ Stop", on_click=lambda: self._stop_session()
-                ).classes("btn-primary")
-            
+                ui.button("⏸ Pause", on_click=lambda: self._toggle_pause()).classes(
+                    "btn-secondary"
+                )
+                ui.button("■ Stop", on_click=lambda: self._stop_session()).classes(
+                    "btn-primary"
+                )
+
             # Status
             self._status_label = ui.label("Starting session...").classes(
                 "text-center text-gray-500 mt-4"
             )
-        
+
         # Start session and update loop
         self._start_session(mode_enum)
 
@@ -1033,12 +1259,12 @@ class WebUI:
         trainer_name = "Simulated Trainer"  # Will be real when connected
         if self.controller.trainer.is_connected:
             trainer_name = "Connected Trainer"
-        
+
         self.controller.start_session(mode, trainer_name)
-        
+
         if self._status_label:
             self._status_label.set_text("Session active")
-        
+
         # Start UI update loop
         self._update_task = asyncio.create_task(self._update_loop())
 
@@ -1046,22 +1272,22 @@ class WebUI:
         """Update UI with current metrics."""
         while self.controller.is_active:
             metrics = self.controller.metrics
-            
+
             # Update power
             if self._power_label:
                 power = metrics.power_w if metrics.power_w else "---"
                 self._power_label.set_text(str(power))
-            
+
             # Update cadence
             if self._cadence_label:
                 cad = metrics.cadence_rpm if metrics.cadence_rpm else "--"
                 self._cadence_label.set_text(f"{cad} rpm")
-            
+
             # Update HR
             if self._hr_label:
                 hr = metrics.hr_bpm if metrics.hr_bpm else "--"
                 self._hr_label.set_text(f"{hr} bpm")
-            
+
             # Update speed
             if self._speed_label:
                 if metrics.speed_mps:
@@ -1069,22 +1295,22 @@ class WebUI:
                     self._speed_label.set_text(f"{speed_kph:.1f} km/h")
                 else:
                     self._speed_label.set_text("-- km/h")
-            
+
             # Update distance
             if self._distance_label:
                 dist_km = metrics.distance_m / 1000
                 self._distance_label.set_text(f"{dist_km:.2f} km")
-            
+
             # Update time
             if self._time_label:
                 elapsed = int(metrics.elapsed_s)
                 mins, secs = divmod(elapsed, 60)
                 self._time_label.set_text(f"{mins:02d}:{secs:02d}")
-            
+
             # Update target for ERG
             if self._target_label:
                 self._target_label.set_text(f"Target: {metrics.erg_target_w}W")
-            
+
             await asyncio.sleep(0.1)  # 10Hz update
 
     def _adjust_target(self, delta: int) -> None:
@@ -1099,10 +1325,10 @@ class WebUI:
 
     def _stop_session(self) -> None:
         """Stop the current session."""
-        session_id = self.controller.stop_session()
+        self.controller.stop_session()
         if self._update_task:
             self._update_task.cancel()
-        
+
         # Navigate to summary or home
         ui.navigate.to("/")
 
@@ -1117,63 +1343,77 @@ class WebUI:
     def _render_devices(self) -> None:
         """Render the devices management page."""
         self._render_header("Devices")
-        
+
         with ui.column().classes("w-full max-w-2xl mx-auto px-8 py-16 fade-in"):
             ui.label("Devices").classes("text-4xl font-semibold text-gray-900 mb-8")
-            
+
             # Trainer section
             with ui.card().classes("metric-card w-full mb-6"):
                 ui.label("Trainer").classes("text-lg font-medium text-gray-900 mb-4")
-                
+
                 connected = self.controller.trainer.is_connected
-                trainer_name = self.controller.trainer.device_info.get("name", "Trainer") if connected else None
-                
+                trainer_name = (
+                    self.controller.trainer.device_info.get("name", "Trainer")
+                    if connected
+                    else None
+                )
+
                 with ui.row().classes("items-center justify-between w-full"):
                     with ui.row().classes("items-center gap-2"):
                         dot_class = "connected" if connected else "disconnected"
-                        ui.html(f'<span class="status-dot {dot_class}"></span>', sanitize=False)
+                        ui.html(
+                            f'<span class="status-dot {dot_class}"></span>',
+                            sanitize=False,
+                        )
                         if connected:
                             status = f"Connected to {trainer_name}"
                         else:
                             status = "Not connected"
                         ui.label(status).classes("text-gray-600")
-                    
+
                     if connected:
                         ui.button(
-                            "Disconnect", 
-                            on_click=lambda: self._disconnect_trainer()
-                        ).classes("btn-secondary")
+                            "Disconnect", on_click=lambda: self._disconnect_trainer()
+                        ).classes("btn-secondary").style("min-width: 120px")
                     else:
                         ui.button("Scan", on_click=self._scan_trainers).classes(
                             "btn-primary"
-                        )
-            
+                        ).style("min-width: 120px")
+
             # HR Monitor section
             with ui.card().classes("metric-card w-full"):
                 ui.label("Heart Rate Monitor").classes(
                     "text-lg font-medium text-gray-900 mb-4"
                 )
-                
+
                 hr_connected = self.controller.hr_service.is_connected
-                hr_name = self.controller.hr_service.device_info.get("name", "HR Monitor") if hr_connected else None
-                
+                hr_name = (
+                    self.controller.hr_service.device_info.get("name", "HR Monitor")
+                    if hr_connected
+                    else None
+                )
+
                 with ui.row().classes("items-center justify-between w-full"):
                     with ui.row().classes("items-center gap-2"):
                         dot_class = "connected" if hr_connected else "disconnected"
-                        ui.html(f'<span class="status-dot {dot_class}"></span>', sanitize=False)
+                        ui.html(
+                            f'<span class="status-dot {dot_class}"></span>',
+                            sanitize=False,
+                        )
                         if hr_connected:
                             status = f"Connected to {hr_name}"
                         else:
                             status = "Not connected"
                         ui.label(status).classes("text-gray-600")
-                    
+
                     if hr_connected:
                         ui.button(
-                            "Disconnect",
-                            on_click=lambda: self._disconnect_hr()
-                        ).classes("btn-secondary")
+                            "Disconnect", on_click=lambda: self._disconnect_hr()
+                        ).classes("btn-secondary").style("min-width: 120px")
                     else:
-                        ui.button("Scan", on_click=self._scan_hr).classes("btn-primary")
+                        ui.button("Scan", on_click=self._scan_hr).classes(
+                            "btn-primary"
+                        ).style("min-width: 120px")
 
     async def _disconnect_trainer(self) -> None:
         """Disconnect the trainer and refresh the page."""
@@ -1246,34 +1486,34 @@ class WebUI:
     def _render_history(self) -> None:
         """Render the session history page."""
         self._render_header("History")
-        
+
         with ui.column().classes("w-full max-w-4xl mx-auto px-8 py-16 fade-in"):
             ui.label("Session History").classes(
                 "text-4xl font-semibold text-gray-900 mb-8"
             )
-            
+
             # TODO: Load real sessions from repository
             ui.label("No sessions recorded yet.").classes("text-gray-500")
 
     def _render_settings(self) -> None:
         """Render the settings page."""
         self._render_header("Settings")
-        
+
         config = get_config()
-        
+
         with ui.column().classes("w-full max-w-2xl mx-auto px-8 py-16 fade-in"):
             ui.label("Settings").classes("text-4xl font-semibold text-gray-900 mb-8")
-            
+
             # User settings
             with ui.card().classes("metric-card w-full mb-6"):
                 ui.label("Profile").classes("text-lg font-medium text-gray-900 mb-4")
-                
+
                 with ui.column().classes("gap-4"):
                     ui.input(
                         "Name",
                         value=config.settings.name or "",
                     ).classes("w-full")
-                    
+
                     with ui.row().classes("gap-4"):
                         ui.number(
                             "Weight (kg)",
@@ -1287,7 +1527,7 @@ class WebUI:
                             min=50,
                             max=500,
                         ).classes("flex-1")
-                    
+
                     with ui.row().classes("gap-4"):
                         ui.number(
                             "Max HR (bpm)",
@@ -1301,7 +1541,7 @@ class WebUI:
                             min=10,
                             max=100,
                         ).classes("flex-1")
-            
+
             ui.button("Save Settings", on_click=self._save_settings).classes(
                 "btn-primary"
             )
@@ -1315,7 +1555,7 @@ def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
     """Run the web UI server."""
     web_ui = WebUI()
     web_ui.setup()
-    
+
     ui.run(
         host=host,
         port=port,
@@ -1323,5 +1563,5 @@ def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
         favicon="🚴",
         dark=False,
         reload=False,
+        storage_secret="terminalride-dev-secret-change-in-production",
     )
-

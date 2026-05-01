@@ -68,12 +68,14 @@ class AppConfig:
 
         # Load or create settings
         self.settings = self._load_settings()
-        
+
         # App-level configuration
         self.log_level = "info"
         self.user_mass_kg = self.settings.mass_kg
         # Default to 250W if FTP not set
-        self.user_ftp_w = self.settings.ftp_w if self.settings.ftp_w is not None else 250
+        self.user_ftp_w = (
+            self.settings.ftp_w if self.settings.ftp_w is not None else 250
+        )
         self.connection_timeout_s = self.settings.reconnect_timeout_s
 
     def _load_settings(self) -> UserSettings:

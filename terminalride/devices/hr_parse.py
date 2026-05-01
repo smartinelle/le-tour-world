@@ -108,7 +108,9 @@ def parse_heart_rate_measurement(data: bytes) -> ParsedHrData:
     if energy_present:
         if len(data) < offset + 2:
             raise ValueError("HR data too short for energy expended field")
-        energy_expended_kj = int.from_bytes(data[offset : offset + 2], byteorder="little")
+        energy_expended_kj = int.from_bytes(
+            data[offset : offset + 2], byteorder="little"
+        )
         offset += 2
 
     # Parse RR-Intervals (if present)
@@ -130,4 +132,3 @@ def parse_heart_rate_measurement(data: bytes) -> ParsedHrData:
         rr_intervals_ms=rr_intervals_ms,
         flags=flags,
     )
-

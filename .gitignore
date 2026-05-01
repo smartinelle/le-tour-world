@@ -10,6 +10,9 @@ __pycache__/
 .coverage
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
+build/
+dist/
 
 # IDE
 .vscode/
@@ -24,3 +27,7 @@ terminalride.jsonl
 # OS
 .DS_Store
 Thumbs.db
+
+# Environment variables (secrets!)
+.env
+.env.example

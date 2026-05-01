@@ -106,7 +106,9 @@ class HrClient:
             raise DeviceNotFoundError(f"HR monitor at {address} not found")
 
         try:
-            self._client = BleakClient(device, disconnected_callback=self._on_disconnect)
+            self._client = BleakClient(
+                device, disconnected_callback=self._on_disconnect
+            )
             await self._client.connect()
             self._device = device
 
@@ -151,7 +153,9 @@ class HrClient:
 
         # Filter by name if specified
         if device_name:
-            matching = [d for d in devices if d.name and device_name.lower() in d.name.lower()]
+            matching = [
+                d for d in devices if d.name and device_name.lower() in d.name.lower()
+            ]
             if not matching:
                 available = [d.name for d in devices if d.name]
                 raise DeviceNotFoundError(
@@ -164,7 +168,9 @@ class HrClient:
         logger.info(f"Found HR monitor: {device.name} ({device.address})")
 
         try:
-            self._client = BleakClient(device, disconnected_callback=self._on_disconnect)
+            self._client = BleakClient(
+                device, disconnected_callback=self._on_disconnect
+            )
             await self._client.connect()
             self._device = device
 
@@ -286,7 +292,9 @@ class HrClient:
         try:
             # Read body sensor location
             try:
-                location_data = await self._client.read_gatt_char(self.BODY_SENSOR_LOCATION_UUID)
+                location_data = await self._client.read_gatt_char(
+                    self.BODY_SENSOR_LOCATION_UUID
+                )
                 location_code = location_data[0] if location_data else 0
                 self._device_info["sensor_location"] = self.SENSOR_LOCATIONS.get(
                     location_code, f"Unknown ({location_code})"
@@ -296,8 +304,12 @@ class HrClient:
 
             # Read manufacturer name
             try:
-                manufacturer_data = await self._client.read_gatt_char(self.MANUFACTURER_NAME_UUID)
-                self._device_info["manufacturer"] = manufacturer_data.decode("utf-8").strip("\x00")
+                manufacturer_data = await self._client.read_gatt_char(
+                    self.MANUFACTURER_NAME_UUID
+                )
+                self._device_info["manufacturer"] = manufacturer_data.decode(
+                    "utf-8"
+                ).strip("\x00")
             except Exception:
                 pass
 
@@ -310,8 +322,12 @@ class HrClient:
 
             # Read battery level
             try:
-                battery_data = await self._client.read_gatt_char(self.BATTERY_LEVEL_UUID)
-                self._device_info["battery_percent"] = battery_data[0] if battery_data else None
+                battery_data = await self._client.read_gatt_char(
+                    self.BATTERY_LEVEL_UUID
+                )
+                self._device_info["battery_percent"] = (
+                    battery_data[0] if battery_data else None
+                )
             except Exception:
                 pass
 
@@ -334,7 +350,9 @@ class HrClient:
         while not self.is_connected:
             try:
                 await asyncio.sleep(self._reconnect_delay)
-                logger.info(f"HR reconnection attempt (delay: {self._reconnect_delay:.1f}s)")
+                logger.info(
+                    f"HR reconnection attempt (delay: {self._reconnect_delay:.1f}s)"
+                )
 
                 if self._device:
                     self._client = BleakClient(
@@ -345,7 +363,9 @@ class HrClient:
 
                     # Re-subscribe if callback exists
                     if self._hr_callback:
-                        await self.subscribe_hr_data(self._hr_callback, self._raw_callback)
+                        await self.subscribe_hr_data(
+                            self._hr_callback, self._raw_callback
+                        )
 
                     self._reconnect_delay = 1.0
                     logger.info("HR reconnection successful")
@@ -356,4 +376,3 @@ class HrClient:
                 self._reconnect_delay = min(self._reconnect_delay * 2, max_delay)
 
         self._reconnect_task = None
-

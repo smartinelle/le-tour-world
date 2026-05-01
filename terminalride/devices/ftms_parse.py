@@ -169,7 +169,10 @@ def parse_indoor_bike_data(frame: bytes) -> ParsedBikeData:
     # Try spec-like parsing first; if it yields no useful fields, fall back
     try:
         result = parse_spec_like()
-        if any(v is not None for v in (result.power_w, result.cadence_rpm, result.speed_mps)):
+        if any(
+            v is not None
+            for v in (result.power_w, result.cadence_rpm, result.speed_mps)
+        ):
             return result
     except Exception:
         # Fall back to legacy on any parsing error

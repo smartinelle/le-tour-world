@@ -1,281 +1,231 @@
 # TerminalRide (Le-tour)
 
-Terminal-first indoor cycling application for connecting to Wahoo KICKR and other BLE FTMS trainers.
+Web-first indoor cycling application for connecting to Wahoo KICKR and other
+BLE FTMS trainers.
+
+The current application runs as a local Python process with a browser UI. Python
+owns trainer communication, ride state, persistence, and domain logic; the
+browser is the presentation layer. This keeps the core usable for future
+interfaces such as a Three.js ride world, mobile app, or restored terminal UI.
+
+## Current Status
+
+- **Active UI:** NiceGUI web app in `terminalride/web`, started by `run_web.py`.
+- **Core domain:** UI-neutral ride/controller/device services in
+  `terminalride/domain`.
+- **Trainer connection:** Python/Bleak FTMS client remains the primary local
+  hardware path.
+- **Native terminal UI:** the old Rich/TUI entry points and `terminalride/ui`
+  package have been removed during the web migration. The README no longer
+  documents `python -m terminalride` as a working app entry point.
+- **Browser BLE:** `terminalride/web/static/ble.js` is an experimental
+  Web Bluetooth client. It is not the default path and browser support is
+  limited compared with the Python/Bleak local app.
 
 ## Features
 
-- **BLE FTMS Support**: Connect to Wahoo KICKR and compatible trainers
-- **Heart Rate Monitors**: Connect to BLE HR straps (Wahoo TICKR, Garmin HRM, Polar H10, etc.)
-- **Training Modes**: 
-  - Free Ride: Natural cycling without constraints
-  - ERG Mode: Target power training with PI controller
-  - SIM Mode: Physics-based simulation with grade control
-- **Terminal UI**: Rich-based TUI for full-screen experience
-- **Data Persistence**: Session recording with JSONL/SQLite dual storage
-- **CSV Export**: Export training data for analysis
-- **Real-time Metrics**: Power, cadence, speed, distance, heart rate
-- **Training Analytics**: Normalized Power (NP), Intensity Factor (IF), Training Stress Score (TSS)
+- **BLE FTMS Support:** connect to Wahoo KICKR and compatible trainers.
+- **Heart Rate Monitors:** connect to standard BLE HR straps such as Wahoo
+  TICKR, Garmin HRM, and Polar H10/H9/OH1.
+- **Training Modes:**
+  - Free Ride: natural cycling without resistance control.
+  - ERG Mode: target-power training.
+  - SIM Mode: grade-based simulation and virtual speed/distance.
+- **Web UI:** browser-based ride surface, device management, settings, and
+  optional Supabase authentication.
+- **Data Persistence:** session and sample storage through the repository layer.
+- **CSV Export:** export training data for external analysis.
+- **Real-time Metrics:** power, cadence, speed, distance, heart rate, elapsed
+  time, ERG target, and SIM grade.
+- **Training Analytics:** Normalized Power (NP), Intensity Factor (IF), and
+  Training Stress Score (TSS).
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.11+ 
-- macOS/Linux (Windows support requires additional BLE stack configuration)
-- BLE adapter for trainer connectivity
+- Python 3.11+
+- macOS/Linux with Bluetooth available
+- BLE FTMS trainer for real hardware rides
+- Chrome/Edge only if experimenting with Web Bluetooth directly
 
 ### Setup
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd le-tour
 
-# Create virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
+python3 -m venv .venv
+source .venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the application
-python -m terminalride
+pip install -e ".[dev]"
 ```
 
-## Usage
+`requirements.txt` is still present for compatibility with older setup flows,
+but `pyproject.toml` is the current project metadata source.
 
-### Starting the Application
+## Running The Web App
 
 ```bash
-python -m terminalride
+python run_web.py
 ```
 
-The app will:
-1. Show startup screen
-2. Scan for BLE FTMS trainers  
-3. Connect automatically when found
-4. Display home menu
+Then open:
 
-### Navigation
+```text
+http://127.0.0.1:8080
+```
 
-**Home Menu:**
-- `1` - Free Ride Mode
-- `2` - ERG Mode (Target Power)  
-- `3` - SIM Mode (Virtual Route)
-- `d` - Device Management (scan & connect)
-- `s` - Statistics & History
-- `c` - Settings
-- `q` - Quit
+The local web app will:
 
-**Device Management:**
-- `t` - Scan for trainers
-- `h` - Scan for HR monitors
-- `1-9` - Connect to trainer by number
-- `a-i` - Connect to HR monitor by letter
-- `T` - Disconnect trainer (Shift+T)
-- `H` - Disconnect HR monitor (Shift+H)
-- `Esc` - Back to home
-
-**Training Views:**
-- `Space` - Pause/Resume session
-- `+/-` - Adjust target power (ERG mode)
-- `↑/↓` - Change grade (SIM mode)  
-- `l` - Mark lap
-- `s` - Save & stop session
-- `Esc` - Return to home
-
-**General:**
-- `?` - Toggle help overlay
-
-### Training Modes
-
-#### Free Ride
-Natural cycling experience with no constraints. Pedal at your own pace while the app records all metrics.
-
-#### ERG Mode  
-Target power training using advanced PI controller:
-- Set target power (100-400W)
-- Trainer automatically adjusts resistance
-- Maintains consistent power output
-- Anti-windup and rate limiting for smooth control
-
-#### SIM Mode
-Physics-based cycling simulation:
-- Realistic power/speed relationship
-- Grade control (-10% to +15%)
-- Accounts for rolling resistance, air resistance, and gravity
-- Uses Newton's method for accurate speed calculations
-
-### Data Management
-
-#### Session Recording
-- Automatic session creation when entering training modes
-- Real-time sample recording (power, cadence, speed, distance)
-- Session metadata (mode, duration, trainer info)
-
-#### Data Storage
-- Primary: JSONL format for data integrity
-- Secondary: SQLite for fast queries and analysis
-- Location: `~/.terminalride/` directory
-
-#### Export Options
-- CSV export for individual sessions
-- Compatible with external analysis tools
-- Session summaries with calculated metrics
+1. Render the browser UI.
+2. Scan for compatible trainers when requested or during auto-connect flows.
+3. Connect to the trainer through the Python FTMS client.
+4. Start Free Ride, ERG, or SIM sessions from the web UI.
+5. Record metrics and session samples through the domain/store layers.
 
 ## Architecture
 
-### Core Components
+### Core Boundaries
 
-- **`terminalride/app.py`** - Main application controller with async event loops
-- **`terminalride/ui/views.py`** - Rich-based TUI views and navigation
-- **`terminalride/devices/ftms_client.py`** - BLE FTMS protocol implementation
-- **`terminalride/modes/`** - Training mode controllers (ERG/SIM)
-- **`terminalride/store/`** - Data persistence and export
+- `terminalride/domain`: ride lifecycle, device services, event models, and
+  UI-neutral state.
+- `terminalride/devices`: BLE FTMS and Heart Rate clients plus parsers.
+- `terminalride/modes`: ERG and SIM mode logic.
+- `terminalride/store`: repository, models, CSV export, and storage adapters.
+- `terminalride/web`: NiceGUI UI, auth, pages, and browser-facing assets.
 
-### Key Features
+The frontend must consume domain state through stable contracts instead of
+reaching into BLE clients directly. This is especially important for the planned
+Three.js ride world: the 3D layer should consume a ride snapshot/stream, not
+trainer internals.
 
-- **Protocol-oriented design** - Clean device abstractions
-- **Async/await** - Non-blocking BLE communication and UI updates  
-- **Type safety** - Comprehensive mypy type checking
-- **Robust error handling** - Graceful degradation and recovery
-- **Comprehensive testing** - Unit tests for all core functionality
+### Current Migration Notes
+
+The project used to be terminal-first with a Rich-based UI. The current branch
+has moved toward a browser-first app and the native terminal surface is not
+available in the working tree. The core rule still stands: keep business logic
+in the domain layer so a terminal UI can be restored later without rewriting
+trainer control, persistence, or analytics.
+
+## Training Modes
+
+### Free Ride
+
+Records live trainer and heart-rate data without controlling resistance.
+
+### ERG Mode
+
+Tracks a target power range and sends target power commands to the trainer when
+the trainer is connected and control is available.
+
+### SIM Mode
+
+Uses grade-based simulation parameters and the local SIM physics model to
+calculate virtual speed and distance.
+
+The SIM physics solver is in `terminalride/modes/sim.py` and uses:
+
+```text
+P = 0.5 * rho * CdA * v^3 + m * g * Crr * v + m * g * sin(theta) * v + P0
+```
+
+## Data Management
+
+- Session metadata and samples flow through `terminalride/store`.
+- JSONL remains the durable append-friendly source of truth.
+- SQLite supports faster local history/statistics queries.
+- CSV export is layered on top of repository data.
+
+By default, local data is written below the TerminalRide config directory:
+
+```text
+~/.config/terminalride/data
+```
+
+## Configuration
+
+Edit:
+
+```text
+~/.config/terminalride/config.json
+```
+
+Example:
+
+```json
+{
+  "name": "Rider",
+  "age": 30,
+  "gender": "male",
+  "mass_kg": 75.0,
+  "ftp_w": 250,
+  "max_hr_bpm": 185,
+  "default_erg_power_w": 150,
+  "default_sim_grade_pct": 0.0,
+  "speed_source": "trainer"
+}
+```
 
 ## Development
 
-See `docs/adr/` for the current set of accepted architecture decisions before making structural changes.
+See `docs/adr/` for accepted architecture decisions before structural changes.
 
-### Running Tests
+### Tests
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest -q
 ```
 
 ### Code Quality
 
 ```bash
-# Linting
-ruff check .
-ruff check . --fix  # Auto-fix issues
-
-# Formatting  
 black .
-
-# Type checking
+ruff check .
 mypy .
 ```
 
-### Testing with Real Hardware
+The mypy configuration is strict. Some existing modules may still need cleanup
+before a full-project mypy run is clean; keep new domain code typed and
+UI-neutral.
 
-1. Power on your FTMS trainer (e.g., Wahoo KICKR)
-2. Ensure Bluetooth is enabled
-3. Run the app - it will auto-discover and connect
-4. Enter training mode and start pedaling
-5. Data will be recorded automatically
+## Testing With Real Hardware
 
-### Demo Script
-
-A simple hardware demo is available at `examples/demo_trainer.py`:
-
-```bash
-python examples/demo_trainer.py
-```
-
-This connects to a trainer and demonstrates ERG/SIM control outside the full TUI.
+1. Power on the FTMS trainer.
+2. Ensure Bluetooth is enabled.
+3. Run `python run_web.py`.
+4. Open `http://127.0.0.1:8080`.
+5. Connect the trainer from the Devices flow or use the auto-connect path.
+6. Start a ride mode and verify live metrics update.
 
 ## Technical Details
 
-### BLE FTMS Protocol (Trainers)
+### BLE FTMS Protocol
 
 - Service UUID: `00001826-0000-1000-8000-00805f9b34fb`
-- Indoor Bike Data: Real-time power, cadence, speed
-- Control Point: ERG power control, SIM grade control
-- Auto-reconnection with exponential backoff
+- Indoor Bike Data characteristic: live power, cadence, and speed.
+- Fitness Machine Control Point: ERG target power and SIM parameters.
+- Fitness Machine Status: optional status notifications.
 
 ### BLE Heart Rate Profile
 
 - Service UUID: `0000180D-0000-1000-8000-00805f9b34fb`
-- Supports: Wahoo TICKR, Garmin HRM-Pro/Dual, Polar H10/H9/OH1
-- Features: Heart rate, sensor contact detection, RR intervals
-- **Note**: Whoop is NOT supported (closed ecosystem, no BLE broadcast)
-
-### ERG Controller 
-
-PI controller with:
-- Proportional gain: 0.5
-- Integral gain: 0.1  
-- Anti-windup protection
-- Rate limiting: ±2W/second
-- Power range: 100-400W
-
-### SIM Physics
-
-Power balance equation:
-```
-P = 0.5 * ρ * CdA * v³ + m * g * Crr * v + m * g * sin(θ) * v + P₀
-```
-
-Where:
-- ρ = air density (1.225 kg/m³)
-- CdA = aerodynamic drag (0.4 m²)  
-- m = rider mass (configurable)
-- Crr = rolling resistance (0.0045)
-- P₀ = drivetrain loss (10W)
-
-## Configuration
-
-Edit `~/.config/terminalride/config.json` (or via the in-app Settings view):
-
-```json
-{
-    "name": "Rider",
-    "age": 30,
-    "gender": "male",
-    "mass_kg": 75.0,
-    "ftp_w": 250,
-    "log_level": "info",
-    "connection_timeout_s": 10.0
-}
-```
+- Measurement characteristic: heart rate and optional RR intervals.
+- Whoop is not supported because it does not expose standard BLE HR broadcast
+  data for this use case.
 
 ## Troubleshooting
 
 ### BLE Connection Issues
 
-1. **Trainer not found**: Ensure trainer is in pairing mode
-2. **Connection drops**: Check BLE adapter power management  
-3. **Permission denied**: Run with sudo on some Linux distributions
-4. **macOS permissions**: Grant Bluetooth access in System Preferences
-
-### Performance Issues
-
-1. **High CPU usage**: Reduce UI refresh rate in code
-2. **Memory leaks**: Check for unclosed BLE connections
-3. **Slow startup**: Clear old log files from data directory
+1. Ensure the trainer is powered on and awake.
+2. Close other apps connected to the trainer.
+3. Confirm the OS has granted Bluetooth permission.
+4. On Linux, confirm the BLE adapter and permissions are configured correctly.
 
 ### Data Issues
 
-1. **Missing sessions**: Check `~/.terminalride/sessions.jsonl`
-2. **Corrupt data**: Delete `~/.terminalride/terminalride.db` to clear the cache. JSONL remains the source of truth, but historical sessions must be re-imported manually (see ADR-001 follow-ups).
-3. **Export failures**: Verify write permissions in export directory
-
-## Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Ensure all tests pass
-4. Reference or add an ADR for architecture-impacting changes (`docs/adr/`)
-5. Add tests for new functionality  
-6. Submit pull request
-
-## License
-
-[License information to be added]
-
-## Acknowledgments
-
-- Rich library for excellent TUI capabilities
-- Bleak for cross-platform BLE support
-- FTMS specification for standardized trainer communication
-- Wahoo for creating robust training hardware
+1. Check `~/.config/terminalride/data/sessions.jsonl`.
+2. Check `~/.config/terminalride/data/samples.jsonl`.
+3. If SQLite query results are stale or corrupt, remove the SQLite cache and
+   rebuild/import from JSONL once a maintenance tool exists.

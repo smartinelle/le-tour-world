@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
-import math
 
 
 @dataclass(frozen=True)
@@ -192,7 +191,11 @@ def calculate_tss(
         raise ValueError(f"FTP must be positive, got {ftp_w}")
 
     # TSS = (duration_s * NP * IF) / (FTP * 3600) * 100
-    tss = (duration_seconds * normalized_power_w * intensity_factor) / (ftp_w * 3600) * 100
+    tss = (
+        (duration_seconds * normalized_power_w * intensity_factor)
+        / (ftp_w * 3600)
+        * 100
+    )
 
     return tss
 
@@ -407,4 +410,3 @@ def calculate_time_in_zones(
                 break
 
     return time_in_zone
-

@@ -11,7 +11,13 @@ from typing import Callable, Dict, Any, List
 
 from terminalride.devices.base import BikeSample
 from terminalride.devices.ftms_client import FtmsClient
-from .events import DomainEvent, DeviceConnected, DeviceDisconnected, SampleReceived, ControlGranted
+from .events import (
+    DomainEvent,
+    DeviceConnected,
+    DeviceDisconnected,
+    SampleReceived,
+    ControlGranted,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +58,13 @@ class TrainerService:
     async def scan_and_connect(self, timeout_s: float = 10.0) -> None:
         await self._client.scan_and_connect(timeout_s=timeout_s)
         info = self._client.device_info
-        self._emit(DeviceConnected(name=info.get("name", "Unknown"), address=info.get("address"), rssi=info.get("rssi")))
+        self._emit(
+            DeviceConnected(
+                name=info.get("name", "Unknown"),
+                address=info.get("address"),
+                rssi=info.get("rssi"),
+            )
+        )
 
     async def disconnect(self) -> None:
         await self._client.disconnect()

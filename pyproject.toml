@@ -4,19 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "terminalride"
-version = "0.1.0"
-description = "Terminal-first indoor cycling app"
+version = "0.2.0"
+description = "Web-based indoor cycling app"
 requires-python = ">=3.11"
 dependencies = [
     "bleak>=1.1.0",
-    "rich>=14.1.0",
     "numpy>=2.3.0",
     "pydantic>=2.11.0",
     "nicegui>=2.0.0",
+    "supabase>=2.0.0",
+    "python-dotenv>=1.0.0",
 ]
-
-[project.scripts]
-terminalride = "terminalride.__main__:main"
 
 [project.optional-dependencies]
 dev = [

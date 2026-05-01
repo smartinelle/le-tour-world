@@ -12,7 +12,13 @@ from typing import Callable, Dict, Any, List, Optional
 from terminalride.devices.base import HrSample
 from terminalride.devices.hr_client import HrClient
 from terminalride.devices.hr_parse import ParsedHrData
-from .events import DomainEvent, DeviceConnected, DeviceDisconnected, HrSampleReceived, ErrorEvent
+from .events import (
+    DomainEvent,
+    DeviceConnected,
+    DeviceDisconnected,
+    HrSampleReceived,
+    ErrorEvent,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -87,10 +93,12 @@ class HrService:
             return await self._client.scan_available(timeout_s=timeout_s)
         except Exception as e:
             logger.error(f"HR scan failed: {e}")
-            self._emit(ErrorEvent(
-                code="HR_E_SCAN_FAILED",
-                message=str(e),
-            ))
+            self._emit(
+                ErrorEvent(
+                    code="HR_E_SCAN_FAILED",
+                    message=str(e),
+                )
+            )
             return []
 
     async def scan_and_connect(
@@ -110,18 +118,22 @@ class HrService:
                 device_name=device_name,
             )
             info = self._client.device_info
-            self._emit(DeviceConnected(
-                name=info.get("name", "Unknown HR"),
-                device_type="hr",
-                address=info.get("address"),
-                rssi=info.get("rssi"),
-            ))
+            self._emit(
+                DeviceConnected(
+                    name=info.get("name", "Unknown HR"),
+                    device_type="hr",
+                    address=info.get("address"),
+                    rssi=info.get("rssi"),
+                )
+            )
         except Exception as e:
             logger.error(f"HR connection failed: {e}")
-            self._emit(ErrorEvent(
-                code="HR_E_CONNECTION_FAILED",
-                message=str(e),
-            ))
+            self._emit(
+                ErrorEvent(
+                    code="HR_E_CONNECTION_FAILED",
+                    message=str(e),
+                )
+            )
             raise
 
     async def disconnect(self) -> None:
@@ -140,7 +152,9 @@ class HrService:
 
         def _sample_handler(sample: HrSample) -> None:
             self._last_hr = sample.get("hr_bpm")
-            self._emit(HrSampleReceived(sample=sample, sensor_contact=self._last_contact))
+            self._emit(
+                HrSampleReceived(sample=sample, sensor_contact=self._last_contact)
+            )
             callback(sample)
 
         def _raw_handler(parsed: ParsedHrData) -> None:
@@ -159,4 +173,3 @@ def get_hr_service() -> HrService:
     if _hr_service is None:
         _hr_service = HrService()
     return _hr_service
-

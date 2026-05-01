@@ -460,4 +460,3 @@ class TestEdgeCases:
 
         assert metrics is not None
         assert metrics.intensity_factor < 1.0
-

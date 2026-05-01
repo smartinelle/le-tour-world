@@ -226,7 +226,11 @@ class FtmsClient:
                         parsed.flags,
                         str(parsed.power_w),
                         str(parsed.cadence_rpm),
-                        f"{parsed.speed_mps:.3f}" if parsed.speed_mps is not None else "None",
+                        (
+                            f"{parsed.speed_mps:.3f}"
+                            if parsed.speed_mps is not None
+                            else "None"
+                        ),
                         data.hex(),
                     )
                 elif self._notify_count % 100 == 0:
@@ -236,7 +240,11 @@ class FtmsClient:
                         parsed.flags,
                         str(parsed.power_w),
                         str(parsed.cadence_rpm),
-                        f"{parsed.speed_mps:.3f}" if parsed.speed_mps is not None else "None",
+                        (
+                            f"{parsed.speed_mps:.3f}"
+                            if parsed.speed_mps is not None
+                            else "None"
+                        ),
                     )
 
                 # Call user callback
