@@ -97,6 +97,8 @@ def test_ride3d_motion_model_defines_distance_route_segments():
     assert "routeSegments = []" in RIDE_MOTION_JS
     assert "segmentForDistance(distanceM)" in RIDE_MOTION_JS
     assert "routeSegmentName" in RIDE_MOTION_JS
+    assert "routeSegmentKind" in RIDE_MOTION_JS
+    assert "routeSurface" in RIDE_MOTION_JS
     assert "routeSegmentProgress" in RIDE_MOTION_JS
     assert "routeSegmentRemainingM" in RIDE_MOTION_JS
     assert "routeGradePct" in RIDE_MOTION_JS
@@ -124,6 +126,14 @@ def test_ride3d_scenery_palette_tracks_route_segment():
     assert "renderer.setClearColor(palette.sky, 1)" in RIDE3D_JS
     assert "groundMaterial.color.setHex(palette.ground)" in RIDE3D_JS
     assert "hillMaterial.color.setHex(palette.hills)" in RIDE3D_JS
+
+
+def test_ride3d_surface_palette_tracks_route_segment():
+    """Segment surface updates the lightweight road material."""
+    assert "const surfaceColors" in RIDE3D_JS
+    assert "function applySurface(surface)" in RIDE3D_JS
+    assert "applySurface(sceneState.routeSurface)" in RIDE3D_JS
+    assert "roadMaterial.color.setHex" in RIDE3D_JS
 
 
 def test_ride3d_builds_route_profile_hud_from_motion_state():

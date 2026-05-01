@@ -13,6 +13,8 @@ function normalizeSegments(segments) {
       name: String(segment.name || "Route segment"),
       lengthM: Math.max(1, numeric(segment.lengthM ?? segment.length_m, 1)),
       gradePct: numeric(segment.gradePct ?? segment.grade_pct),
+      kind: String(segment.kind || "rolling"),
+      surface: String(segment.surface || "asphalt"),
       scenery: String(segment.scenery || "fields"),
     }))
     .filter((segment) => segment.lengthM > 0);
@@ -42,6 +44,8 @@ export class RideMotionModel {
     this.gradePct = 0;
     this.routeGradePct = 0;
     this.routeSegmentName = "Route segment";
+    this.routeSegmentKind = "rolling";
+    this.routeSurface = "asphalt";
     this.routeSegmentProgress = 0;
     this.routeSegmentRemainingM = 0;
     this.nextSegmentName = "Route segment";
@@ -63,6 +67,8 @@ export class RideMotionModel {
     const routeSegment = this.segmentForDistance(this.distanceM);
     this.routeGradePct = routeSegment.gradePct;
     this.routeSegmentName = routeSegment.name;
+    this.routeSegmentKind = routeSegment.kind;
+    this.routeSurface = routeSegment.surface;
     this.routeSegmentProgress = routeSegment.progress;
     this.routeSegmentRemainingM = routeSegment.remainingM;
     this.nextSegmentName = routeSegment.nextName;
@@ -89,6 +95,8 @@ export class RideMotionModel {
         remainingM: 0,
         nextName: "Route segment",
         nextGradePct: 0,
+        kind: "rolling",
+        surface: "asphalt",
         scenery: "fields",
       };
     }
@@ -104,6 +112,8 @@ export class RideMotionModel {
         return {
           name: segment.name,
           gradePct: segment.gradePct,
+          kind: segment.kind,
+          surface: segment.surface,
           progress: routeDistanceM / segment.lengthM,
           remainingM: segment.lengthM - routeDistanceM,
           nextName: nextSegment.name,
@@ -155,6 +165,8 @@ export class RideMotionModel {
       gradePct: this.gradePct,
       routeGradePct: this.routeGradePct,
       routeSegmentName: this.routeSegmentName,
+      routeSegmentKind: this.routeSegmentKind,
+      routeSurface: this.routeSurface,
       routeSegmentProgress: this.routeSegmentProgress,
       routeSegmentRemainingM: this.routeSegmentRemainingM,
       nextSegmentName: this.nextSegmentName,

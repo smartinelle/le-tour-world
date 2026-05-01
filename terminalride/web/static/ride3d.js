@@ -44,6 +44,12 @@ const sceneryPalettes = {
   },
 };
 
+const surfaceColors = {
+  asphalt: 0x202421,
+  gravel: 0x6f6758,
+  dirt: 0x72543e,
+};
+
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xd9edf7, 42, 150);
 
@@ -246,6 +252,10 @@ function applyScenery(scenery) {
   hillMaterial.color.setHex(palette.hills);
 }
 
+function applySurface(surface) {
+  roadMaterial.color.setHex(surfaceColors[surface] || surfaceColors.asphalt);
+}
+
 function updateSegmentGate(sceneState) {
   const opacity = sceneState.segmentGateAlpha;
   segmentGate.visible = opacity > 0.02;
@@ -374,6 +384,7 @@ function frame(now) {
   hills.position.y = sceneState.horizonLift;
   hills.rotation.y = sceneState.routeSegmentProgress * 0.08;
   applyScenery(sceneState.scenery);
+  applySurface(sceneState.routeSurface);
   updateSegmentGate(sceneState);
   camera.position.y = 3.6 + sceneState.cameraBob;
   camera.lookAt(0, 0.35 + sceneState.cameraPitch, -22);
