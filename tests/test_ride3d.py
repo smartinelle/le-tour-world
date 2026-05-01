@@ -70,6 +70,43 @@ def test_ride3d_uses_grade_aware_render_state():
     assert "horizonLift" in RIDE_MOTION_JS
 
 
+def test_ride3d_motion_model_defines_distance_route_segments():
+    """Route segments turn distance into render state for the browser scene."""
+    assert "export const DEFAULT_ROUTE_SEGMENTS" in RIDE_MOTION_JS
+    assert "segmentForDistance(distanceM)" in RIDE_MOTION_JS
+    assert "routeSegmentName" in RIDE_MOTION_JS
+    assert "routeSegmentProgress" in RIDE_MOTION_JS
+    assert "routeGradePct" in RIDE_MOTION_JS
+    assert "scenery" in RIDE_MOTION_JS
+
+
+def test_ride3d_hud_and_scene_use_route_segment_state():
+    """Route segment state feeds HUD text and scene variation."""
+    assert "sceneState.routeSegmentName" in RIDE3D_JS
+    assert "sceneState.gradePct.toFixed(1)" in RIDE3D_JS
+    assert "sceneState.routeSegmentProgress" in RIDE3D_JS
+    assert "hills.rotation.y = sceneState.routeSegmentProgress" in RIDE3D_JS
+
+
+def test_ride3d_scenery_palette_tracks_route_segment():
+    """Segment scenery updates the lightweight world palette."""
+    assert "const sceneryPalettes" in RIDE3D_JS
+    assert "function applyScenery(scenery)" in RIDE3D_JS
+    assert "applyScenery(sceneState.scenery)" in RIDE3D_JS
+    assert "renderer.setClearColor(palette.sky, 1)" in RIDE3D_JS
+    assert "groundMaterial.color.setHex(palette.ground)" in RIDE3D_JS
+    assert "hillMaterial.color.setHex(palette.hills)" in RIDE3D_JS
+
+
+def test_ride3d_builds_route_profile_hud_from_motion_state():
+    """Route profile HUD stays browser-side and uses render state."""
+    assert "function createRouteProfile(parent)" in RIDE3D_JS
+    assert "const routeProfile = createRouteProfile(hud.statusPanel)" in RIDE3D_JS
+    assert "routeProfile.update(sceneState, snapshot.active)" in RIDE3D_JS
+    assert "sceneState.routeSegmentProgress * 100" in RIDE3D_JS
+    assert "sceneState.routeSegmentName" in RIDE3D_JS
+
+
 def test_parse_ride_mode():
     """Browser-supplied ride mode strings map to domain modes."""
     assert parse_ride_mode("free") is RideMode.FREE

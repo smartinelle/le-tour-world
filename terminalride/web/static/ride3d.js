@@ -11,6 +11,39 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setClearColor(0xd9edf7, 1);
 
+const sceneryPalettes = {
+  fields: {
+    sky: 0xd9edf7,
+    ground: 0x8fae76,
+    shoulder: 0xb7c5ac,
+    hills: 0x6f8b61,
+  },
+  forest: {
+    sky: 0xcfe3df,
+    ground: 0x496d45,
+    shoulder: 0x6f825f,
+    hills: 0x2f5d38,
+  },
+  village: {
+    sky: 0xd7e5e8,
+    ground: 0x9aa174,
+    shoulder: 0xc0b69d,
+    hills: 0x7b855d,
+  },
+  ridge: {
+    sky: 0xdce6ef,
+    ground: 0x6d8060,
+    shoulder: 0xa8aa9a,
+    hills: 0x64715a,
+  },
+  river: {
+    sky: 0xc9e6f1,
+    ground: 0x78a875,
+    shoulder: 0x9ebea7,
+    hills: 0x598261,
+  },
+};
+
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xd9edf7, 42, 150);
 
@@ -28,17 +61,19 @@ scene.add(sun);
 const roadGroup = new THREE.Group();
 scene.add(roadGroup);
 
+const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x8fae76 });
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(220, 260),
-  new THREE.MeshLambertMaterial({ color: 0x8fae76 }),
+  groundMaterial,
 );
 ground.rotation.x = -Math.PI / 2;
 ground.position.z = -54;
 roadGroup.add(ground);
 
+const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x202421 });
 const road = new THREE.Mesh(
   new THREE.PlaneGeometry(8.6, 260),
-  new THREE.MeshLambertMaterial({ color: 0x202421 }),
+  roadMaterial,
 );
 road.rotation.x = -Math.PI / 2;
 road.position.y = 0.015;
@@ -94,6 +129,7 @@ for (let i = 0; i < 9; i += 1) {
 scene.add(hills);
 
 const hud = {
+  statusPanel: document.querySelector(".status"),
   power: document.querySelector("#power"),
   speed: document.querySelector("#speed"),
   cadence: document.querySelector("#cadence"),
@@ -112,13 +148,74 @@ const hud = {
 
 const rideClient = new RideApiClient();
 const motion = new RideMotionModel({ dashSpacing: 7.8 });
+let activeScenery = "fields";
+
+function createRouteProfile(parent) {
+  const profile = document.createElement("div");
+  const label = document.createElement("span");
+  const track = document.createElement("div");
+  const fill = document.createElement("div");
+
+  profile.hidden = true;
+  Object.assign(profile.style, {
+    marginTop: "10px",
+  });
+  Object.assign(label.style, {
+    display: "block",
+    fontSize: "0.74rem",
+    fontWeight: "800",
+    letterSpacing: "0.08em",
+    lineHeight: "1",
+    marginBottom: "7px",
+    textTransform: "uppercase",
+  });
+  Object.assign(track.style, {
+    background: "rgba(17, 24, 39, 0.14)",
+    borderRadius: "999px",
+    height: "5px",
+    overflow: "hidden",
+  });
+  Object.assign(fill.style, {
+    background: "var(--accent)",
+    borderRadius: "999px",
+    height: "100%",
+    transition: "width 160ms linear",
+    width: "0%",
+  });
+
+  track.append(fill);
+  profile.append(label, track);
+  parent.append(profile);
+
+  return {
+    update(sceneState, active) {
+      profile.hidden = !active;
+      label.textContent = `${sceneState.routeSegmentName} · ${sceneState.gradePct.toFixed(1)}%`;
+      fill.style.width = `${Math.round(sceneState.routeSegmentProgress * 100)}%`;
+    },
+  };
+}
+
+const routeProfile = createRouteProfile(hud.statusPanel);
+
+function applyScenery(scenery) {
+  if (scenery === activeScenery) return;
+
+  const palette = sceneryPalettes[scenery] || sceneryPalettes.fields;
+  activeScenery = scenery;
+  renderer.setClearColor(palette.sky, 1);
+  scene.fog.color.setHex(palette.sky);
+  groundMaterial.color.setHex(palette.ground);
+  shoulderMaterial.color.setHex(palette.shoulder);
+  hillMaterial.color.setHex(palette.hills);
+}
 
 function formatValue(value, fallback = "--") {
   return value === null || value === undefined ? fallback : String(value);
 }
 
 function updateHud(snapshot) {
-  motion.updateFromSnapshot(snapshot);
+  const sceneState = motion.updateFromSnapshot(snapshot);
   hud.power.textContent = snapshot.active ? formatValue(snapshot.power_w) : "--";
   hud.speed.textContent =
     snapshot.active && snapshot.speed_mps
@@ -141,8 +238,9 @@ function updateHud(snapshot) {
         ? "Ride paused"
         : "Ready to ride";
   hud.mode.textContent = snapshot.active
-    ? `${snapshot.mode || "free"} mode · ${snapshot.trainer_name || "demo source"}`
+    ? `${snapshot.mode || "free"} mode · ${sceneState.routeSegmentName} · ${sceneState.gradePct.toFixed(1)}%`
     : "Start a session to drive the road";
+  routeProfile.update(sceneState, snapshot.active);
 
   hud.startPanel.hidden = Boolean(snapshot.active);
   hud.activeControls.hidden = !snapshot.active;
@@ -227,6 +325,8 @@ function frame(now) {
 
   roadGroup.rotation.x = sceneState.roadPitch;
   hills.position.y = sceneState.horizonLift;
+  hills.rotation.y = sceneState.routeSegmentProgress * 0.08;
+  applyScenery(sceneState.scenery);
   camera.position.y = 3.6 + sceneState.cameraBob;
   camera.lookAt(0, 0.35 + sceneState.cameraPitch, -22);
   renderer.render(scene, camera);

@@ -7,15 +7,40 @@ function numeric(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+export const DEFAULT_ROUTE_SEGMENTS = [
+  { name: "Valley Rollers", lengthM: 420, gradePct: 0.4, scenery: "fields" },
+  { name: "Pine Rise", lengthM: 360, gradePct: 3.2, scenery: "forest" },
+  { name: "Mill Descent", lengthM: 320, gradePct: -2.1, scenery: "village" },
+  { name: "Ridge Steps", lengthM: 460, gradePct: 5.6, scenery: "ridge" },
+  { name: "River Run", lengthM: 520, gradePct: -0.6, scenery: "river" },
+];
+
+function normalizeSegments(segments) {
+  return segments
+    .map((segment) => ({
+      name: String(segment.name || "Route segment"),
+      lengthM: Math.max(1, numeric(segment.lengthM, 1)),
+      gradePct: numeric(segment.gradePct),
+      scenery: String(segment.scenery || "fields"),
+    }))
+    .filter((segment) => segment.lengthM > 0);
+}
+
 export class RideMotionModel {
   constructor({
     dashSpacing = 7.8,
     maxDt = 0.06,
     speedResponse = 7.5,
+    routeSegments = DEFAULT_ROUTE_SEGMENTS,
   } = {}) {
     this.dashSpacing = dashSpacing;
     this.maxDt = maxDt;
     this.speedResponse = speedResponse;
+    this.routeSegments = normalizeSegments(routeSegments);
+    this.routeLengthM = this.routeSegments.reduce(
+      (total, segment) => total + segment.lengthM,
+      0,
+    );
     this.active = false;
     this.paused = false;
     this.mode = null;
@@ -23,6 +48,10 @@ export class RideMotionModel {
     this.speedMps = 0;
     this.distanceM = 0;
     this.gradePct = 0;
+    this.routeGradePct = 0;
+    this.routeSegmentName = "Valley Rollers";
+    this.routeSegmentProgress = 0;
+    this.scenery = "fields";
     this.roadOffset = 0;
     this.roadPitch = 0;
     this.cameraBob = 0;
@@ -35,10 +64,52 @@ export class RideMotionModel {
     this.paused = Boolean(snapshot.paused);
     this.mode = snapshot.mode || null;
     this.distanceM = this.active ? numeric(snapshot.distance_m) : 0;
-    this.gradePct = this.active ? numeric(snapshot.sim_grade_pct) : 0;
+    const routeSegment = this.segmentForDistance(this.distanceM);
+    this.routeGradePct = routeSegment.gradePct;
+    this.routeSegmentName = routeSegment.name;
+    this.routeSegmentProgress = routeSegment.progress;
+    this.scenery = routeSegment.scenery;
+    this.gradePct =
+      this.active && this.mode === "sim"
+        ? numeric(snapshot.sim_grade_pct)
+        : this.routeGradePct;
     this.targetSpeedMps =
       this.active && !this.paused ? Math.max(0, numeric(snapshot.speed_mps)) : 0;
     return this.state();
+  }
+
+  segmentForDistance(distanceM) {
+    if (this.routeSegments.length === 0 || this.routeLengthM <= 0) {
+      return {
+        name: "Route segment",
+        gradePct: 0,
+        progress: 0,
+        scenery: "fields",
+      };
+    }
+
+    let routeDistanceM = numeric(distanceM) % this.routeLengthM;
+    if (routeDistanceM < 0) routeDistanceM += this.routeLengthM;
+
+    for (const segment of this.routeSegments) {
+      if (routeDistanceM < segment.lengthM) {
+        return {
+          name: segment.name,
+          gradePct: segment.gradePct,
+          progress: routeDistanceM / segment.lengthM,
+          scenery: segment.scenery,
+        };
+      }
+      routeDistanceM -= segment.lengthM;
+    }
+
+    const lastSegment = this.routeSegments[this.routeSegments.length - 1];
+    return {
+      name: lastSegment.name,
+      gradePct: lastSegment.gradePct,
+      progress: 1,
+      scenery: lastSegment.scenery,
+    };
   }
 
   advance(dt, nowMs) {
@@ -68,6 +139,10 @@ export class RideMotionModel {
       targetSpeedMps: this.targetSpeedMps,
       distanceM: this.distanceM,
       gradePct: this.gradePct,
+      routeGradePct: this.routeGradePct,
+      routeSegmentName: this.routeSegmentName,
+      routeSegmentProgress: this.routeSegmentProgress,
+      scenery: this.scenery,
       roadOffset: this.roadOffset,
       roadPitch: this.roadPitch,
       cameraBob: this.cameraBob,
