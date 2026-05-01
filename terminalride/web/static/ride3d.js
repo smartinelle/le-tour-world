@@ -25,13 +25,16 @@ const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(-10, 18, 8);
 scene.add(sun);
 
+const roadGroup = new THREE.Group();
+scene.add(roadGroup);
+
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(220, 260),
   new THREE.MeshLambertMaterial({ color: 0x8fae76 }),
 );
 ground.rotation.x = -Math.PI / 2;
 ground.position.z = -54;
-scene.add(ground);
+roadGroup.add(ground);
 
 const road = new THREE.Mesh(
   new THREE.PlaneGeometry(8.6, 260),
@@ -40,7 +43,7 @@ const road = new THREE.Mesh(
 road.rotation.x = -Math.PI / 2;
 road.position.y = 0.015;
 road.position.z = -54;
-scene.add(road);
+roadGroup.add(road);
 
 const shoulderMaterial = new THREE.MeshLambertMaterial({ color: 0xb7c5ac });
 for (const x of [-5.4, 5.4]) {
@@ -50,7 +53,7 @@ for (const x of [-5.4, 5.4]) {
   );
   shoulder.rotation.x = -Math.PI / 2;
   shoulder.position.set(x, 0.02, -54);
-  scene.add(shoulder);
+  roadGroup.add(shoulder);
 }
 
 const laneGroup = new THREE.Group();
@@ -61,7 +64,7 @@ for (let i = 0; i < 34; i += 1) {
   dash.position.set(0, 0.035, 8 - i * 7.8);
   laneGroup.add(dash);
 }
-scene.add(laneGroup);
+roadGroup.add(laneGroup);
 
 const railMaterial = new THREE.MeshLambertMaterial({ color: 0x566052 });
 const postGeometry = new THREE.BoxGeometry(0.12, 0.9, 0.12);
@@ -69,7 +72,7 @@ for (const x of [-6.75, 6.75]) {
   for (let i = 0; i < 30; i += 1) {
     const post = new THREE.Mesh(postGeometry, railMaterial);
     post.position.set(x, 0.48, 9 - i * 8.5);
-    scene.add(post);
+    roadGroup.add(post);
   }
 }
 
@@ -222,6 +225,8 @@ function frame(now) {
     if (dash.position.z > 12) dash.position.z -= 34 * 7.8;
   });
 
+  roadGroup.rotation.x = sceneState.roadPitch;
+  hills.position.y = sceneState.horizonLift;
   camera.position.y = 3.6 + sceneState.cameraBob;
   camera.lookAt(0, 0.35 + sceneState.cameraPitch, -22);
   renderer.render(scene, camera);

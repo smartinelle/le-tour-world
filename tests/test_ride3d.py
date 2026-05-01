@@ -60,6 +60,16 @@ def test_ride3d_motion_model_owns_scene_motion():
     assert "cameraPitch" in RIDE_MOTION_JS
 
 
+def test_ride3d_uses_grade_aware_render_state():
+    """SIM grade changes visibly affect the scene through motion state."""
+    assert "const roadGroup = new THREE.Group()" in RIDE3D_JS
+    assert "roadGroup.add(road)" in RIDE3D_JS
+    assert "roadGroup.rotation.x = sceneState.roadPitch" in RIDE3D_JS
+    assert "hills.position.y = sceneState.horizonLift" in RIDE3D_JS
+    assert "roadPitch" in RIDE_MOTION_JS
+    assert "horizonLift" in RIDE_MOTION_JS
+
+
 def test_parse_ride_mode():
     """Browser-supplied ride mode strings map to domain modes."""
     assert parse_ride_mode("free") is RideMode.FREE

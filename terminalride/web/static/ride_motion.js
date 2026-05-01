@@ -24,8 +24,10 @@ export class RideMotionModel {
     this.distanceM = 0;
     this.gradePct = 0;
     this.roadOffset = 0;
+    this.roadPitch = 0;
     this.cameraBob = 0;
     this.cameraPitch = 0;
+    this.horizonLift = 0;
   }
 
   updateFromSnapshot(snapshot) {
@@ -50,8 +52,10 @@ export class RideMotionModel {
 
     this.roadOffset =
       (this.roadOffset + this.speedMps * boundedDt) % this.dashSpacing;
+    this.roadPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
     this.cameraBob = Math.sin(nowMs * 0.004) * 0.03 * Math.min(this.speedMps, 10);
     this.cameraPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
+    this.horizonLift = clamp(this.gradePct * 0.08, -0.8, 0.8);
     return this.state();
   }
 
@@ -65,8 +69,10 @@ export class RideMotionModel {
       distanceM: this.distanceM,
       gradePct: this.gradePct,
       roadOffset: this.roadOffset,
+      roadPitch: this.roadPitch,
       cameraBob: this.cameraBob,
       cameraPitch: this.cameraPitch,
+      horizonLift: this.horizonLift,
     };
   }
 }
