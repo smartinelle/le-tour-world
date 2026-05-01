@@ -153,6 +153,7 @@ let activeScenery = "fields";
 function createRouteProfile(parent) {
   const profile = document.createElement("div");
   const label = document.createElement("span");
+  const detail = document.createElement("span");
   const track = document.createElement("div");
   const fill = document.createElement("div");
 
@@ -182,9 +183,19 @@ function createRouteProfile(parent) {
     transition: "width 160ms linear",
     width: "0%",
   });
+  Object.assign(detail.style, {
+    display: "block",
+    fontSize: "0.68rem",
+    fontWeight: "750",
+    letterSpacing: "0.06em",
+    lineHeight: "1",
+    marginTop: "7px",
+    opacity: "0.72",
+    textTransform: "uppercase",
+  });
 
   track.append(fill);
-  profile.append(label, track);
+  profile.append(label, track, detail);
   parent.append(profile);
 
   return {
@@ -192,6 +203,7 @@ function createRouteProfile(parent) {
       profile.hidden = !active;
       label.textContent = `${sceneState.routeSegmentName} · ${sceneState.gradePct.toFixed(1)}%`;
       fill.style.width = `${Math.round(sceneState.routeSegmentProgress * 100)}%`;
+      detail.textContent = `Next ${sceneState.nextSegmentName} in ${Math.round(sceneState.routeSegmentRemainingM)} m · ${sceneState.nextSegmentGradePct.toFixed(1)}%`;
     },
   };
 }

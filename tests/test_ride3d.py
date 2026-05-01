@@ -76,7 +76,10 @@ def test_ride3d_motion_model_defines_distance_route_segments():
     assert "segmentForDistance(distanceM)" in RIDE_MOTION_JS
     assert "routeSegmentName" in RIDE_MOTION_JS
     assert "routeSegmentProgress" in RIDE_MOTION_JS
+    assert "routeSegmentRemainingM" in RIDE_MOTION_JS
     assert "routeGradePct" in RIDE_MOTION_JS
+    assert "nextSegmentName" in RIDE_MOTION_JS
+    assert "nextSegmentGradePct" in RIDE_MOTION_JS
     assert "scenery" in RIDE_MOTION_JS
 
 
@@ -105,6 +108,9 @@ def test_ride3d_builds_route_profile_hud_from_motion_state():
     assert "routeProfile.update(sceneState, snapshot.active)" in RIDE3D_JS
     assert "sceneState.routeSegmentProgress * 100" in RIDE3D_JS
     assert "sceneState.routeSegmentName" in RIDE3D_JS
+    assert "sceneState.nextSegmentName" in RIDE3D_JS
+    assert "sceneState.routeSegmentRemainingM" in RIDE3D_JS
+    assert "sceneState.nextSegmentGradePct.toFixed(1)" in RIDE3D_JS
 
 
 def test_parse_ride_mode():

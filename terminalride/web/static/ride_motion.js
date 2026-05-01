@@ -51,6 +51,9 @@ export class RideMotionModel {
     this.routeGradePct = 0;
     this.routeSegmentName = "Valley Rollers";
     this.routeSegmentProgress = 0;
+    this.routeSegmentRemainingM = 0;
+    this.nextSegmentName = "Pine Rise";
+    this.nextSegmentGradePct = 3.2;
     this.scenery = "fields";
     this.roadOffset = 0;
     this.roadPitch = 0;
@@ -68,6 +71,9 @@ export class RideMotionModel {
     this.routeGradePct = routeSegment.gradePct;
     this.routeSegmentName = routeSegment.name;
     this.routeSegmentProgress = routeSegment.progress;
+    this.routeSegmentRemainingM = routeSegment.remainingM;
+    this.nextSegmentName = routeSegment.nextName;
+    this.nextSegmentGradePct = routeSegment.nextGradePct;
     this.scenery = routeSegment.scenery;
     this.gradePct =
       this.active && this.mode === "sim"
@@ -84,6 +90,9 @@ export class RideMotionModel {
         name: "Route segment",
         gradePct: 0,
         progress: 0,
+        remainingM: 0,
+        nextName: "Route segment",
+        nextGradePct: 0,
         scenery: "fields",
       };
     }
@@ -91,12 +100,18 @@ export class RideMotionModel {
     let routeDistanceM = numeric(distanceM) % this.routeLengthM;
     if (routeDistanceM < 0) routeDistanceM += this.routeLengthM;
 
-    for (const segment of this.routeSegments) {
+    for (let index = 0; index < this.routeSegments.length; index += 1) {
+      const segment = this.routeSegments[index];
       if (routeDistanceM < segment.lengthM) {
+        const nextSegment =
+          this.routeSegments[(index + 1) % this.routeSegments.length];
         return {
           name: segment.name,
           gradePct: segment.gradePct,
           progress: routeDistanceM / segment.lengthM,
+          remainingM: segment.lengthM - routeDistanceM,
+          nextName: nextSegment.name,
+          nextGradePct: nextSegment.gradePct,
           scenery: segment.scenery,
         };
       }
@@ -108,6 +123,9 @@ export class RideMotionModel {
       name: lastSegment.name,
       gradePct: lastSegment.gradePct,
       progress: 1,
+      remainingM: 0,
+      nextName: this.routeSegments[0].name,
+      nextGradePct: this.routeSegments[0].gradePct,
       scenery: lastSegment.scenery,
     };
   }
@@ -142,6 +160,9 @@ export class RideMotionModel {
       routeGradePct: this.routeGradePct,
       routeSegmentName: this.routeSegmentName,
       routeSegmentProgress: this.routeSegmentProgress,
+      routeSegmentRemainingM: this.routeSegmentRemainingM,
+      nextSegmentName: this.nextSegmentName,
+      nextSegmentGradePct: this.nextSegmentGradePct,
       scenery: this.scenery,
       roadOffset: this.roadOffset,
       roadPitch: this.roadPitch,
