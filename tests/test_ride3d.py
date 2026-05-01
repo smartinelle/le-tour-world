@@ -168,11 +168,22 @@ def test_ride3d_uses_route_geometry_for_road_shape():
     assert "roadWidthM" in RIDE_MOTION_JS
     assert "headingDeg" in RIDE_MOTION_JS
     assert "curveStrength" in RIDE_MOTION_JS
-    assert "roadGroup.rotation.y = sceneState.worldYaw" in RIDE3D_JS
-    assert "road.scale.x = sceneState.roadScaleX" in RIDE3D_JS
-    assert "sceneState.shoulderSpreadM" in RIDE3D_JS
+    assert "function buildRoutePath(route)" in RIDE3D_JS
+    assert "function visibleRouteSamples(routePath, distanceM)" in RIDE3D_JS
+    assert "function ribbonGeometry(samples" in RIDE3D_JS
+    assert "activeRoutePath = buildRoutePath(route)" in RIDE3D_JS
+    assert "replaceGeometry(" in RIDE3D_JS
     assert "camera.lookAt(sceneState.cameraLookX" in RIDE3D_JS
     assert "camera.rotation.z += sceneState.cameraRoll" in RIDE3D_JS
+
+
+def test_ride3d_generates_live_road_ribbon_from_route_path():
+    """The visible road mesh is rebuilt from sampled route centerline data."""
+    assert "sampleRoutePath(routePath, distanceM)" in RIDE3D_JS
+    assert "ribbonGeometry(samples, (widthM) => -widthM / 2" in RIDE3D_JS
+    assert "updateLaneMarkers(samples)" in RIDE3D_JS
+    assert "sample.roadWidthM / 2 + 2.3" in RIDE3D_JS
+    assert "roadGroup.rotation.y = 0" in RIDE3D_JS
 
 
 def test_ride3d_renders_curve_chevrons_from_route_geometry():
@@ -191,6 +202,16 @@ def test_ride3d_renders_pacer_riders_from_motion_state():
     assert "function updatePacerRiders(sceneState, now)" in RIDE3D_JS
     assert "pacerGroup.visible = sceneState.active" in RIDE3D_JS
     assert "updatePacerRiders(sceneState, now)" in RIDE3D_JS
+
+
+def test_ride3d_renders_player_cockpit_from_motion_state():
+    """Foreground cockpit gives the ride a first-person anchor."""
+    assert "const cockpitGroup = new THREE.Group()" in RIDE3D_JS
+    assert "camera.add(cockpitGroup)" in RIDE3D_JS
+    assert "function updateCockpit(sceneState, now)" in RIDE3D_JS
+    assert "cockpitGroup.visible = sceneState.active" in RIDE3D_JS
+    assert "frontWheel.rotation.x" in RIDE3D_JS
+    assert "updateCockpit(sceneState, now)" in RIDE3D_JS
 
 
 def test_ride3d_scenery_palette_tracks_route_segment():

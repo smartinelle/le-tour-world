@@ -56,6 +56,7 @@ scene.fog = new THREE.Fog(0xd9edf7, 42, 150);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 240);
 camera.position.set(0, 3.6, 7.6);
 camera.lookAt(0, 0.35, -22);
+scene.add(camera);
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0x5d6b4f, 2.4);
 scene.add(hemi);
@@ -217,6 +218,33 @@ for (let i = 0; i < 5; i += 1) {
 }
 roadGroup.add(pacerGroup);
 
+const cockpitGroup = new THREE.Group();
+cockpitGroup.position.set(0, -1.72, -3.25);
+const cockpitMaterial = new THREE.MeshLambertMaterial({ color: 0x111827 });
+const cockpitAccentMaterial = new THREE.MeshLambertMaterial({ color: 0xf97316 });
+const frontWheel = new THREE.Mesh(
+  new THREE.TorusGeometry(0.42, 0.025, 8, 36),
+  cockpitMaterial,
+);
+frontWheel.rotation.y = Math.PI / 2;
+frontWheel.position.set(0, -0.16, -0.38);
+const handlebar = new THREE.Mesh(
+  new THREE.BoxGeometry(1.35, 0.055, 0.055),
+  cockpitMaterial,
+);
+handlebar.position.set(0, 0.52, 0.1);
+const stem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.72), cockpitMaterial);
+stem.position.set(0, 0.26, -0.18);
+stem.rotation.x = -0.48;
+const headTube = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.055, 0.46, 5, 10),
+  cockpitAccentMaterial,
+);
+headTube.position.set(0, 0.1, -0.22);
+headTube.rotation.x = -0.28;
+cockpitGroup.add(frontWheel, handlebar, stem, headTube);
+camera.add(cockpitGroup);
+
 const hud = {
   statusPanel: document.querySelector(".status"),
   power: document.querySelector("#power"),
@@ -243,6 +271,19 @@ let activeScenery = "fields";
 let routeProfile = { update() {} };
 let elevationProfile = { update() {} };
 let selectedRouteId = null;
+let activeRoutePath = {
+  lengthM: 1,
+  samples: [
+    {
+      distanceM: 0,
+      x: 0,
+      z: 0,
+      elevationM: 0,
+      headingRad: 0,
+      roadWidthM: 8.6,
+    },
+  ],
+};
 
 function createRouteProfile(parent) {
   const profile = document.createElement("div");
@@ -419,6 +460,173 @@ function applySurface(surface) {
   roadMaterial.color.setHex(surfaceColors[surface] || surfaceColors.asphalt);
 }
 
+function normalizeRouteSegments(route) {
+  return route.segments.map((segment) => ({
+    lengthM: Math.max(1, Number(segment.length_m) || 1),
+    gradePct: Number(segment.grade_pct) || 0,
+    turnDeg: Number(segment.turn_deg) || 0,
+    roadWidthM: Math.min(
+      Math.max(Number(segment.road_width_m) || 8.6, 4),
+      14,
+    ),
+  }));
+}
+
+function buildRoutePath(route) {
+  const segments = normalizeRouteSegments(route);
+  const samples = [];
+  let distanceM = 0;
+  let x = 0;
+  let z = 0;
+  let elevationM = 0;
+  let headingRad = 0;
+
+  segments.forEach((segment) => {
+    const steps = Math.max(4, Math.ceil(segment.lengthM / 8));
+    const stepM = segment.lengthM / steps;
+    const turnStepRad = ((segment.turnDeg * Math.PI) / 180) / steps;
+    const elevationStepM = (stepM * segment.gradePct) / 100;
+
+    for (let step = 0; step < steps; step += 1) {
+      samples.push({
+        distanceM,
+        x,
+        z,
+        elevationM,
+        headingRad,
+        roadWidthM: segment.roadWidthM,
+      });
+      headingRad += turnStepRad;
+      x += Math.sin(headingRad) * stepM;
+      z -= Math.cos(headingRad) * stepM;
+      elevationM += elevationStepM;
+      distanceM += stepM;
+    }
+  });
+
+  samples.push({
+    distanceM,
+    x,
+    z,
+    elevationM,
+    headingRad,
+    roadWidthM: segments.at(-1)?.roadWidthM ?? 8.6,
+  });
+
+  return {
+    lengthM: Math.max(1, distanceM),
+    samples,
+  };
+}
+
+function sampleRoutePath(routePath, distanceM) {
+  const routeDistanceM =
+    ((Number(distanceM) || 0) % routePath.lengthM + routePath.lengthM) %
+    routePath.lengthM;
+  const samples = routePath.samples;
+
+  for (let index = 0; index < samples.length - 1; index += 1) {
+    const current = samples[index];
+    const next = samples[index + 1];
+    if (routeDistanceM <= next.distanceM) {
+      const spanM = Math.max(1, next.distanceM - current.distanceM);
+      const progress = (routeDistanceM - current.distanceM) / spanM;
+      return {
+        distanceM: routeDistanceM,
+        x: current.x + (next.x - current.x) * progress,
+        z: current.z + (next.z - current.z) * progress,
+        elevationM:
+          current.elevationM + (next.elevationM - current.elevationM) * progress,
+        headingRad:
+          current.headingRad + (next.headingRad - current.headingRad) * progress,
+        roadWidthM:
+          current.roadWidthM + (next.roadWidthM - current.roadWidthM) * progress,
+      };
+    }
+  }
+
+  return samples.at(-1);
+}
+
+function visibleRouteSamples(routePath, distanceM) {
+  const origin = sampleRoutePath(routePath, distanceM);
+  const forwardX = Math.sin(origin.headingRad);
+  const forwardZ = -Math.cos(origin.headingRad);
+  const rightX = Math.cos(origin.headingRad);
+  const rightZ = Math.sin(origin.headingRad);
+  const samples = [];
+
+  for (let index = 0; index < 34; index += 1) {
+    const sample = sampleRoutePath(routePath, distanceM + index * 5.2);
+    const dx = sample.x - origin.x;
+    const dz = sample.z - origin.z;
+    samples.push({
+      x: dx * rightX + dz * rightZ,
+      y: 0.03 + (sample.elevationM - origin.elevationM) * 0.08,
+      z: -(dx * forwardX + dz * forwardZ),
+      headingRad: sample.headingRad - origin.headingRad,
+      roadWidthM: sample.roadWidthM,
+    });
+  }
+
+  return samples;
+}
+
+function ribbonGeometry(samples, innerOffset, outerOffset, yLift = 0) {
+  const positions = [];
+  const indices = [];
+
+  samples.forEach((sample, index) => {
+    const previous = samples[Math.max(0, index - 1)];
+    const next = samples[Math.min(samples.length - 1, index + 1)];
+    const tangentX = next.x - previous.x;
+    const tangentZ = next.z - previous.z;
+    const length = Math.hypot(tangentX, tangentZ) || 1;
+    const normalX = -tangentZ / length;
+    const normalZ = tangentX / length;
+    const offsets = [
+      innerOffset(sample.roadWidthM),
+      outerOffset(sample.roadWidthM),
+    ];
+
+    offsets.forEach((offset) => {
+      positions.push(
+        sample.x + normalX * offset,
+        sample.y + yLift,
+        sample.z + normalZ * offset,
+      );
+    });
+
+    if (index < samples.length - 1) {
+      const vertex = index * 2;
+      indices.push(vertex, vertex + 1, vertex + 2);
+      indices.push(vertex + 1, vertex + 3, vertex + 2);
+    }
+  });
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function replaceGeometry(mesh, geometry) {
+  mesh.geometry.dispose();
+  mesh.geometry = geometry;
+}
+
+function updateLaneMarkers(samples) {
+  laneGroup.children.forEach((dash, index) => {
+    const sample = samples[(index * 2) % samples.length];
+    dash.position.set(sample.x, sample.y + 0.028, sample.z);
+    dash.rotation.set(-Math.PI / 2, 0, -sample.headingRad);
+  });
+}
+
 function updateSegmentGate(sceneState) {
   const opacity = sceneState.segmentGateAlpha;
   segmentGate.visible = opacity > 0.02;
@@ -431,12 +639,33 @@ function updateSegmentGate(sceneState) {
 }
 
 function updateRoadGeometry(sceneState) {
-  road.scale.x = sceneState.roadScaleX;
+  const samples = visibleRouteSamples(activeRoutePath, sceneState.distanceM);
+  replaceGeometry(
+    road,
+    ribbonGeometry(samples, (widthM) => -widthM / 2, (widthM) => widthM / 2),
+  );
   shoulders.forEach((shoulder) => {
-    shoulder.position.x = shoulder.userData.side * sceneState.shoulderSpreadM;
+    const side = shoulder.userData.side;
+    replaceGeometry(
+      shoulder,
+      ribbonGeometry(
+        samples,
+        (widthM) => side * (widthM / 2),
+        (widthM) => side * (widthM / 2 + 1.8),
+        0.004,
+      ),
+    );
   });
-  railPosts.forEach((post) => {
-    post.position.x = post.userData.side * (sceneState.shoulderSpreadM + 1.35);
+  updateLaneMarkers(samples);
+  railPosts.forEach((post, index) => {
+    const sample = samples[(index * 2) % samples.length];
+    const side = post.userData.side;
+    const edgeM = sample.roadWidthM / 2 + 2.3;
+    post.position.set(
+      sample.x + Math.cos(sample.headingRad) * side * edgeM,
+      sample.y + 0.48,
+      sample.z + Math.sin(sample.headingRad) * side * edgeM,
+    );
   });
 }
 
@@ -471,6 +700,14 @@ function updatePacerRiders(sceneState, now) {
     rider.rotation.y = sceneState.worldYaw * 0.5;
     rider.rotation.z = Math.sin(now * 0.006 + phase) * 0.035;
   });
+}
+
+function updateCockpit(sceneState, now) {
+  cockpitGroup.visible = sceneState.active;
+  cockpitGroup.rotation.z = sceneState.cameraRoll * 1.8;
+  cockpitGroup.position.x = -sceneState.cameraLookX * 0.018;
+  frontWheel.rotation.x = now * 0.012 * Math.max(0.2, sceneState.speedMps);
+  handlebar.rotation.z = sceneState.routeCurveStrength * -0.08;
 }
 
 function formatValue(value, fallback = "--") {
@@ -595,7 +832,7 @@ function frame(now) {
   });
 
   roadGroup.rotation.x = sceneState.roadPitch;
-  roadGroup.rotation.y = sceneState.worldYaw;
+  roadGroup.rotation.y = 0;
   updateRoadGeometry(sceneState);
   hills.position.y = sceneState.horizonLift;
   hills.position.x = sceneState.sceneryDrift;
@@ -605,6 +842,7 @@ function frame(now) {
   updateSegmentGate(sceneState);
   updateCurveChevrons(sceneState);
   updatePacerRiders(sceneState, now);
+  updateCockpit(sceneState, now);
   camera.position.y = 3.6 + sceneState.cameraBob;
   camera.lookAt(sceneState.cameraLookX, 0.35 + sceneState.cameraPitch, -22);
   camera.rotation.z += sceneState.cameraRoll;
@@ -632,6 +870,7 @@ async function loadRoute(routeId) {
     dashSpacing: 7.8,
     routeSegments: route.segments,
   });
+  activeRoutePath = buildRoutePath(route);
   hud.routeHud.replaceChildren();
   routeProfile = createRouteProfile(hud.routeHud);
   elevationProfile = createElevationProfile(hud.routeHud, route);
