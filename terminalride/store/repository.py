@@ -37,8 +37,7 @@ class TrainingRepository:
         try:
             with self._get_db_connection() as conn:
                 # Sessions table
-                conn.execute(
-                    """
+                conn.execute("""
                     CREATE TABLE IF NOT EXISTS sessions (
                         session_id TEXT PRIMARY KEY,
                         created_at TEXT NOT NULL,
@@ -60,12 +59,10 @@ class TrainingRepository:
                         notes TEXT,
                         data_json TEXT  -- Full JSON for complex fields
                     )
-                """
-                )
+                """)
 
                 # Samples table
-                conn.execute(
-                    """
+                conn.execute("""
                     CREATE TABLE IF NOT EXISTS samples (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         session_id TEXT NOT NULL,
@@ -80,8 +77,7 @@ class TrainingRepository:
                         sim_grade_pct REAL,
                         FOREIGN KEY (session_id) REFERENCES sessions (session_id)
                     )
-                """
-                )
+                """)
 
                 # Indexes for common queries
                 conn.execute(

@@ -22,7 +22,6 @@ from .base import (
 )
 from .hr_parse import parse_heart_rate_measurement, ParsedHrData
 
-
 logger = logging.getLogger(__name__)
 
 

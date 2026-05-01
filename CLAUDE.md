@@ -1,116 +1,87 @@
 # Le-tour (TerminalRide) - Claude Memory
 
 ## Project Overview
-- **Goal:** Terminal-first indoor cycling app (Zwift-lite) that connects to Wahoo KICKR via BLE FTMS
-- **Stack:** Python 3.11+, bleak (BLE), rich (TUI), numpy, pydantic, pytest-asyncio
-- **Modes:** Free Ride, ERG (constant power), SIM (grade-based resistance)
-- **Data:** JSONL logging, CSV export, local persistence
 
-## Key Constraints
-- Temperature 0.1 (deterministic generation)
-- Tests-first approach (TDD)
-- No invented FTMS details - add TODO(FTMS: confirm...) markers
-- Dependencies limited to: bleak, rich, numpy, pydantic, pytest, pytest-asyncio
-- Pure functions separated from I/O operations
-- JSONL logging with stdlib only
-
-## Success Criteria (MVP v0.1.0)
-- KICKR connects via BLE in <5 seconds
-- ERG mode responds to +/- keys in <2 seconds
-- Live metrics display at 10Hz
-- Session saves to JSONL and exports CSV
-- UI navigation works intuitively (1/2/3, +/-, space, q, ?)
-- Reconnects after brief disconnection
-- All tests pass
+- **Goal:** Web-first indoor cycling app that connects to Wahoo KICKR via BLE FTMS and keeps the ride domain reusable for future UIs.
+- **Stack:** Python 3.11, uv, NiceGUI, bleak, numpy, pydantic, pytest.
+- **Modes:** Free Ride, ERG (constant power), SIM (grade-based resistance).
+- **Data:** JSONL/SQLite persistence, CSV export, local analytics.
+- **Current UI:** Browser app in `terminalride/web`, started with `run_web.py`.
+- **Retired UI:** The old Rich terminal UI entry points are removed on this branch.
 
 ## Development Commands
+
 ```bash
 # Setup
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
 
 # Testing & Quality
-pytest -q
-mypy --strict terminalride
-ruff check terminalride
-black terminalride
+uv run pytest -q
+uv run ruff check terminalride tests run_web.py
+uv run black terminalride tests run_web.py
+uv run mypy terminalride
 ```
 
 ## Architecture Principles
-- Protocol interfaces in devices/base.py
-- FTMS parser as pure function (bit-field parsing)
-- ERG PI controller: bounds [100,400]W, rate limit ±10W/5s, anti-windup
-- SIM physics: power→speed solver with Newton/fixed-point method
-- BLE I/O isolated from business logic
-- **UI-agnostic RideController** for session/ride management (allows future non-terminal UIs)
+
+- Keep core ride/session logic in `terminalride/domain`.
+- Keep presentation code in `terminalride/web`.
+- Do not couple trainer control, persistence, or analytics to NiceGUI.
+- Expose UI-neutral ride state so future terminal, mobile, or Three.js interfaces can reuse the same domain.
+- Keep BLE I/O isolated in `terminalride/devices`.
+- Keep parsers and physics deterministic and testable.
+- Do not invent FTMS details; add `TODO(FTMS: confirm...)` markers when specs need verification.
 
 ## Repository Structure
-```
+
+```text
 terminalride/
-  docs/           # Documentation
-  terminalride/   # Main package
-    app.py        # State machine + router
-    config.py     # Configuration management
-    __main__.py   # Entry point
-    logging_setup.py # Logging configuration
-    ui/           # Views and widgets
-      views.py    # Rich-based TUI views
-      widgets.py  # Reusable UI components
-      keymap.py   # Keyboard bindings
-    devices/      # BLE device clients + parsers
-      base.py     # Protocol interfaces
-      ftms_client.py  # FTMS trainer BLE client
-      ftms_parse.py   # FTMS frame parser
-      hr_client.py    # Heart rate BLE client
-      hr_parse.py     # HR measurement parser
-    modes/        # Free/ERG/SIM logic
-      erg.py      # ERG mode implementation
-      sim.py      # SIM mode implementation
-    domain/       # Business logic (UI-agnostic)
-      ride_controller.py  # UI-agnostic session/ride management
-      events.py           # Event definitions
-      state.py            # Application state
-      trainer_service.py  # Trainer service
-      hr_service.py       # Heart rate service
-      session_service.py  # Session persistence service
-    store/        # Persistence + export
-      models.py   # Data models
-      repository.py   # Data access
-      export.py   # CSV export
-    analytics/    # Training metrics (NP, IF, TSS)
-      metrics.py  # Normalized Power, Intensity Factor, TSS calculations
-  tests/          # Test suite
+  config.py
+  logging_setup.py
+  devices/
+    base.py
+    ftms_client.py
+    ftms_parse.py
+    hr_client.py
+    hr_parse.py
+  modes/
+    erg.py
+    sim.py
+  domain/
+    ride_controller.py
+    events.py
+    state.py
+    trainer_service.py
+    hr_service.py
+    session_service.py
+  store/
+    models.py
+    repository.py
+    supabase_repository.py
+    export.py
+  web/
+    app.py
+    auth.py
+    pages/
+    static/
+  analytics/
+    metrics.py
+tests/
 ```
 
-## Development Steps - COMPLETED ✅
-1. **Setup:** Repo+CI+tests for parser/erg/physics ✅
-2. **Core Logic:** BLE client + ERG implementation ✅
-3. **Physics:** SIM physics + persistence+CSV ✅
-4. **Polish:** Hardening + packaging + v0.1.0 release ✅
+## Current Status
 
-## CURRENT STATUS: MVP v0.1.0 - COMPLETE ✅
+- Branch baseline is web-first.
+- Domain has a restored `RideController`.
+- Web sessions have live trainer metrics fixed.
+- Supabase auth/storage support exists.
+- Tooling has moved from pip/requirements to uv + `uv.lock`.
 
-### Project Implementation Summary:
-- **Core components implemented and fully tested (140 tests passing)**
-- **Full BLE FTMS protocol support with Wahoo KICKR compatibility**
-- **Complete TUI with all training modes (Free/ERG/SIM)**
-- **Data persistence with store module (models, repository, export)**
-- **CSV export functionality**
-- **Domain-driven architecture with events, services, and RideController**
-- **Comprehensive documentation (README.md, ADRs)**
+## Near-Term Technical Direction
 
-### Key Achievements:
-- ERG mode with advanced PI controller (anti-windup, rate limiting)
-- SIM mode with Newton's method physics solver
-- Real-time metrics display at 10Hz
-- Robust error handling and auto-reconnection
-- Clean architecture with protocol-oriented design
-- Type-safe implementation with mypy compliance
-- Modern packaging with pyproject.toml
-- SessionService layer decoupling UI from storage
-- Analytics module with NP/IF/TSS calculations
-- Heart rate monitor support (Wahoo TICKR, Garmin HRM, Polar, etc.)
-- Manual device selection (scan, list, and choose specific devices)
-- **UI-agnostic RideController (70% ready for non-terminal UI migration)**
-
-**PROJECT STATUS: MVP v0.1.0 COMPLETE** ✅
+1. Add a UI-neutral `RideSnapshot`.
+2. Add `RideController.snapshot()`.
+3. Stream snapshots to the browser.
+4. Add a fake trainer/sample source for no-hardware development.
+5. Decouple `terminalride/web/app.py` from private device client internals.
+6. Build the first Three.js prototype against the snapshot stream.

@@ -55,19 +55,17 @@ interfaces such as a Three.js ride world, mobile app, or restored terminal UI.
 git clone <repository-url>
 cd le-tour
 
-python3 -m venv .venv
-source .venv/bin/activate
-
-pip install -e ".[dev]"
+uv sync
 ```
 
-`requirements.txt` is still present for compatibility with older setup flows,
-but `pyproject.toml` is the current project metadata source.
+`uv sync` provisions Python 3.11 (per `.python-version`), creates `.venv`,
+installs runtime + dev dependencies from `uv.lock`, and editable-installs the
+project. Use `uv run <cmd>` to run anything inside the project environment.
 
 ## Running The Web App
 
 ```bash
-python run_web.py
+uv run python run_web.py
 ```
 
 Then open:
@@ -174,15 +172,15 @@ See `docs/adr/` for accepted architecture decisions before structural changes.
 ### Tests
 
 ```bash
-python -m pytest -q
+uv run pytest -q
 ```
 
 ### Code Quality
 
 ```bash
-black .
-ruff check .
-mypy .
+uv run black .
+uv run ruff check .
+uv run mypy .
 ```
 
 The mypy configuration is strict. Some existing modules may still need cleanup
@@ -193,7 +191,7 @@ UI-neutral.
 
 1. Power on the FTMS trainer.
 2. Ensure Bluetooth is enabled.
-3. Run `python run_web.py`.
+3. Run `uv run python run_web.py`.
 4. Open `http://127.0.0.1:8080`.
 5. Connect the trainer from the Devices flow or use the auto-connect path.
 6. Start a ride mode and verify live metrics update.

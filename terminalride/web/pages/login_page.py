@@ -7,7 +7,6 @@ from nicegui import ui
 
 from ..auth import AuthManager
 
-
 # Login page styles
 LOGIN_STYLES = """
 <style>
@@ -199,12 +198,10 @@ def render_login_page() -> None:
                     )
 
             # Footer
-            ui.html(
-                """
+            ui.html("""
                 <p class="login-footer">
                     By continuing, you agree to our 
                     <a href="/terms">Terms</a> and 
                     <a href="/privacy">Privacy Policy</a>.
                 </p>
-            """
-            )
+            """)

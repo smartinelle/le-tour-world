@@ -19,7 +19,6 @@ from .events import (
     ControlGranted,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
