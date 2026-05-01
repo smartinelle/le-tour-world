@@ -19,6 +19,7 @@ from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnect
 from ..supabase_client import is_supabase_configured
 from .auth import AuthManager
 from .pages import render_login_page
+from .ride3d import attach_ride3d_routes
 from .snapshot_stream import attach_snapshot_routes
 
 logger = logging.getLogger(__name__)
@@ -852,6 +853,7 @@ class WebUI:
         """Set up the web UI routes and pages."""
         if not getattr(app, "_terminalride_snapshot_routes_attached", False):
             attach_snapshot_routes(app, get_controller)
+            attach_ride3d_routes(app)
             app._terminalride_snapshot_routes_attached = True
 
         # =====================================================================
@@ -1078,6 +1080,12 @@ class WebUI:
                     "Simulate hills and terrain",
                     "/session/sim",
                     "3",
+                )
+                self._mode_card(
+                    "3D Road",
+                    "View live ride motion",
+                    "/ride3d",
+                    "4",
                 )
 
         # Auto-connect if not already connected (like CLI does on startup)
