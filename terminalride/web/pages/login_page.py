@@ -6,65 +6,63 @@ Provides a clean, branded login experience with Google OAuth.
 from nicegui import ui
 
 from ..auth import AuthManager
+from ..theme import WEB_STYLES
 
 # Login page styles
 LOGIN_STYLES = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 .login-container {
     min-height: 100vh;
-    display: flex;
+    display: grid;
     align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(244, 242, 238, 0.92)),
+        var(--tr-bg);
+    padding: 32px;
+}
+
+.login-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+    margin: 0 auto;
+    width: min(980px, 100%);
+}
+
+.login-preview,
+.login-card {
+    background: rgba(255, 254, 253, 0.92);
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius);
+    box-shadow: var(--tr-shadow);
+    padding: 24px;
+}
+
+.login-preview {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 420px;
 }
 
 .login-card {
-    background: white;
-    border-radius: 1.5rem;
-    padding: 3rem;
-    max-width: 420px;
-    width: 90%;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
-    text-align: center;
-    animation: slideUp 0.5s ease-out;
-}
-
-@keyframes slideUp {
-    from { 
-        opacity: 0; 
-        transform: translateY(30px); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
-    }
-}
-
-.login-logo {
-    font-size: 4rem;
-    margin-bottom: 0.5rem;
-    animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+    align-self: center;
 }
 
 .login-title {
+    color: var(--tr-text);
     font-size: 2rem;
-    font-weight: 700;
-    color: #1a1a1a;
-    margin: 0 0 0.5rem 0;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+    margin: 0 0 0.7rem 0;
 }
 
 .login-subtitle {
-    color: #6b7280;
+    color: var(--tr-muted);
     font-size: 1rem;
-    margin: 0 0 2rem 0;
+    line-height: 1.5;
+    margin: 0 0 1.5rem 0;
 }
 
 .google-btn {
@@ -74,25 +72,20 @@ LOGIN_STYLES = """
     gap: 0.75rem;
     width: 100%;
     padding: 1rem 1.5rem;
-    background: #EA580C;
+    background: var(--tr-accent);
     color: white;
-    border: none;
-    border-radius: 0.75rem;
+    border: 1px solid var(--tr-accent);
+    border-radius: var(--tr-radius);
     font-size: 1rem;
-    font-weight: 500;
+    font-weight: 800;
     font-family: inherit;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .google-btn:hover {
-    background: #C2410C;
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(234, 88, 12, 0.4);
-}
-
-.google-btn:active {
-    transform: translateY(0);
+    background: var(--tr-accent-dark);
+    border-color: var(--tr-accent-dark);
 }
 
 .google-btn svg {
@@ -101,9 +94,9 @@ LOGIN_STYLES = """
 }
 
 .login-features {
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #e5e7eb;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--tr-border);
 }
 
 .feature-list {
@@ -117,25 +110,47 @@ LOGIN_STYLES = """
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #4b5563;
+    color: var(--tr-muted);
     font-size: 0.875rem;
+    font-weight: 600;
 }
 
 .feature-item::before {
-    content: "✓";
-    color: #22c55e;
+    content: "";
+    background: var(--tr-green);
+    border-radius: 999px;
+    height: 7px;
+    width: 7px;
     font-weight: bold;
 }
 
 .login-footer {
     margin-top: 2rem;
     font-size: 0.75rem;
-    color: #9ca3af;
+    color: var(--tr-soft);
 }
 
 .login-footer a {
-    color: #6b7280;
+    color: var(--tr-muted);
     text-decoration: underline;
+}
+
+.preview-metric {
+    border-top: 1px solid var(--tr-border);
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-top: 18px;
+}
+
+@media (max-width: 760px) {
+    .login-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .login-preview {
+        min-height: auto;
+    }
 }
 </style>
 """
@@ -155,53 +170,72 @@ def render_login_page() -> None:
     """Render the login page with Google OAuth button."""
 
     # Inject styles
-    ui.html(LOGIN_STYLES)
+    ui.html(WEB_STYLES + LOGIN_STYLES, sanitize=False)
 
     with ui.element("div").classes("login-container"):
-        with ui.element("div").classes("login-card"):
-            # Logo and branding
-            ui.html('<div class="login-logo">🚴</div>')
-            ui.html('<h1 class="login-title">TerminalRide</h1>')
-            ui.html('<p class="login-subtitle">Indoor cycling, elevated.</p>')
-
-            # Google login button
-            async def handle_google_login():
-                try:
-                    url = AuthManager.get_login_url()
-                    # Use JavaScript to redirect (NiceGUI navigate might not work for external URLs)
-                    await ui.run_javascript(f'window.location.href = "{url}"')
-                except Exception as e:
-                    ui.notify(f"Login error: {e}", type="negative")
-
-            with (
-                ui.element("button")
-                .classes("google-btn")
-                .on("click", handle_google_login)
-            ):
-                ui.html(GOOGLE_ICON)
-                ui.label("Continue with Google")
-
-            # Feature highlights
-            with ui.element("div").classes("login-features"):
-                with ui.element("div").classes("feature-list"):
-                    ui.html(
-                        '<div class="feature-item">Connect to your FTMS trainer</div>'
+        with ui.element("div").classes("login-grid"):
+            with ui.element("div").classes("login-preview"):
+                with ui.column().classes("gap-3"):
+                    with ui.row().classes("items-center gap-3"):
+                        ui.html('<span class="tr-brand-mark">TR</span>', sanitize=False)
+                        ui.label("TerminalRide").classes("text-xl font-extrabold")
+                    ui.label("Local ride control for FTMS trainers.").classes(
+                        "tr-title"
                     )
-                    ui.html(
-                        '<div class="feature-item">Track power, cadence & heart rate</div>'
-                    )
-                    ui.html(
-                        '<div class="feature-item">Free, ERG & SIM training modes</div>'
-                    )
-                    ui.html(
-                        '<div class="feature-item">View your training history</div>'
-                    )
+                    ui.label(
+                        "Start a ride, pair hardware, and keep live metrics in one precise console."
+                    ).classes("tr-subtitle")
+                with ui.element("div").classes("preview-metric"):
+                    for value, label in [
+                        ("--", "Watts"),
+                        ("--", "RPM"),
+                        ("--", "BPM"),
+                    ]:
+                        with ui.column().classes("gap-1"):
+                            ui.label(value).classes("tr-metric-value")
+                            ui.label(label).classes("tr-metric-label")
 
-            # Footer
-            ui.html("""
-                <p class="login-footer">
-                    By continuing, you agree to our 
-                    <a href="/terms">Terms</a> and 
-                    <a href="/privacy">Privacy Policy</a>.
-                </p>
-            """)
+            with ui.element("div").classes("login-card"):
+                ui.html('<h1 class="login-title">Sign in</h1>', sanitize=False)
+                ui.html(
+                    '<p class="login-subtitle">Use your account to keep ride data and settings separate.</p>',
+                    sanitize=False,
+                )
+
+                async def handle_google_login():
+                    try:
+                        url = AuthManager.get_login_url()
+                        await ui.run_javascript(f'window.location.href = "{url}"')
+                    except Exception as e:
+                        ui.notify(f"Login error: {e}", type="negative")
+
+                with (
+                    ui.element("button")
+                    .classes("google-btn")
+                    .on("click", handle_google_login)
+                ):
+                    ui.html(GOOGLE_ICON)
+                    ui.label("Continue with Google")
+
+                with ui.element("div").classes("login-features"):
+                    with ui.element("div").classes("feature-list"):
+                        ui.html(
+                            '<div class="feature-item">Connect to your FTMS trainer</div>'
+                        )
+                        ui.html(
+                            '<div class="feature-item">Track power, cadence, and heart rate</div>'
+                        )
+                        ui.html(
+                            '<div class="feature-item">Ride Free, ERG, and SIM modes</div>'
+                        )
+                        ui.html(
+                            '<div class="feature-item">Keep history ready for analysis</div>'
+                        )
+
+                ui.html("""
+                    <p class="login-footer">
+                        By continuing, you agree to our
+                        <a href="/terms">Terms</a> and
+                        <a href="/privacy">Privacy Policy</a>.
+                    </p>
+                """)

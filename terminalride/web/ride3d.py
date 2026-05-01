@@ -78,6 +78,36 @@ RIDE3D_HTML = """<!doctype html>
     #scene {
       position: fixed;
       inset: 0;
+      z-index: 0;
+    }
+
+    .scene-fallback {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .scene-fallback::before {
+      background: linear-gradient(180deg, #d9edf7 0%, #d9edf7 48%, #8fae76 49%, #789866 100%);
+      content: "";
+      inset: 0;
+      position: absolute;
+    }
+
+    .scene-fallback::after {
+      background:
+        linear-gradient(90deg, transparent 48%, rgba(248, 250, 252, 0.9) 49%, rgba(248, 250, 252, 0.9) 51%, transparent 52%),
+        linear-gradient(110deg, transparent 0 32%, #202421 33% 67%, transparent 68%);
+      bottom: -12%;
+      content: "";
+      height: 58%;
+      left: 28%;
+      position: absolute;
+      transform: perspective(460px) rotateX(58deg);
+      transform-origin: bottom center;
+      width: 44%;
     }
 
     .hud {
@@ -89,6 +119,7 @@ RIDE3D_HTML = """<!doctype html>
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
       pointer-events: none;
+      z-index: 2;
     }
 
     .metric,
@@ -100,6 +131,7 @@ RIDE3D_HTML = """<!doctype html>
       box-shadow: 0 18px 42px rgba(24, 27, 31, 0.1);
       padding: 14px 16px;
       backdrop-filter: blur(16px);
+      z-index: 2;
     }
 
     .metric strong {
@@ -158,6 +190,7 @@ RIDE3D_HTML = """<!doctype html>
       box-shadow: 0 18px 42px rgba(24, 27, 31, 0.1);
       padding: 16px;
       backdrop-filter: blur(16px);
+      z-index: 2;
     }
 
     .start-panel strong {
@@ -239,6 +272,7 @@ RIDE3D_HTML = """<!doctype html>
       font-weight: 800;
       text-decoration: none;
       backdrop-filter: blur(16px);
+      z-index: 2;
     }
 
     @media (max-width: 760px) {
@@ -265,6 +299,7 @@ RIDE3D_HTML = """<!doctype html>
 </head>
 <body>
   <canvas id="scene" aria-label="3D road scene"></canvas>
+  <div class="scene-fallback" aria-hidden="true"></div>
 
   <section class="hud" aria-label="Ride metrics">
     <div class="metric"><strong id="power">--</strong><span>Watts</span></div>
