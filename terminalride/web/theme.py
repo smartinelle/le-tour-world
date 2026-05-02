@@ -35,6 +35,60 @@ WEB_STYLES = """
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+.material-icons,
+.material-icons-outlined,
+.material-icons-round,
+.material-icons-sharp,
+.material-icons-two-tone,
+.material-symbols,
+.material-symbols-outlined,
+.material-symbols-rounded,
+.material-symbols-sharp {
+    direction: ltr;
+    display: inline-block;
+    font-feature-settings: 'liga';
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    font-family: inherit;
+    font-style: normal;
+    font-weight: normal;
+    letter-spacing: normal;
+    line-height: 1;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+}
+
+.material-icons,
+.material-icons-two-tone {
+    font-family: 'Material Icons' !important;
+}
+
+.material-icons-outlined {
+    font-family: 'Material Icons Outlined' !important;
+}
+
+.material-icons-round {
+    font-family: 'Material Icons Round' !important;
+}
+
+.material-icons-sharp {
+    font-family: 'Material Icons Sharp' !important;
+}
+
+.material-symbols,
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined' !important;
+}
+
+.material-symbols-rounded {
+    font-family: 'Material Symbols Rounded' !important;
+}
+
+.material-symbols-sharp {
+    font-family: 'Material Symbols Sharp' !important;
+}
+
 body {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 243, 239, 0.9)),
