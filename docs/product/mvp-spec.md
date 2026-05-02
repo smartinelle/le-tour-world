@@ -42,7 +42,7 @@ history with exportable data.
 The MVP is launchable when:
 
 - A non-developer early user can follow the install/run docs without reading the
-  codebase.
+  codebase but just the README.
 - Trainer and heart-rate pairing flows explain what is happening and recover
   from common failures.
 - Free Ride, ERG, and SIM can be used from the non-3D cockpit.
