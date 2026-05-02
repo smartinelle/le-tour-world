@@ -618,7 +618,7 @@ class WebUI:
             if is_supabase_configured() and not AuthManager.is_authenticated():
                 ui.navigate.to("/login")
                 return
-            self._render_devices()
+            ui.navigate.to("/settings?tab=devices")
 
         @ui.page("/history")
         def history_page():
@@ -635,11 +635,18 @@ class WebUI:
             self._render_history_detail(session_id)
 
         @ui.page("/settings")
-        def settings_page():
+        def settings_page(request: Request):
             if is_supabase_configured() and not AuthManager.is_authenticated():
                 ui.navigate.to("/login")
                 return
-            self._render_settings()
+            self._render_settings(request.query_params.get("tab"))
+
+        @ui.page("/settings/devices")
+        def settings_devices_page():
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
+            self._render_settings("devices")
 
         @ui.page("/design-system")
         def design_system_page():
@@ -651,32 +658,28 @@ class WebUI:
     def _render_header(self, current: str = "") -> None:
         """Render the navigation header."""
         apply_theme()
+        trainer_connected = self.controller.trainer.is_connected
+        status_label = "Live Trainer" if trainer_connected else "Demo Mode"
         user = (
             AuthManager.get_current_user()
             if is_supabase_configured() and AuthManager.is_authenticated()
             else None
         )
-        render_app_header(current, user=user)
+        render_app_header(
+            current,
+            user=user,
+            status_label=status_label,
+            status_connected=trainer_connected,
+        )
 
     async def _render_home_with_auto_connect(self) -> None:
-        """Render home page with automatic device connection on first load.
-
-        Mirrors CLI behavior: automatically scan and connect to trainer
-        when the app first loads, providing seamless device discovery.
-        """
-        self._render_header("Home")
+        """Render the ride launchpad with automatic trainer connection."""
+        self._render_header("Ride")
 
         selected_mode = {"value": "free"}
         selected_route_id = {"value": self._default_route_id()}
         mode_buttons: Dict[str, Any] = {}
-        mode_title: Optional[ui.label] = None
-        mode_detail: Optional[ui.label] = None
-        route_title: Optional[ui.label] = None
-        route_detail: Optional[ui.label] = None
-        route_distance: Optional[ui.label] = None
-        route_gain: Optional[ui.label] = None
-        route_grade: Optional[ui.label] = None
-        route_badge: Optional[ui.label] = None
+        setup_container: Optional[Any] = None
 
         def set_mode(mode: str) -> None:
             selected_mode["value"] = mode
@@ -685,39 +688,18 @@ class WebUI:
                     button.classes(add="active")
                 else:
                     button.classes(remove="active")
-            titles = {
-                "free": "Free Ride",
-                "erg": "ERG Mode",
-                "sim": "SIM Mode",
-            }
-            details = {
-                "free": "No resistance control. Start a responsive no-fuss ride.",
-                "erg": (
-                    f"Target starts at {self.controller.metrics.erg_target_w} W. "
-                    "Adjust during the ride."
-                ),
-                "sim": "Ride a bundled grade profile with segment context.",
-            }
-            if mode_title:
-                mode_title.set_text(titles[mode])
-            if mode_detail:
-                mode_detail.set_text(details[mode])
+            if setup_container:
+                render_mode_setup()
 
         def set_route(route_id: str) -> None:
             selected_route_id["value"] = route_id
-            route = route_by_id(route_id)
-            if route_title:
-                route_title.set_text(route.title)
-            if route_detail:
-                route_detail.set_text(route.description)
-            if route_distance:
-                route_distance.set_text(f"{route.distance_m / 1000:.2f}")
-            if route_gain:
-                route_gain.set_text(f"{route.elevation_gain_m:.0f}")
-            if route_grade:
-                route_grade.set_text(f"{route.max_grade_pct:.1f}")
-            if route_badge:
-                route_badge.set_text(route.difficulty)
+            if setup_container:
+                render_mode_setup()
+
+        def adjust_launch_erg_target(delta: int) -> None:
+            self._adjust_target(delta)
+            if setup_container:
+                render_mode_setup()
 
         def start_selected() -> None:
             path = f"/session/{selected_mode['value']}"
@@ -725,17 +707,179 @@ class WebUI:
                 path += f"?route_id={selected_route_id['value']}"
             ui.navigate.to(path)
 
+        def render_route_profile(route: RideRoute) -> None:
+            points = [
+                50 - max(-8.0, min(8.0, segment.grade_pct)) * 3.3
+                for segment in route.segments
+            ]
+            if not points:
+                points = [50.0]
+            step = 100 / max(1, len(points) - 1)
+            coordinates = " ".join(
+                f"{index * step:.1f},{point:.1f}" for index, point in enumerate(points)
+            )
+            tick_html = "".join(
+                "<span "
+                f'style="left:{index * 100 / max(1, len(route.segments)):.1f}%">'
+                "</span>"
+                for index, _ in enumerate(route.segments)
+            )
+            ui.html(
+                f"""
+                <div class="tr-route-profile" aria-hidden="true">
+                    <svg viewBox="0 0 100 64" preserveAspectRatio="none">
+                        <polyline points="{coordinates}" />
+                    </svg>
+                    <div class="tr-route-profile-ticks">{tick_html}</div>
+                </div>
+                """,
+                sanitize=False,
+            )
+
+        def render_mode_setup() -> None:
+            if setup_container is None:
+                return
+            setup_container.clear()
+            mode = selected_mode["value"]
+            with setup_container:
+                if mode == "free":
+                    with ui.element("div").classes(
+                        "tr-mode-setup tr-mode-setup-compact"
+                    ):
+                        with ui.column().classes("gap-2"):
+                            ui.label("Free Ride").classes("tr-panel-title")
+                            ui.label(
+                                "Ride without trainer resistance control."
+                            ).classes("tr-subtitle")
+                        with ui.element("div").classes("tr-chip-row"):
+                            ui.html(
+                                '<span class="tr-fact-chip">Control Off</span>',
+                                sanitize=False,
+                            )
+                            ui.html(
+                                '<span class="tr-fact-chip">Recording On</span>',
+                                sanitize=False,
+                            )
+                            ui.html(
+                                '<span class="tr-fact-chip">Mode Free</span>',
+                                sanitize=False,
+                            )
+
+                elif mode == "erg":
+                    with ui.element("div").classes("tr-mode-setup tr-mode-setup-erg"):
+                        with ui.column().classes("gap-2"):
+                            ui.label("ERG Target Power").classes("tr-panel-title")
+                            ui.label(
+                                "Trainer holds this target when the ride starts."
+                            ).classes("tr-subtitle")
+                        with ui.element("div").classes("tr-erg-target-block"):
+                            ui.label(
+                                f"{self.controller.metrics.erg_target_w} W"
+                            ).classes("tr-erg-target-value")
+                            with ui.row().classes("items-center justify-center gap-2"):
+                                action_button(
+                                    "-10 W",
+                                    lambda: adjust_launch_erg_target(-10),
+                                    variant="secondary",
+                                )
+                                ui.html(
+                                    '<span class="tr-fact-chip">'
+                                    "Adjustable during ride</span>",
+                                    sanitize=False,
+                                )
+                                action_button(
+                                    "+10 W",
+                                    lambda: adjust_launch_erg_target(10),
+                                    variant="secondary",
+                                )
+
+                else:
+                    route = route_by_id(selected_route_id["value"])
+                    with ui.element("div").classes("tr-mode-setup tr-mode-setup-sim"):
+                        with ui.column().classes("gap-3"):
+                            with ui.row().classes("items-start justify-between gap-3"):
+                                with ui.column().classes("gap-1"):
+                                    ui.label(route.title).classes("tr-panel-title")
+                                    ui.label(route.description).classes("tr-subtitle")
+                                ui.label(route.difficulty).classes(
+                                    "tr-state-badge ready"
+                                )
+                            ui.select(
+                                self._route_select_options(),
+                                value=selected_route_id["value"],
+                                label="SIM Route",
+                                on_change=lambda event: set_route(str(event.value)),
+                            ).classes("w-full")
+                            render_route_profile(route)
+                        with ui.element("div").classes("tr-meta-grid tr-route-stats"):
+                            meta_stat(f"{route.distance_m / 1000:.2f}", "Distance km")
+                            meta_stat(f"{route.elevation_gain_m:.0f}", "Gain m")
+                            meta_stat(f"{route.max_grade_pct:.1f}", "Max grade %")
+                            meta_stat(str(len(route.segments)), "Segments")
+
+        def render_recent_rides() -> None:
+            try:
+                sessions = get_session_service().list_sessions(limit=3)
+            except Exception as exc:
+                logger.warning("Failed to load recent rides: %s", exc)
+                sessions = []
+
+            panel_header(
+                "Recent rides",
+                "Completed rides from this device.",
+            )
+            with ui.element("div").classes("tr-table-shell"):
+                with ui.element("div").classes("tr-table-row tr-table-head"):
+                    ui.label("Date")
+                    ui.label("Mode")
+                    ui.label("Duration")
+                    ui.label("Distance")
+                    ui.label("Avg Power")
+                    ui.label("TSS")
+                    ui.label("Actions")
+                if sessions:
+                    for session in sessions:
+                        with ui.element("div").classes(
+                            "tr-table-row tr-table-row-actions"
+                        ):
+                            ui.label(
+                                session.start_time.strftime("%Y-%m-%d %H:%M")
+                            ).classes("font-bold text-gray-900")
+                            ui.label(session.mode.value.upper())
+                            ui.label(self._format_duration(session.duration_s))
+                            ui.label(self._format_distance(session.total_distance_m))
+                            ui.label(self._format_power(session.avg_power_w))
+                            ui.label(self._format_score(session.training_stress_score))
+                            with ui.row().classes("gap-2"):
+                                action_button(
+                                    "View",
+                                    lambda session_id=session.session_id: ui.navigate.to(
+                                        f"/history/{session_id}"
+                                    ),
+                                    variant="secondary",
+                                )
+                                action_button(
+                                    "CSV",
+                                    lambda session_id=session.session_id: self._export_session(
+                                        session_id
+                                    ),
+                                    variant="secondary",
+                                )
+                else:
+                    empty_state(
+                        "No rides yet",
+                        "Your completed rides will appear here.",
+                        action_label="Start Ride",
+                        on_action=lambda: ui.navigate.to("/"),
+                        action_variant="primary",
+                    )
+
         with page_container():
             with ui.row().classes("tr-hero-row w-full items-end justify-between gap-4"):
                 render_page_title(
-                    "Ride console",
-                    "Start clean. Ride steady.",
-                    "Trainer readiness, ride mode, and live data source in one control surface.",
-                )
-                action_button(
-                    "Open 3D View",
-                    lambda: ui.navigate.to("/ride3d"),
-                    variant="secondary",
+                    "Ride",
+                    "Ride Console",
+                    "Choose a mode and start riding.",
                 )
 
             connected = self.controller.trainer.is_connected
@@ -743,7 +887,7 @@ class WebUI:
             hr_connected = self.controller.hr_service.is_connected
             hr_name = self.controller.hr_service.device_info.get("name", "HR Monitor")
 
-            with ui.element("div").classes("tr-status-strip"):
+            with ui.element("div").classes("tr-status-strip tr-status-strip-two"):
                 trainer_tile = status_tile(
                     "Trainer",
                     (
@@ -764,134 +908,44 @@ class WebUI:
                     f"Connected to {hr_name}" if hr_connected else "Optional monitor",
                     connected=hr_connected,
                 )
-                status_tile(
-                    "Source",
-                    "Live BLE stream" if connected else "No-hardware demo",
-                    connected=connected or hr_connected,
+
+            with ui.column().classes("tr-panel tr-console-main p-5"):
+                panel_header(
+                    "Ride setup",
+                    "Choose the minimum inputs for this ride.",
+                    badge="Ready" if connected else "Demo",
                 )
 
-            with ui.element("div").classes("tr-console-grid"):
-                with ui.column().classes("tr-panel tr-console-main p-5"):
-                    panel_header(
-                        "Ride setup",
-                        "Choose the training mode before launching the cockpit.",
-                        badge="Ready" if connected else "Demo",
+                with ui.element("div").classes("tr-mode-grid"):
+                    for key, label in [
+                        ("free", "Free Ride"),
+                        ("erg", "ERG Mode"),
+                        ("sim", "SIM Mode"),
+                    ]:
+                        mode_buttons[key] = mode_button(
+                            label,
+                            lambda key=key: set_mode(key),
+                            active=key == "free",
+                        )
+
+                setup_container = ui.column().classes("w-full gap-0")
+                render_mode_setup()
+
+                with ui.element("div").classes("tr-btn-row"):
+                    action_button(
+                        "Start Ride",
+                        start_selected,
+                        variant="primary",
+                        min_width="170px",
+                    )
+                    action_button(
+                        "Pair Devices",
+                        lambda: ui.navigate.to("/settings?tab=devices"),
+                        variant="secondary",
                     )
 
-                    with ui.element("div").classes("tr-mode-grid"):
-                        for key, label in [
-                            ("free", "Free"),
-                            ("erg", "ERG"),
-                            ("sim", "SIM"),
-                        ]:
-                            mode_buttons[key] = mode_button(
-                                label,
-                                lambda key=key: set_mode(key),
-                                active=key == "free",
-                            )
-
-                    with ui.element("div").classes("tr-control-band"):
-                        with ui.column().classes("gap-3"):
-                            with ui.row().classes("items-start justify-between gap-4"):
-                                with ui.column().classes("gap-1"):
-                                    mode_title = ui.label("Free Ride").classes(
-                                        "tr-panel-title"
-                                    )
-                                    mode_detail = ui.label(
-                                        "No resistance control. Start a responsive no-fuss ride."
-                                    ).classes("tr-subtitle")
-                                ui.label("00:00").classes("tr-control-value")
-
-                            with ui.element("div").classes("tr-meta-grid"):
-                                meta_stat(
-                                    f"{self.controller.metrics.erg_target_w}",
-                                    "ERG target W",
-                                )
-                                meta_stat(
-                                    f"{self.controller.metrics.sim_grade_pct:.1f}",
-                                    "SIM grade %",
-                                )
-
-                    with ui.element("div").classes("tr-route-picker"):
-                        route = route_by_id(selected_route_id["value"])
-                        with ui.row().classes("items-center justify-between gap-3"):
-                            with ui.column().classes("gap-1"):
-                                route_title = ui.label(route.title).classes(
-                                    "tr-panel-title"
-                                )
-                                route_detail = ui.label(route.description).classes(
-                                    "tr-subtitle"
-                                )
-                            route_badge = ui.label(route.difficulty).classes(
-                                "tr-state-badge ready"
-                            )
-                        ui.select(
-                            self._route_select_options(),
-                            value=selected_route_id["value"],
-                            label="SIM route",
-                            on_change=lambda event: set_route(str(event.value)),
-                        ).classes("w-full")
-                        with ui.element("div").classes("tr-meta-grid tr-route-stats"):
-                            route_distance = meta_stat(
-                                f"{route.distance_m / 1000:.2f}",
-                                "Distance km",
-                            )
-                            route_gain = meta_stat(
-                                f"{route.elevation_gain_m:.0f}",
-                                "Gain m",
-                            )
-                            route_grade = meta_stat(
-                                f"{route.max_grade_pct:.1f}",
-                                "Max grade %",
-                            )
-                            meta_stat(str(len(route.segments)), "Segments")
-
-                    with ui.element("div").classes("tr-btn-row"):
-                        action_button(
-                            "Start Ride",
-                            start_selected,
-                            variant="primary",
-                            min_width="170px",
-                        )
-                        action_button(
-                            "Devices",
-                            lambda: ui.navigate.to("/devices"),
-                            variant="secondary",
-                        )
-
-                with ui.column().classes("tr-console-side"):
-                    with ui.column().classes("tr-panel p-5 gap-4"):
-                        panel_header(
-                            "3D Road",
-                            "Visualization surface fed by the same snapshot stream.",
-                            badge="View",
-                        )
-                        ui.element("div").classes("tr-road-preview")
-                        action_button(
-                            "Open 3D View",
-                            lambda: ui.navigate.to("/ride3d"),
-                            variant="secondary",
-                        )
-
-                    with ui.column().classes("tr-panel p-5 gap-4"):
-                        panel_header(
-                            "Recent rides",
-                            "A real log shell, kept empty until sessions are loaded.",
-                        )
-                        with ui.element("div").classes("tr-table-shell"):
-                            with ui.element("div").classes(
-                                "tr-table-row tr-table-head"
-                            ):
-                                ui.label("Session")
-                                ui.label("Mode")
-                                ui.label("Time")
-                                ui.label("Power")
-                            empty_state(
-                                "No sessions recorded yet",
-                                "Completed rides will appear here with duration, mode, and key metrics.",
-                                action_label="History",
-                                on_action=lambda: ui.navigate.to("/history"),
-                            )
+            with ui.column().classes("tr-panel p-5 gap-4"):
+                render_recent_rides()
 
         # Auto-connect if not already connected (like CLI does on startup)
         # Use a NiceGUI timer so UI updates run with a valid page slot.
@@ -918,7 +972,7 @@ class WebUI:
                 logger.info("Auto-connect: No trainers found")
                 if self._connection_status_label:
                     self._connection_status_label.set_text(
-                        "No trainer found — click Devices to scan manually"
+                        "No trainer found — use Pair Devices to scan manually"
                     )
                     self._connection_status_label.update()
                 return
@@ -958,14 +1012,14 @@ class WebUI:
             logger.info("Auto-connect: Device not found during connection")
             if self._connection_status_label:
                 self._connection_status_label.set_text(
-                    "Connection failed — click Devices to retry"
+                    "Connection failed — use Pair Devices to retry"
                 )
                 self._connection_status_label.update()
         except Exception as e:
             logger.warning(f"Auto-connect failed: {e}")
             if self._connection_status_label:
                 self._connection_status_label.set_text(
-                    "Connection error — click Devices to retry"
+                    "Connection error — use Pair Devices to retry"
                 )
                 self._connection_status_label.update()
 
@@ -1009,7 +1063,6 @@ class WebUI:
         with ui.element("div").classes("session-view"):
             with ui.element("div").classes("tr-cockpit"):
                 with ui.element("div").classes("tr-cockpit-top"):
-                    action_button("Exit", lambda: self._exit_session())
                     with ui.element("div").classes("tr-cockpit-statusbar"):
                         self._state_badge = ui.html(
                             '<span class="tr-state-badge live">Active</span>',
@@ -1256,7 +1309,7 @@ class WebUI:
         with page_container():
             render_page_title(
                 "Ride summary",
-                "Stopped session result.",
+                "Your ride has stopped.",
                 "Saved rides are available in history and can be exported as CSV.",
             )
 
@@ -1271,26 +1324,28 @@ class WebUI:
                 return
 
             snapshot = result.snapshot
-            saved_label = "Saved" if result.saved else "Not saved"
+            saved_label = "Ride saved" if result.saved else "No ride data saved"
             if result.persistence_error:
                 saved_label = "Save failed"
             elif result.sample_count == 0:
-                saved_label = "No samples"
+                saved_label = "No ride data saved"
 
             with ui.column().classes("tr-panel p-5 gap-4"):
                 panel_header(
-                    "Stopped ride",
+                    saved_label,
                     saved_label,
                     badge="Saved" if result.saved else "Review",
                 )
-                with ui.element("div").classes("tr-meta-grid tr-summary-grid"):
-                    meta_stat(self._format_duration(snapshot.elapsed_s), "Duration")
-                    meta_stat(
-                        self._format_distance(snapshot.distance_m),
-                        "Distance",
-                    )
-                    meta_stat(self._format_power(snapshot.power_w), "Last power")
-                    meta_stat(str(result.sample_count), "Samples")
+                if result.saved_session_id:
+                    service = get_session_service()
+                    session = service.get_session(result.saved_session_id)
+                    summary = service.get_session_summary(result.saved_session_id)
+                    if session is not None:
+                        self._render_session_summary_stats(session, summary)
+                    else:
+                        self._render_snapshot_summary_stats(snapshot)
+                else:
+                    self._render_snapshot_summary_stats(snapshot)
 
                 if result.persistence_error:
                     with ui.element("div").classes("connection-status error"):
@@ -1302,17 +1357,17 @@ class WebUI:
                     with ui.element("div").classes("connection-status info"):
                         ui.icon("info")
                         ui.label(
-                            "No trainer or demo samples were captured, so nothing was written to history."
+                            "No trainer or demo data was recorded, so nothing was written to history."
                         )
 
                 with ui.element("div").classes("tr-btn-row"):
                     action_button(
-                        "Start Ride",
+                        "Start New Ride",
                         lambda: ui.navigate.to("/"),
                         variant="primary",
                     )
                     action_button(
-                        "History",
+                        "View History",
                         lambda: ui.navigate.to("/history"),
                         variant="secondary",
                     )
@@ -1327,73 +1382,80 @@ class WebUI:
 
     def _render_devices(self) -> None:
         """Render the devices management page."""
-        self._render_header("Devices")
+        self._render_header("Settings")
 
         with page_container():
             render_page_title(
-                "Hardware bay",
-                "Pair the sensors that drive the ride.",
-                "Trainer and heart-rate state stay separate from the ride UI so future surfaces can reuse them.",
+                "Settings",
+                "Devices",
+                "Pair your trainer and optional heart-rate monitor.",
+            )
+            self._render_devices_content()
+
+    def _render_devices_content(self) -> None:
+        """Render device rows for the Settings devices section."""
+        with ui.column().classes("tr-panel p-5 gap-3"):
+            panel_header(
+                "Devices",
+                "Pair your trainer and optional heart-rate monitor.",
+                badge="Hardware",
             )
 
-            with ui.column().classes("tr-panel p-5 gap-3"):
-                panel_header(
-                    "Devices",
-                    "Each row exposes connection state, signal, and the next action.",
-                    badge="Hardware",
-                )
-
-                trainer_status = self.controller.trainer.connection_status()
-                device_row(
-                    "FTMS trainer",
-                    (
-                        f"Connected to {trainer_status.name or 'Trainer'}"
+            trainer_status = self.controller.trainer.connection_status()
+            device_row(
+                "Trainer",
+                (
+                    f"Connected to {trainer_status.name or 'Trainer'}"
+                    if trainer_status.connected
+                    else "Not paired. Demo mode remains available."
+                ),
+                connected=trainer_status.connected,
+                action_label="Disconnect" if trainer_status.connected else "Scan",
+                on_action=(
+                    lambda: (
+                        self._disconnect_trainer()
                         if trainer_status.connected
-                        else "Not connected. Demo samples are available."
-                    ),
-                    connected=trainer_status.connected,
-                    action_label="Disconnect" if trainer_status.connected else "Scan",
-                    on_action=(
-                        lambda: (
-                            self._disconnect_trainer()
-                            if trainer_status.connected
-                            else self._scan_trainers()
-                        )
-                    ),
-                    action_variant=(
-                        "secondary" if trainer_status.connected else "primary"
-                    ),
-                    signal_bars=(
-                        _rssi_to_bars(trainer_status.rssi)
-                        if trainer_status.connected
-                        else 0
-                    ),
-                    state_label="Paired" if trainer_status.connected else "Demo",
-                )
+                        else self._scan_trainers()
+                    )
+                ),
+                action_variant="secondary" if trainer_status.connected else "primary",
+                signal_bars=(
+                    _rssi_to_bars(trainer_status.rssi)
+                    if trainer_status.connected
+                    else 0
+                ),
+                state_label="Connected" if trainer_status.connected else "Demo",
+            )
 
-                hr_status = self.controller.hr_service.connection_status()
-                device_row(
-                    "Heart-rate monitor",
-                    (
-                        f"Connected to {hr_status.name or 'HR Monitor'}"
+            hr_status = self.controller.hr_service.connection_status()
+            device_row(
+                "Heart Rate",
+                (
+                    f"Connected to {hr_status.name or 'HR Monitor'}"
+                    if hr_status.connected
+                    else "Optional. Pair a standard BLE HR strap."
+                ),
+                connected=hr_status.connected,
+                action_label="Disconnect" if hr_status.connected else "Scan",
+                on_action=(
+                    lambda: (
+                        self._disconnect_hr()
                         if hr_status.connected
-                        else "Optional. Pair a standard BLE HR strap."
-                    ),
-                    connected=hr_status.connected,
-                    action_label="Disconnect" if hr_status.connected else "Scan",
-                    on_action=(
-                        lambda: (
-                            self._disconnect_hr()
-                            if hr_status.connected
-                            else self._scan_hr()
-                        )
-                    ),
-                    action_variant="secondary" if hr_status.connected else "primary",
-                    signal_bars=(
-                        _rssi_to_bars(hr_status.rssi) if hr_status.connected else 0
-                    ),
-                    state_label="Paired" if hr_status.connected else "Optional",
-                )
+                        else self._scan_hr()
+                    )
+                ),
+                action_variant="secondary" if hr_status.connected else "primary",
+                signal_bars=_rssi_to_bars(hr_status.rssi) if hr_status.connected else 0,
+                state_label="Connected" if hr_status.connected else "Optional",
+            )
+
+            with ui.element("div").classes("tr-settings-help"):
+                ui.label("Troubleshooting").classes("tr-status-name")
+                ui.label(
+                    "Keep devices nearby, awake, and disconnected from other apps. "
+                    "On macOS, grant Bluetooth permission to the terminal app "
+                    "that launches le-tour."
+                ).classes("tr-status-meta")
 
     async def _disconnect_trainer(self) -> None:
         """Disconnect the trainer and refresh the page."""
@@ -1401,8 +1463,7 @@ class WebUI:
             if self.controller.trainer.is_connected:
                 await self.controller.trainer.disconnect()
                 logger.info("Trainer disconnected via web UI")
-            # Refresh page to show updated status
-            ui.navigate.to("/devices")
+            ui.navigate.to("/settings?tab=devices")
         except Exception as e:
             logger.warning(f"Error disconnecting trainer: {e}")
             ui.notify(f"Disconnect failed: {e}", color="red")
@@ -1413,8 +1474,7 @@ class WebUI:
             if self.controller.hr_service.is_connected:
                 await self.controller.hr_service.disconnect()
                 logger.info("HR monitor disconnected via web UI")
-            # Refresh page to show updated status
-            ui.navigate.to("/devices")
+            ui.navigate.to("/settings?tab=devices")
         except Exception as e:
             logger.warning(f"Error disconnecting HR: {e}")
             ui.notify(f"Disconnect failed: {e}", color="red")
@@ -1430,8 +1490,7 @@ class WebUI:
             await self.controller.trainer.connect_to_device(address)
 
         def on_connected() -> None:
-            # Refresh the devices page to show updated connection status
-            ui.navigate.to("/devices")
+            ui.navigate.to("/settings?tab=devices")
 
         dialog = ScanDialog(
             title="Trainers",
@@ -1453,8 +1512,7 @@ class WebUI:
             await self.controller.hr_service.connect_to_device(address)
 
         def on_connected() -> None:
-            # Refresh the devices page to show updated connection status
-            ui.navigate.to("/devices")
+            ui.navigate.to("/settings?tab=devices")
 
         dialog = ScanDialog(
             title="Heart Rate Monitors",
@@ -1478,22 +1536,23 @@ class WebUI:
             render_page_title(
                 "Training log",
                 "Completed rides from the local training repository.",
-                "Only recorded sessions are shown here; demo rows are intentionally not invented.",
+                "Only recorded sessions are shown here.",
             )
 
             with ui.column().classes("tr-panel p-5 gap-3"):
                 panel_header(
                     "Sessions",
-                    "Duration, mode, power, and distance from saved rides.",
+                    "Duration, mode, distance, power, and training stress.",
                     badge="Log",
                 )
                 with ui.element("div").classes("tr-table-shell"):
                     with ui.element("div").classes("tr-table-row tr-table-head"):
-                        ui.label("Session")
+                        ui.label("Date")
                         ui.label("Mode")
                         ui.label("Duration")
-                        ui.label("Power")
                         ui.label("Distance")
+                        ui.label("Avg Power")
+                        ui.label("TSS")
                         ui.label("Actions")
                     if sessions:
                         for session in sessions:
@@ -1505,9 +1564,12 @@ class WebUI:
                                 ).classes("font-bold text-gray-900")
                                 ui.label(session.mode.value.upper())
                                 ui.label(self._format_duration(session.duration_s))
-                                ui.label(self._format_power(session.avg_power_w))
                                 ui.label(
                                     self._format_distance(session.total_distance_m)
+                                )
+                                ui.label(self._format_power(session.avg_power_w))
+                                ui.label(
+                                    self._format_score(session.training_stress_score)
                                 )
                                 with ui.row().classes("gap-2"):
                                     action_button(
@@ -1526,8 +1588,8 @@ class WebUI:
                                     )
                     else:
                         empty_state(
-                            "No sessions recorded yet",
-                            "Start and stop a ride to populate this log.",
+                            "No rides yet",
+                            "Your completed rides will appear here.",
                             action_label="Start Ride",
                             on_action=lambda: ui.navigate.to("/"),
                             action_variant="primary",
@@ -1614,10 +1676,27 @@ class WebUI:
             meta_stat(self._format_power(session.max_power_w), "Max power")
             meta_stat(self._format_bpm(avg_hr_bpm), "Avg HR")
             meta_stat(self._format_bpm(session.max_hr_bpm), "Max HR")
-            meta_stat(self._format_power(normalized_power_w), "NP")
-            meta_stat(self._format_ratio(intensity_factor), "IF")
-            meta_stat(self._format_score(training_stress_score), "TSS")
-            meta_stat(str(session.user_ftp_w), "FTP W")
+            meta_stat(self._format_power(normalized_power_w), "Normalized Power")
+            meta_stat(self._format_ratio(intensity_factor), "Intensity")
+            meta_stat(self._format_score(training_stress_score), "Training Stress")
+            meta_stat(str(session.user_ftp_w), "FTP")
+
+    def _render_snapshot_summary_stats(self, snapshot: object) -> None:
+        """Render fallback summary stats when no persisted session is available."""
+        with ui.element("div").classes("tr-meta-grid tr-summary-grid"):
+            meta_stat(
+                self._format_duration(getattr(snapshot, "elapsed_s", None)),
+                "Duration",
+            )
+            meta_stat(
+                self._format_distance(getattr(snapshot, "distance_m", None)),
+                "Distance",
+            )
+            meta_stat(
+                self._format_power(getattr(snapshot, "power_w", None)),
+                "Last power",
+            )
+            meta_stat("--", "Training Stress")
 
     @staticmethod
     def _session_route_label(session: SessionModel) -> str | None:
@@ -1637,32 +1716,57 @@ class WebUI:
             return
         ui.notify(f"CSV exported to {output_path}", color="green")
 
-    def _render_settings(self) -> None:
-        """Render the settings page."""
+    def _render_settings(self, selected_tab: str | None = None) -> None:
+        """Render sectioned settings."""
         self._render_header("Settings")
 
         config = get_config()
+        tab = (
+            selected_tab
+            if selected_tab in {"profile", "ride", "devices", "app"}
+            else "profile"
+        )
+
+        def render_settings_tabs() -> None:
+            with ui.element("div").classes("tr-settings-tabs"):
+                for key, label in [
+                    ("profile", "Profile"),
+                    ("ride", "Ride Defaults"),
+                    ("devices", "Devices"),
+                    ("app", "App"),
+                ]:
+                    classes = (
+                        "tr-settings-tab active" if key == tab else "tr-settings-tab"
+                    )
+                    ui.button(
+                        label,
+                        on_click=lambda key=key: ui.navigate.to(f"/settings?tab={key}"),
+                        color=None,
+                    ).classes(classes)
 
         with page_container():
             render_page_title(
-                "Configuration",
-                "Ride profile and defaults.",
-                "These settings feed trainer control, simulation physics, and training metrics.",
+                "Settings",
+                "Profile, ride defaults, devices, and app preferences.",
+                "Keep setup out of the ride flow.",
             )
+            render_settings_tabs()
+
+            if tab == "devices":
+                self._render_devices_content()
+                return
 
             with ui.column().classes("tr-panel p-5 gap-4"):
-                panel_header(
-                    "Profile",
-                    "Rider inputs used by trainer control and simulation physics.",
-                    badge="Config",
-                )
-
-                with ui.column().classes("gap-4"):
+                if tab == "profile":
+                    panel_header(
+                        "Profile",
+                        "Rider inputs used for training metrics and physics.",
+                        badge="Profile",
+                    )
                     name_input = ui.input(
                         "Name",
                         value=config.settings.name or "",
                     ).classes("w-full")
-
                     with ui.element("div").classes("tr-form-grid"):
                         mass_input = ui.number(
                             "Weight (kg)",
@@ -1676,7 +1780,6 @@ class WebUI:
                             min=50,
                             max=600,
                         ).classes("w-full")
-
                     with ui.element("div").classes("tr-form-grid"):
                         max_hr_input = ui.number(
                             "Max HR (bpm)",
@@ -1690,11 +1793,23 @@ class WebUI:
                             min=10,
                             max=100,
                         ).classes("w-full")
+                    action_button(
+                        "Save Profile",
+                        lambda: self._save_profile_settings(
+                            name_input.value,
+                            mass_input.value,
+                            ftp_input.value,
+                            max_hr_input.value,
+                            age_input.value,
+                        ),
+                        variant="primary",
+                    )
 
+                elif tab == "ride":
                     panel_header(
-                        "Ride defaults",
-                        "Defaults used when a new cockpit session starts.",
-                        badge="MVP",
+                        "Ride Defaults",
+                        "Defaults used when a new ride starts.",
+                        badge="Ride",
                     )
                     with ui.element("div").classes("tr-form-grid"):
                         erg_target_input = ui.number(
@@ -1710,7 +1825,6 @@ class WebUI:
                             max=15,
                             step=0.5,
                         ).classes("w-full")
-
                     with ui.element("div").classes("tr-form-grid"):
                         route_select = ui.select(
                             self._route_select_options(),
@@ -1726,25 +1840,35 @@ class WebUI:
                             value=config.settings.speed_source,
                             label="Speed source",
                         ).classes("w-full")
-
-                    panel_header(
-                        "App preferences",
-                        "Units and connection startup behavior.",
-                        badge="Local",
+                    units_select = ui.select(
+                        {"metric": "Metric", "imperial": "Imperial"},
+                        value=config.settings.units,
+                        label="Units",
+                    ).classes("w-full")
+                    action_button(
+                        "Save Ride Defaults",
+                        lambda: self._save_ride_default_settings(
+                            erg_target_input.value,
+                            sim_grade_input.value,
+                            route_select.value,
+                            speed_source_select.value,
+                            units_select.value,
+                        ),
+                        variant="primary",
                     )
-                    with ui.element("div").classes("tr-form-grid"):
-                        units_select = ui.select(
-                            {"metric": "Metric", "imperial": "Imperial"},
-                            value=config.settings.units,
-                            label="Units",
-                        ).classes("w-full")
-                        reconnect_timeout_input = ui.number(
-                            "Reconnect timeout (s)",
-                            value=config.settings.reconnect_timeout_s,
-                            min=5,
-                            max=300,
-                        ).classes("w-full")
 
+                else:
+                    panel_header(
+                        "App Preferences",
+                        "Local connection startup behavior.",
+                        badge="App",
+                    )
+                    reconnect_timeout_input = ui.number(
+                        "Reconnect timeout (s)",
+                        value=config.settings.reconnect_timeout_s,
+                        min=5,
+                        max=300,
+                    ).classes("w-full")
                     auto_connect_trainer_switch = ui.switch(
                         "Auto-connect trainer when BLE auto-scan is enabled",
                         value=config.settings.auto_connect_trainer,
@@ -1753,26 +1877,15 @@ class WebUI:
                         "Auto-connect heart-rate monitor",
                         value=config.settings.auto_connect_hr,
                     )
-
-            action_button(
-                "Save Settings",
-                lambda: self._save_settings(
-                    name_input.value,
-                    mass_input.value,
-                    ftp_input.value,
-                    max_hr_input.value,
-                    age_input.value,
-                    erg_target_input.value,
-                    sim_grade_input.value,
-                    route_select.value,
-                    speed_source_select.value,
-                    units_select.value,
-                    auto_connect_trainer_switch.value,
-                    auto_connect_hr_switch.value,
-                    reconnect_timeout_input.value,
-                ),
-                variant="primary",
-            )
+                    action_button(
+                        "Save App Preferences",
+                        lambda: self._save_app_preference_settings(
+                            auto_connect_trainer_switch.value,
+                            auto_connect_hr_switch.value,
+                            reconnect_timeout_input.value,
+                        ),
+                        variant="primary",
+                    )
 
     def _render_design_system(self) -> None:
         """Render the web component preview surface."""
@@ -1785,10 +1898,9 @@ class WebUI:
                 "Reusable NiceGUI building blocks for the current web UI and future surfaces.",
             )
 
-            with ui.element("div").classes("tr-status-strip"):
+            with ui.element("div").classes("tr-status-strip tr-status-strip-two"):
                 status_tile("Trainer", "Connected to FTMS Bike", connected=True)
                 status_tile("Heart rate", "Optional monitor", connected=False)
-                status_tile("Source", "No-hardware demo", connected=True)
 
             with ui.element("div").classes("tr-console-grid"):
                 with ui.column().classes("tr-panel p-5 gap-4"):
@@ -1803,7 +1915,7 @@ class WebUI:
                         mode_button("SIM", lambda: None)
                     with ui.element("div").classes("tr-btn-row"):
                         action_button("Start Ride", lambda: None, variant="primary")
-                        action_button("Open 3D View", lambda: None)
+                        action_button("Pair Devices", lambda: None)
                     with ui.element("div").classes("tr-meta-grid"):
                         meta_stat("150", "ERG target W")
                         meta_stat("0.0", "SIM grade %")
@@ -1858,6 +1970,86 @@ class WebUI:
                         "No sessions recorded yet",
                         "The shell is designed without fake training data.",
                     )
+
+    def _save_settings_updates(self, updates: dict[str, object]) -> None:
+        """Validate and persist partial settings updates."""
+        config = get_config()
+        try:
+            data = config.settings.model_dump()
+            data.update(updates)
+            settings = UserSettings.model_validate(data)
+        except Exception as exc:
+            ui.notify(f"Settings invalid: {exc}", color="red")
+            return
+
+        config.settings = settings
+        config.user_mass_kg = settings.mass_kg
+        config.user_ftp_w = settings.ftp_w if settings.ftp_w is not None else 250
+        config.connection_timeout_s = settings.reconnect_timeout_s
+        config.save_settings()
+        ui.notify("Settings saved", color="green")
+
+    def _save_profile_settings(
+        self,
+        name: object,
+        mass_kg: object,
+        ftp_w: object,
+        max_hr_bpm: object,
+        age: object,
+    ) -> None:
+        """Validate and save rider profile settings."""
+        try:
+            updates: dict[str, object] = {
+                "name": (str(name).strip() if name is not None else "") or "Rider",
+                "mass_kg": self._required_float(mass_kg),
+                "ftp_w": self._optional_int(ftp_w),
+                "max_hr_bpm": self._optional_int(max_hr_bpm),
+                "age": self._required_int(age),
+            }
+        except Exception as exc:
+            ui.notify(f"Settings invalid: {exc}", color="red")
+            return
+        self._save_settings_updates(updates)
+
+    def _save_ride_default_settings(
+        self,
+        default_erg_power_w: object,
+        default_sim_grade_pct: object,
+        default_sim_route_id: object,
+        speed_source: object,
+        units: object,
+    ) -> None:
+        """Validate and save ride defaults."""
+        try:
+            updates: dict[str, object] = {
+                "default_erg_power_w": self._required_int(default_erg_power_w),
+                "default_sim_grade_pct": self._required_float(default_sim_grade_pct),
+                "default_sim_route_id": self._required_route_id(default_sim_route_id),
+                "speed_source": str(speed_source),
+                "units": str(units),
+            }
+        except Exception as exc:
+            ui.notify(f"Settings invalid: {exc}", color="red")
+            return
+        self._save_settings_updates(updates)
+
+    def _save_app_preference_settings(
+        self,
+        auto_connect_trainer: object,
+        auto_connect_hr: object,
+        reconnect_timeout_s: object,
+    ) -> None:
+        """Validate and save local app preferences."""
+        try:
+            updates: dict[str, object] = {
+                "auto_connect_trainer": bool(auto_connect_trainer),
+                "auto_connect_hr": bool(auto_connect_hr),
+                "reconnect_timeout_s": self._required_int(reconnect_timeout_s),
+            }
+        except Exception as exc:
+            ui.notify(f"Settings invalid: {exc}", color="red")
+            return
+        self._save_settings_updates(updates)
 
     def _save_settings(
         self,

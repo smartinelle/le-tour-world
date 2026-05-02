@@ -106,6 +106,26 @@ body {
     color: #fffefd;
 }
 
+.tr-header-status {
+    align-items: center;
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
+    border-radius: 999px;
+    color: var(--tr-muted);
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 800;
+    gap: 0.52rem;
+    min-height: 34px;
+    padding: 0 0.75rem;
+    white-space: nowrap;
+}
+
+.tr-header-status .status-dot {
+    height: 8px;
+    width: 8px;
+}
+
 .tr-page {
     padding: 26px 0 56px;
 }
@@ -238,6 +258,10 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.tr-status-strip-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .tr-status-tile {
     align-items: center;
     background: var(--tr-surface);
@@ -316,6 +340,101 @@ body {
     padding: 1rem;
 }
 
+.tr-mode-setup {
+    background: var(--tr-surface-strong);
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius);
+    display: grid;
+    gap: 18px;
+    margin-top: 14px;
+    padding: 1rem;
+}
+
+.tr-mode-setup-compact,
+.tr-mode-setup-erg {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 136px;
+}
+
+.tr-mode-setup-sim {
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+}
+
+.tr-chip-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tr-fact-chip {
+    align-items: center;
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
+    border-radius: 999px;
+    color: var(--tr-muted);
+    display: inline-flex;
+    font-size: 0.74rem;
+    font-weight: 800;
+    min-height: 32px;
+    padding: 0 0.7rem;
+    white-space: nowrap;
+}
+
+.tr-erg-target-block {
+    align-items: center;
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+    min-width: 320px;
+}
+
+.tr-erg-target-value {
+    color: var(--tr-text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(2.6rem, 7vw, 5rem);
+    font-weight: 700;
+    line-height: 0.9;
+}
+
+.tr-route-profile {
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius);
+    height: 96px;
+    overflow: hidden;
+    position: relative;
+}
+
+.tr-route-profile svg {
+    height: 100%;
+    inset: 0;
+    position: absolute;
+    width: 100%;
+}
+
+.tr-route-profile polyline {
+    fill: none;
+    stroke: var(--tr-accent);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 4;
+    vector-effect: non-scaling-stroke;
+}
+
+.tr-route-profile-ticks {
+    inset: 0;
+    position: absolute;
+}
+
+.tr-route-profile-ticks span {
+    background: rgba(24, 27, 31, 0.12);
+    height: 100%;
+    position: absolute;
+    top: 0;
+    width: 1px;
+}
+
 .tr-history-row,
 .tr-device-row {
     align-items: center;
@@ -364,6 +483,13 @@ body {
     align-items: center;
     display: grid;
     gap: 12px;
+}
+
+.tr-cockpit-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.tr-cockpit-controls {
     grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
@@ -798,7 +924,7 @@ body {
     border-bottom: 1px solid var(--tr-border);
     display: grid;
     gap: 14px;
-    grid-template-columns: 1.2fr 0.6fr 0.7fr 0.7fr 0.7fr auto;
+    grid-template-columns: 1.15fr 0.55fr 0.7fr 0.72fr 0.74fr 0.48fr auto;
     min-height: 46px;
     padding: 0 14px;
 }
@@ -829,6 +955,38 @@ body {
     display: grid;
     gap: 14px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tr-settings-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.q-btn.tr-settings-tab {
+    background: var(--tr-surface) !important;
+    border: 1px solid var(--tr-border) !important;
+    border-radius: var(--tr-radius) !important;
+    color: var(--tr-muted) !important;
+    font-size: 0.86rem !important;
+    font-weight: 800 !important;
+    min-height: 42px !important;
+    text-transform: none !important;
+}
+
+.q-btn.tr-settings-tab.active {
+    background: var(--tr-text) !important;
+    border-color: var(--tr-text) !important;
+    color: #fffefd !important;
+}
+
+.tr-settings-help {
+    background: var(--tr-surface-strong);
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius);
+    display: grid;
+    gap: 6px;
+    padding: 1rem;
 }
 
 .session-view {
@@ -929,6 +1087,17 @@ body {
     .tr-form-grid,
     .tr-panel-header {
         grid-template-columns: 1fr;
+    }
+
+    .tr-mode-setup-compact,
+    .tr-mode-setup-erg,
+    .tr-mode-setup-sim {
+        grid-template-columns: 1fr;
+    }
+
+    .tr-erg-target-block {
+        justify-items: start;
+        min-width: 0;
     }
 
     .tr-metric-rail {

@@ -9,9 +9,7 @@ from nicegui import ui
 from terminalride.web.theme import WEB_STYLES
 
 NAV_ITEMS: tuple[tuple[str, str], ...] = (
-    ("Home", "/"),
-    ("Devices", "/devices"),
-    ("Ride 3D", "/ride3d"),
+    ("Ride", "/"),
     ("History", "/history"),
     ("Settings", "/settings"),
 )
@@ -51,6 +49,8 @@ def render_app_header(
     *,
     user: dict[str, Any] | None = None,
     logout_path: str = "/logout",
+    status_label: str | None = None,
+    status_connected: bool = False,
 ) -> None:
     """Render the app header and optional authenticated user controls."""
     with ui.header().classes("tr-header px-0 py-3"):
@@ -64,6 +64,15 @@ def render_app_header(
                     for name, path in NAV_ITEMS:
                         active = "active" if current == name else ""
                         ui.link(name, path).classes(f"nav-link {active}")
+
+                if status_label:
+                    dot_class = "connected" if status_connected else "disconnected"
+                    ui.html(
+                        f'<span class="tr-header-status">'
+                        f'<span class="status-dot {dot_class}"></span>'
+                        f"{status_label}</span>",
+                        sanitize=False,
+                    )
 
                 if user:
                     with ui.row().classes(
