@@ -6,7 +6,7 @@ BLE FTMS trainers.
 The current application runs as a local Python process with a browser UI. Python
 owns trainer communication, ride state, persistence, and domain logic; the
 browser is the presentation layer. This keeps the core usable for future
-interfaces such as a Three.js ride world, mobile app, or restored terminal UI.
+interfaces such as a richer Three.js ride world, mobile app, or API clients.
 
 ## Product Direction
 
@@ -44,8 +44,8 @@ assumption, not a fixed product commitment.
 - Do not couple trainer control, generated routes, persistence, analytics, or
   product rules directly to NiceGUI.
 - Keep generated route/world logic behind domain or application contracts so it
-  can power the current web UI, a future terminal UI, and a richer 3D browser
-  interface.
+  can power the current web UI, a richer 3D browser interface, and API/mobile
+  clients.
 - Use `docs/product/` for deeper product exploration and `docs/adr/` for
   architecture decisions that affect boundaries, storage, auth, or generated
   route contracts.
@@ -63,8 +63,8 @@ assumption, not a fixed product commitment.
 - **Trainer connection:** Python/Bleak FTMS client remains the primary local
   hardware path.
 - **Native terminal UI:** the old Rich/TUI entry points and `terminalride/ui`
-  package have been removed during the web migration. The README no longer
-  documents `python -m terminalride` as a working app entry point.
+  package have been removed during the web migration. It is a thing of the past,
+  not a future product surface.
 - **Browser BLE:** `terminalride/web/static/ble.js` is an experimental
   Web Bluetooth client. It is not the default path and browser support is
   limited compared with the Python/Bleak local app.
@@ -163,11 +163,12 @@ trainer internals.
 
 ### Current Migration Notes
 
-The project used to be terminal-first with a Rich-based UI. The current branch
-has moved toward a browser-first app and the native terminal surface is not
-available in the working tree. The core rule still stands: keep business logic
-in the domain layer so a terminal UI can be restored later without rewriting
-trainer control, persistence, or analytics.
+The project used to be terminal-first with a Rich-based UI. That direction is
+retired. The current product is browser-first, with future surfaces expected to
+be richer web/3D experiences, mobile clients, API clients, or headless
+automation. The core rule still stands: keep business logic in the domain layer
+so trainer control, persistence, analytics, and generated routes are not coupled
+to NiceGUI or any single presentation layer.
 
 ## Training Modes
 

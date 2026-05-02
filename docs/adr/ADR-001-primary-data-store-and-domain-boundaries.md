@@ -2,8 +2,17 @@
 - Status: Accepted
 - Date: 2025-09-19
 
+> Current direction update: this ADR was written while TerminalRide still had a
+> Rich terminal UI. The terminal UI is now retired and should not be treated as a
+> future product surface. The domain-boundary decision remains valid because the
+> core must stay reusable for web, 3D browser, mobile/API, and headless
+> workflows.
+
 ## Context
-- TerminalRide must serve a Rich-based terminal UI today while remaining portable to future surfaces (web, mobile, headless automations).
+- At the time of this ADR, TerminalRide had to serve a Rich-based terminal UI
+  while remaining portable to future surfaces. That specific UI requirement is
+  now historical; portability remains important for web, 3D browser, mobile/API,
+  and headless workflows.
 - We collect high-frequency ride samples and session metadata that need durable, append-friendly storage on constrained machines.
 - Early revisions stored trainer output inside UI flows without a shared persistence layer. Commits `8e3e7a1` (initial skeleton) and `4d4ca56` introduced the current repository and domain service boundaries to correct that coupling.
 - We require fast querying for history/statistics views without giving up the robustness of append-only logs.
@@ -11,7 +20,9 @@
 ## Decision
 - Keep `terminalride/domain` as the single owner of trainer orchestration and state: `TrainerService` wraps the FTMS client, publishes domain events, and exposes an API that does not depend on Rich or screen state.
 - Use `TrainingRepository` as the persistence facade. It appends canonical session/sample records to JSONL files as the source of truth, and hydrates a local SQLite database for indexed lookups that power summaries and statistics.
-- UI code (`terminalride/ui`) consumes domain events and repository outputs but never reaches into BLE clients or filesystem implementations directly.
+- UI code consumes domain events and repository outputs but never reaches into
+  BLE clients or filesystem implementations directly. The current UI lives in
+  `terminalride/web`; the retired `terminalride/ui` package is historical only.
 - CSV exports stay layered on top of the repository so future adapters (e.g., FIT/TCX exporters or remote sync) can reuse the same session graph.
 
 ## Consequences

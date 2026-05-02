@@ -336,7 +336,7 @@ def get_hr_zone(hr_bpm: int, max_hr_bpm: int) -> tuple[str, str]:
         max_hr_bpm: Maximum heart rate in BPM.
 
     Returns:
-        Tuple of (zone_name, color) where color is a Rich style string.
+        Tuple of (zone_name, color) where color is a semantic display token.
 
     Example:
         >>> get_hr_zone(150, 190)

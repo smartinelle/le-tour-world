@@ -63,7 +63,7 @@ class RideState:
 class RideSnapshot:
     """UI-neutral snapshot of the current ride state.
 
-    This is the transport-safe view that browser, terminal, and future 3D
+    This is the transport-safe view that browser, 3D, mobile/API, and headless
     surfaces can consume without reaching into controller internals.
     """
 

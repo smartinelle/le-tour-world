@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-- **Goal:** Web-first indoor cycling app that connects to Wahoo KICKR via BLE FTMS and keeps the ride domain reusable for future UIs.
+- **Goal:** Web-first indoor cycling app that connects to Wahoo KICKR via BLE FTMS and keeps the ride domain reusable for richer browser/3D surfaces, API clients, mobile clients, and headless workflows.
 - **Stack:** Python 3.11, uv, NiceGUI, bleak, numpy, pydantic, pytest.
 - **Modes:** Free Ride, ERG (constant power), SIM (grade-based resistance).
 - **Data:** JSONL/SQLite persistence, CSV export, local analytics.
 - **Current UI:** Browser app in `terminalride/web`, started with `run_web.py`.
-- **Retired UI:** The old Rich terminal UI entry points are removed on this branch.
+- **Retired UI:** The old Rich terminal UI entry points are removed on this branch. Do not plan for that UI to return.
 
 ## Development Commands
 
@@ -27,7 +27,7 @@ uv run mypy terminalride
 - Keep core ride/session logic in `terminalride/domain`.
 - Keep presentation code in `terminalride/web`.
 - Do not couple trainer control, persistence, or analytics to NiceGUI.
-- Expose UI-neutral ride state so future terminal, mobile, or Three.js interfaces can reuse the same domain.
+- Expose UI-neutral ride state so richer browser/3D, mobile, API, and headless interfaces can reuse the same domain.
 - Keep BLE I/O isolated in `terminalride/devices`.
 - Keep parsers and physics deterministic and testable.
 - Do not invent FTMS details; add `TODO(FTMS: confirm...)` markers when specs need verification.
