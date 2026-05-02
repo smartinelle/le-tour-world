@@ -90,7 +90,7 @@ def test_ride3d_start_endpoint_prepares_hardware_session():
 def test_ride3d_page_consumes_snapshot_stream():
     """3D prototype is a browser-only snapshot stream consumer."""
     assert '<script type="module" src="/static/ride3d.js"></script>' in RIDE3D_HTML
-    assert 'import { RideApiClient } from "/static/ride_client.js"' in RIDE3D_JS
+    assert 'import { RideApiClient } from "/static/ride_client.js?v=' in RIDE3D_JS
     assert 'import { RideMotionModel } from "/static/ride_motion.js"' in RIDE3D_JS
     assert "new EventSource(this.snapshotUrl)" in RIDE_CLIENT_JS
     assert '"/api/ride/snapshots"' in RIDE_CLIENT_JS
@@ -127,6 +127,9 @@ def test_ride3d_page_has_session_controls():
     assert "getRoutes()" in RIDE_CLIENT_JS
     assert '"/api/devices/status"' in RIDE_CLIENT_JS
     assert "getDeviceStatus()" in RIDE_CLIENT_JS
+    assert "scanDevices(deviceType)" in RIDE_CLIENT_JS
+    assert "connectDevice(deviceType, address)" in RIDE_CLIENT_JS
+    assert "disconnectDevice(deviceType)" in RIDE_CLIENT_JS
 
 
 def test_ride3d_hud_shows_hardware_connection_source():
@@ -140,6 +143,20 @@ def test_ride3d_hud_shows_hardware_connection_source():
     assert "No trainer · demo source" in RIDE3D_JS
     assert "No HR · demo source" in RIDE3D_JS
     assert "hud.deviceStatus.textContent" in RIDE3D_JS
+
+
+def test_ride3d_page_has_device_pairing_controls():
+    """3D page can scan and connect hardware without returning to NiceGUI."""
+    assert 'aria-label="Devices"' in RIDE3D_HTML
+    assert 'id="trainer-device-action"' in RIDE3D_HTML
+    assert 'id="hr-device-action"' in RIDE3D_HTML
+    assert 'id="device-results"' in RIDE3D_HTML
+    assert "refreshDeviceStatus()" in RIDE3D_JS
+    assert 'handleDeviceAction("trainer"' in RIDE3D_JS
+    assert 'handleDeviceAction("hr"' in RIDE3D_JS
+    assert "rideClient.scanDevices(type)" in RIDE3D_JS
+    assert "rideClient.connectDevice(type, address)" in RIDE3D_JS
+    assert "rideClient.disconnectDevice(type)" in RIDE3D_JS
 
 
 def test_web_app_uses_device_services_not_private_clients():

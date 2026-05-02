@@ -1,5 +1,5 @@
 import * as THREE from "https://esm.sh/three@0.164.1";
-import { RideApiClient } from "/static/ride_client.js";
+import { RideApiClient } from "/static/ride_client.js?v=device-pairing";
 import { RideMotionModel } from "/static/ride_motion.js";
 
 const canvas = document.querySelector("#scene");
@@ -357,6 +357,11 @@ const hud = {
   simControls: document.querySelector("#sim-controls"),
   simGrade: document.querySelector("#sim-grade"),
   deviceStatus: document.querySelector("#device-status"),
+  trainerDeviceLabel: document.querySelector("#trainer-device-label"),
+  trainerDeviceAction: document.querySelector("#trainer-device-action"),
+  hrDeviceLabel: document.querySelector("#hr-device-label"),
+  hrDeviceAction: document.querySelector("#hr-device-action"),
+  deviceResults: document.querySelector("#device-results"),
   routeHud: document.querySelector("#route-hud"),
   routeSelect: document.querySelector("#route-select"),
 };
@@ -367,6 +372,7 @@ let activeScenery = "fields";
 let routeProfile = { update() {} };
 let elevationProfile = { update() {} };
 let selectedRouteId = null;
+let deviceState = { trainer: null, hr: null };
 let activeRoutePath = {
   lengthM: 1,
   samples: [
@@ -869,6 +875,112 @@ function formatValue(value, fallback = "--") {
   return value === null || value === undefined ? fallback : String(value);
 }
 
+function deviceNameForStatus(type, status) {
+  if (status?.connected) {
+    return status.name || (type === "trainer" ? "Trainer live" : "HR live");
+  }
+  return type === "trainer" ? "No trainer" : "No HR";
+}
+
+function sourceLabelForStatus(type, status) {
+  if (status?.connected) return deviceNameForStatus(type, status);
+  return type === "trainer" ? "No trainer · demo source" : "No HR · demo source";
+}
+
+function updateDeviceStatusLine(status = deviceState) {
+  const trainerLabel = sourceLabelForStatus("trainer", status.trainer);
+  const hrLabel = sourceLabelForStatus("hr", status.hr);
+  hud.deviceStatus.textContent = `${trainerLabel} · ${hrLabel}`;
+}
+
+function updateDeviceControls(status = deviceState) {
+  hud.trainerDeviceLabel.textContent = deviceNameForStatus("trainer", status.trainer);
+  hud.hrDeviceLabel.textContent = deviceNameForStatus("hr", status.hr);
+  hud.trainerDeviceAction.textContent = status.trainer?.connected ? "Disconnect" : "Scan";
+  hud.hrDeviceAction.textContent = status.hr?.connected ? "Disconnect" : "Scan";
+  updateDeviceStatusLine(status);
+}
+
+async function refreshDeviceStatus() {
+  deviceState = await rideClient.getDeviceStatus();
+  updateDeviceControls(deviceState);
+  return deviceState;
+}
+
+function setDeviceResults(message, devices = [], type = "trainer") {
+  hud.deviceResults.hidden = false;
+  hud.deviceResults.replaceChildren();
+  if (message) {
+    const label = document.createElement("span");
+    label.className = "control-value";
+    label.textContent = message;
+    hud.deviceResults.append(label);
+  }
+
+  devices.forEach((device) => {
+    const button = document.createElement("button");
+    const name = document.createElement("span");
+    const signal = document.createElement("span");
+    button.className = "action device-result";
+    button.type = "button";
+    name.textContent = device.name || "Unknown device";
+    signal.textContent = device.rssi === null || device.rssi === undefined
+      ? "Signal --"
+      : `${device.rssi} dBm`;
+    button.append(name, signal);
+    button.addEventListener("click", async () => {
+      await connectDevice(type, device.address, button);
+    });
+    hud.deviceResults.append(button);
+  });
+}
+
+async function connectDevice(type, address, button) {
+  if (!address) {
+    setDeviceResults("Device address unavailable");
+    return;
+  }
+  button.disabled = true;
+  setDeviceResults("Connecting...");
+  try {
+    await rideClient.connectDevice(type, address);
+    hud.deviceResults.hidden = true;
+    await refreshDeviceStatus();
+  } catch (error) {
+    setDeviceResults(`Connection failed: ${error.message}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function handleDeviceAction(type, button) {
+  const status = deviceState[type];
+  button.disabled = true;
+  try {
+    if (status?.connected) {
+      setDeviceResults(`Disconnecting ${deviceNameForStatus(type, status)}...`);
+      await rideClient.disconnectDevice(type);
+      hud.deviceResults.hidden = true;
+      await refreshDeviceStatus();
+      return;
+    }
+
+    const label = type === "trainer" ? "trainers" : "heart-rate monitors";
+    setDeviceResults(`Scanning for ${label}...`);
+    const result = await rideClient.scanDevices(type);
+    const devices = result.devices || [];
+    if (devices.length === 0) {
+      setDeviceResults(`No ${label} found`);
+    } else {
+      setDeviceResults(`Found ${devices.length} ${label}`, devices, type);
+    }
+  } catch (error) {
+    setDeviceResults(`Device action failed: ${error.message}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function updateHud(snapshot) {
   const sceneState = motion.updateFromSnapshot(snapshot);
   hud.power.textContent = snapshot.active ? formatValue(snapshot.power_w) : "--";
@@ -895,13 +1007,16 @@ function updateHud(snapshot) {
   hud.mode.textContent = snapshot.active
     ? `${snapshot.mode || "free"} mode · ${sceneState.routeSegmentName} · ${sceneState.gradePct.toFixed(1)}%`
     : "Start a session to drive the road";
-  const trainerLabel = snapshot.trainer_connected
-    ? snapshot.trainer_name || "Trainer live"
-    : "No trainer · demo source";
-  const hrLabel = snapshot.hr_connected
-    ? snapshot.hr_name || "HR live"
-    : "No HR · demo source";
-  hud.deviceStatus.textContent = `${trainerLabel} · ${hrLabel}`;
+  updateDeviceStatusLine({
+    trainer: {
+      connected: snapshot.trainer_connected,
+      name: snapshot.trainer_name,
+    },
+    hr: {
+      connected: snapshot.hr_connected,
+      name: snapshot.hr_name,
+    },
+  });
   routeProfile.update(sceneState, snapshot.active);
   elevationProfile.update(sceneState, snapshot.active);
 
@@ -961,6 +1076,16 @@ function attachControls() {
 
   hud.routeSelect.addEventListener("change", async () => {
     await loadRoute(hud.routeSelect.value);
+  });
+
+  hud.trainerDeviceAction.addEventListener("click", async () => {
+    await handleDeviceAction("trainer", hud.trainerDeviceAction);
+    hud.trainerDeviceAction.blur();
+  });
+
+  hud.hrDeviceAction.addEventListener("click", async () => {
+    await handleDeviceAction("hr", hud.hrDeviceAction);
+    hud.hrDeviceAction.blur();
   });
 }
 
@@ -1056,6 +1181,7 @@ async function initializeRide3d() {
   const routes = await rideClient.getRoutes();
   populateRouteSelect(routes);
   await loadRoute(routes[0]?.id ?? null);
+  await refreshDeviceStatus();
   attachControls();
   resize();
   connectSnapshots();

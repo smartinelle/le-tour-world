@@ -9,6 +9,7 @@ export class RideApiClient {
     routesUrl = "/api/ride/routes",
     routeUrl = "/api/ride/route",
     devicesStatusUrl = "/api/devices/status",
+    devicesUrl = "/api/devices",
   } = {}) {
     this.snapshotUrl = snapshotUrl;
     this.startUrl = startUrl;
@@ -19,6 +20,7 @@ export class RideApiClient {
     this.routesUrl = routesUrl;
     this.routeUrl = routeUrl;
     this.devicesStatusUrl = devicesStatusUrl;
+    this.devicesUrl = devicesUrl;
   }
 
   connectSnapshots({ onSnapshot, onError }) {
@@ -76,6 +78,18 @@ export class RideApiClient {
       throw new Error(await response.text());
     }
     return response.json();
+  }
+
+  scanDevices(deviceType) {
+    return this.postJson(`${this.devicesUrl}/${deviceType}/scan`);
+  }
+
+  connectDevice(deviceType, address) {
+    return this.postJson(`${this.devicesUrl}/${deviceType}/connect`, { address });
+  }
+
+  disconnectDevice(deviceType) {
+    return this.postJson(`${this.devicesUrl}/${deviceType}/disconnect`);
   }
 
   async postJson(path, payload = {}) {

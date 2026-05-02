@@ -284,6 +284,53 @@ RIDE3D_HTML = """<!doctype html>
       width: 100%;
     }
 
+    .device-panel {
+      border-top: 1px solid rgba(17, 24, 39, 0.1);
+      margin-top: 14px;
+      padding-top: 12px;
+    }
+
+    .device-row {
+      align-items: center;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      margin-top: 8px;
+    }
+
+    .device-name {
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1.2;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .device-results {
+      display: grid;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .device-result {
+      align-items: center;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      text-align: left;
+      width: 100%;
+    }
+
+    .device-result span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .back {
       position: fixed;
       left: 18px;
@@ -364,6 +411,18 @@ RIDE3D_HTML = """<!doctype html>
       <button class="action primary" data-start-mode="free">Free Ride</button>
       <button class="action" data-start-mode="erg">ERG</button>
       <button class="action" data-start-mode="sim">SIM</button>
+    </div>
+    <div class="device-panel" aria-label="Devices">
+      <span class="route-select-label">Devices</span>
+      <div class="device-row">
+        <span id="trainer-device-label" class="device-name">No trainer</span>
+        <button id="trainer-device-action" class="action" data-device-type="trainer">Scan</button>
+      </div>
+      <div class="device-row">
+        <span id="hr-device-label" class="device-name">No HR</span>
+        <button id="hr-device-action" class="action" data-device-type="hr">Scan</button>
+      </div>
+      <div id="device-results" class="device-results" hidden></div>
     </div>
   </section>
 
