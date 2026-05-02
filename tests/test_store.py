@@ -220,6 +220,33 @@ class TestDataExporter:
             assert rows[1]["power_w"] == "255"
             assert rows[2]["power_w"] == "260"
 
+    def test_csv_export_preserves_zero_speed_and_distance(self):
+        """Zero-valued metrics are valid samples, not missing data."""
+        session = SessionModel(mode=TrainingMode.FREE, start_time=datetime.now(UTC))
+        self.repo.save_session(session)
+        self.repo.save_sample(
+            SampleModel(
+                session_id=session.session_id,
+                elapsed_s=0.0,
+                power_w=0,
+                cadence_rpm=0,
+                speed_mps=0.0,
+                distance_m=0.0,
+            )
+        )
+
+        output_path = Path(self.temp_dir) / "zero_export.csv"
+        success = self.exporter.export_session_to_csv(session.session_id, output_path)
+
+        assert success
+        with open(output_path, "r") as f:
+            rows = list(csv.DictReader(f))
+
+        assert rows[0]["speed_mps"] == "0.0"
+        assert rows[0]["speed_kph"] == "0.0"
+        assert rows[0]["distance_m"] == "0.0"
+        assert rows[0]["distance_km"] == "0.0"
+
     def test_auto_export_filename(self):
         """Test automatic export with proper filename generation."""
         session = SessionModel(

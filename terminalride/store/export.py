@@ -64,11 +64,15 @@ class DataExporter:
                         "cadence_rpm": sample.cadence_rpm,
                         "speed_mps": sample.speed_mps,
                         "speed_kph": (
-                            sample.speed_mps * 3.6 if sample.speed_mps else None
+                            sample.speed_mps * 3.6
+                            if sample.speed_mps is not None
+                            else None
                         ),
                         "distance_m": sample.distance_m,
                         "distance_km": (
-                            sample.distance_m / 1000.0 if sample.distance_m else None
+                            sample.distance_m / 1000.0
+                            if sample.distance_m is not None
+                            else None
                         ),
                         "hr_bpm": sample.hr_bpm,
                         "mode": session.mode.value,
@@ -136,7 +140,7 @@ class DataExporter:
                         "trainer_name": session.trainer_name,
                         "total_distance_km": (
                             session.total_distance_m / 1000.0
-                            if session.total_distance_m
+                            if session.total_distance_m is not None
                             else None
                         ),
                         "avg_power_w": session.avg_power_w,
@@ -144,7 +148,7 @@ class DataExporter:
                         "avg_cadence_rpm": session.avg_cadence_rpm,
                         "avg_speed_kph": (
                             session.avg_speed_mps * 3.6
-                            if session.avg_speed_mps
+                            if session.avg_speed_mps is not None
                             else None
                         ),
                         "avg_hr_bpm": session.avg_hr_bpm,

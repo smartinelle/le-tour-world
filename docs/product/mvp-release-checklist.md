@@ -14,6 +14,8 @@ Use this as the manual release gate for the early-user MVP.
 - README first-run steps match the visible web app.
 - App starts at `http://127.0.0.1:8080` with no Supabase configuration.
 - The UI clearly distinguishes live hardware from demo samples.
+- On macOS hardware tests, the server is launched from a Bluetooth-approved
+  terminal app rather than Codex.
 
 ## Hardware Smoke Matrix
 
@@ -25,6 +27,11 @@ For each launch-supported FTMS trainer:
 - ERG starts, sends initial target power, and responds to target changes.
 - SIM starts with a selected route and updates grade/segment context.
 - Stopping a ride persists a history session with samples.
+
+Current FTMS smoke status:
+
+- Wahoo KICKR CORE 6043 passed scan/connect, Free Ride, ERG target changes, SIM
+  route context, stop/summary, persistence, and CSV export on May 2, 2026.
 
 For each launch-supported BLE heart-rate strap:
 

@@ -205,6 +205,10 @@ available without that flag.
 - **macOS:** grant Bluetooth permission to the terminal app that launches
   `uv run python run_web.py`. If scanning fails after granting permission,
   restart that terminal app and reconnect the trainer.
+- **Codex/agent sessions:** do not launch the hardware server from Codex when
+  testing BLE on macOS. CoreBluetooth can abort the Python process if the host
+  app lacks the right Bluetooth permission metadata. Launch from `Terminal.app`
+  or another Bluetooth-approved terminal instead.
 - **Linux:** confirm the Bluetooth adapter is visible, powered, and accessible
   to your user. BlueZ permissions and distro service configuration vary.
 - **Windows:** the project is not treated as launch-supported for the current
@@ -349,6 +353,12 @@ before a full-project mypy run is clean; keep new domain code typed and
 UI-neutral.
 
 ## Testing With Real Hardware
+
+Current hardware smoke coverage:
+
+- Wahoo KICKR CORE 6043: scan/connect, Free Ride, ERG target changes, SIM route
+  context, stop/summary, persistence, and CSV export passed.
+- BLE heart-rate strap: not yet tested.
 
 1. Power on the FTMS trainer.
 2. Ensure Bluetooth is enabled.

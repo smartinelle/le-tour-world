@@ -1095,7 +1095,7 @@ class WebUI:
 
         if self._status_label:
             label = (
-                "Session active"
+                "Waiting for trainer data"
                 if self.controller.trainer.is_connected
                 else "Session active (demo data)"
             )
@@ -1123,25 +1123,26 @@ class WebUI:
             return
 
         metrics = self.controller.metrics
+        self._update_session_status()
 
         # Update power
         if self._power_label:
-            power = metrics.power_w if metrics.power_w else "---"
+            power = metrics.power_w if metrics.power_w is not None else "---"
             self._power_label.set_text(str(power))
 
         # Update cadence
         if self._cadence_label:
-            cad = metrics.cadence_rpm if metrics.cadence_rpm else "--"
+            cad = metrics.cadence_rpm if metrics.cadence_rpm is not None else "--"
             self._cadence_label.set_text(str(cad))
 
         # Update HR
         if self._hr_label:
-            hr = metrics.hr_bpm if metrics.hr_bpm else "--"
+            hr = metrics.hr_bpm if metrics.hr_bpm is not None else "--"
             self._hr_label.set_text(str(hr))
 
         # Update speed
         if self._speed_label:
-            if metrics.speed_mps:
+            if metrics.speed_mps is not None:
                 speed_kph = metrics.speed_mps * 3.6
                 self._speed_label.set_text(f"{speed_kph:.1f}")
             else:
@@ -1186,6 +1187,25 @@ class WebUI:
                     f"{route.distance_m / 1000:.2f} km · "
                     f"{position.route_progress:.0%}"
                 )
+
+    def _update_session_status(self) -> None:
+        """Keep the cockpit status honest while hardware samples start flowing."""
+        if self._status_label is None or self.controller.is_paused:
+            return
+
+        if (
+            self.controller.trainer.is_connected
+            and self.controller.recorded_sample_count == 0
+        ):
+            self._status_label.set_text("Waiting for trainer data")
+            return
+
+        label = (
+            "Session active"
+            if self.controller.trainer.is_connected
+            else "Session active (demo data)"
+        )
+        self._status_label.set_text(label)
 
     def _adjust_target(self, delta: int) -> None:
         """Adjust ERG target power."""
