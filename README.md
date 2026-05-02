@@ -127,6 +127,29 @@ The working MVP spec and feature audit live in
 
 ## Installation
 
+### Early Access First Run
+
+This MVP is a local-first early-access app. The recommended path is:
+
+```bash
+uv sync
+uv run python run_web.py
+```
+
+Then open `http://127.0.0.1:8080`.
+
+Use the browser UI from there:
+
+1. Open **Settings** and set rider weight, FTP, units, ERG target, and SIM route.
+2. Open **Devices** and scan for an FTMS trainer. Pair a heart-rate monitor only
+   if you want HR in the ride.
+3. Start **Free**, **ERG**, or **SIM** from the ride console.
+4. Stop the ride from the cockpit and check the summary.
+5. Use **History** to review the saved session or export CSV.
+
+If no trainer is connected, le-tour clearly runs on demo samples so the cockpit,
+history, and export flow can still be tested.
+
 ### Prerequisites
 
 - Python 3.11+
@@ -176,6 +199,18 @@ The local web app will:
 Automatic Python/Bleak trainer scanning on first page load is gated behind
 `TERMINALRIDE_ENABLE_BLE=1`. Manual device scanning from the Devices page remains
 available without that flag.
+
+### Bluetooth Platform Notes
+
+- **macOS:** grant Bluetooth permission to the terminal app that launches
+  `uv run python run_web.py`. If scanning fails after granting permission,
+  restart that terminal app and reconnect the trainer.
+- **Linux:** confirm the Bluetooth adapter is visible, powered, and accessible
+  to your user. BlueZ permissions and distro service configuration vary.
+- **Windows:** the project is not treated as launch-supported for the current
+  MVP unless a contributor validates Bleak/FTMS behavior there.
+- Close Zwift, Wahoo, Garmin, TrainerRoad, or other apps that may already hold
+  the trainer connection.
 
 ## Architecture
 
@@ -230,6 +265,8 @@ P = 0.5 * rho * CdA * v^3 + m * g * Crr * v + m * g * sin(theta) * v + P0
 - JSONL remains the durable append-friendly source of truth.
 - SQLite supports faster local history/statistics queries.
 - CSV export is layered on top of repository data.
+- The web History page exports per-session CSV files under `exports/` in the
+  local app data directory.
 
 By default, local data is written below the TerminalRide config directory:
 
@@ -281,6 +318,10 @@ Example:
   "max_hr_bpm": 185,
   "default_erg_power_w": 150,
   "default_sim_grade_pct": 0.0,
+  "default_sim_route_id": "demo_rolling_route",
+  "units": "metric",
+  "auto_connect_trainer": true,
+  "auto_connect_hr": false,
   "speed_source": "trainer"
 }
 ```
@@ -315,6 +356,21 @@ UI-neutral.
 4. Open `http://127.0.0.1:8080`.
 5. Connect the trainer from the Devices flow or use the auto-connect path.
 6. Start a ride mode and verify live metrics update.
+7. For ERG, verify the trainer responds to target changes.
+8. For SIM, select each bundled route and verify grade/segment context updates.
+9. Pair a standard BLE heart-rate strap and verify HR survives trainer changes.
+
+## Release Checklist
+
+Before calling an MVP release candidate launchable:
+
+- Run `uv run pytest -q`.
+- Run `uv run black .`.
+- Run `uv run ruff check .`.
+- Smoke test Free, ERG, and SIM with at least one real FTMS trainer.
+- Smoke test optional BLE HR pairing with at least one standard strap.
+- Confirm History shows the stopped ride and CSV export creates a readable file.
+- Confirm README first-run steps match the actual app surface.
 
 ## Technical Details
 

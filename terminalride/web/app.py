@@ -10,13 +10,17 @@ import logging
 import os
 from typing import Optional, List, Dict, Any, Callable
 
+from starlette.requests import Request
 from nicegui import ui, app
 
 from ..domain.ride_controller import RideController, RideMode
-from ..domain.ride_runtime import RideRuntime
+from ..domain.ride_runtime import RideRuntime, RideStopResult
+from ..domain.routes import RideRoute, available_routes, route_by_id
 from ..domain.session_service import get_session_service
 from ..config import UserSettings, get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
+from ..store.export import DataExporter
+from ..store.models import SessionModel, SessionSummary
 from ..supabase_client import is_supabase_configured
 from .auth import AuthManager
 from .components.controls import action_button, mode_button
@@ -451,6 +455,11 @@ class WebUI:
         self._status_label: Optional[ui.label] = None
         self._connection_status_label: Optional[ui.label] = None
         self._connection_dot: Optional[ui.html] = None
+        self._state_badge: Optional[ui.html] = None
+        self._pause_button: Optional[Any] = None
+        self._route_segment_label: Optional[ui.label] = None
+        self._route_next_label: Optional[ui.label] = None
+        self._route_progress_label: Optional[ui.label] = None
 
     @property
     def controller(self) -> RideController:
@@ -472,6 +481,31 @@ class WebUI:
         return (
             flag in {"1", "true", "yes"} and get_config().settings.auto_connect_trainer
         )
+
+    def _default_route_id(self) -> str:
+        """Return a valid configured default SIM route id."""
+        configured_route_id = get_config().settings.default_sim_route_id
+        try:
+            return route_by_id(configured_route_id).route_id
+        except Exception:
+            return route_by_id(None).route_id
+
+    def _route_select_options(self) -> dict[str, str]:
+        """Return route select options keyed by stable route id."""
+        return {route.route_id: route.title for route in available_routes()}
+
+    def _set_last_stop_result(self, result: RideStopResult) -> None:
+        """Store the latest stop result for the current UI context."""
+        if is_supabase_configured() and AuthManager.is_authenticated():
+            app.storage.user["last_stop_result"] = result
+        else:
+            app._last_stop_result = result
+
+    def _get_last_stop_result(self) -> object:
+        """Return the latest stop result for the current UI context."""
+        if is_supabase_configured() and AuthManager.is_authenticated():
+            return app.storage.user.get("last_stop_result")
+        return getattr(app, "_last_stop_result", None)
 
     def setup(self) -> None:
         """Set up the web UI routes and pages."""
@@ -566,11 +600,18 @@ class WebUI:
             await self._render_home_with_auto_connect()
 
         @ui.page("/session/{mode}")
-        def session_page(mode: str):
+        def session_page(mode: str, request: Request):
             if is_supabase_configured() and not AuthManager.is_authenticated():
                 ui.navigate.to("/login")
                 return
-            self._render_session(mode)
+            self._render_session(mode, request.query_params.get("route_id"))
+
+        @ui.page("/summary")
+        def summary_page():
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
+            self._render_stop_summary()
 
         @ui.page("/devices")
         def devices_page():
@@ -585,6 +626,13 @@ class WebUI:
                 ui.navigate.to("/login")
                 return
             self._render_history()
+
+        @ui.page("/history/{session_id}")
+        def history_detail_page(session_id: str):
+            if is_supabase_configured() and not AuthManager.is_authenticated():
+                ui.navigate.to("/login")
+                return
+            self._render_history_detail(session_id)
 
         @ui.page("/settings")
         def settings_page():
@@ -619,9 +667,16 @@ class WebUI:
         self._render_header("Home")
 
         selected_mode = {"value": "free"}
+        selected_route_id = {"value": self._default_route_id()}
         mode_buttons: Dict[str, Any] = {}
         mode_title: Optional[ui.label] = None
         mode_detail: Optional[ui.label] = None
+        route_title: Optional[ui.label] = None
+        route_detail: Optional[ui.label] = None
+        route_distance: Optional[ui.label] = None
+        route_gain: Optional[ui.label] = None
+        route_grade: Optional[ui.label] = None
+        route_badge: Optional[ui.label] = None
 
         def set_mode(mode: str) -> None:
             selected_mode["value"] = mode
@@ -641,18 +696,34 @@ class WebUI:
                     f"Target starts at {self.controller.metrics.erg_target_w} W. "
                     "Adjust during the ride."
                 ),
-                "sim": (
-                    f"Grade starts at {self.controller.metrics.sim_grade_pct:.1f}%. "
-                    "Adjust during the ride."
-                ),
+                "sim": "Ride a bundled grade profile with segment context.",
             }
             if mode_title:
                 mode_title.set_text(titles[mode])
             if mode_detail:
                 mode_detail.set_text(details[mode])
 
+        def set_route(route_id: str) -> None:
+            selected_route_id["value"] = route_id
+            route = route_by_id(route_id)
+            if route_title:
+                route_title.set_text(route.title)
+            if route_detail:
+                route_detail.set_text(route.description)
+            if route_distance:
+                route_distance.set_text(f"{route.distance_m / 1000:.2f}")
+            if route_gain:
+                route_gain.set_text(f"{route.elevation_gain_m:.0f}")
+            if route_grade:
+                route_grade.set_text(f"{route.max_grade_pct:.1f}")
+            if route_badge:
+                route_badge.set_text(route.difficulty)
+
         def start_selected() -> None:
-            ui.navigate.to(f"/session/{selected_mode['value']}")
+            path = f"/session/{selected_mode['value']}"
+            if selected_mode["value"] == "sim":
+                path += f"?route_id={selected_route_id['value']}"
+            ui.navigate.to(path)
 
         with page_container():
             with ui.row().classes("tr-hero-row w-full items-end justify-between gap-4"):
@@ -740,6 +811,40 @@ class WebUI:
                                     f"{self.controller.metrics.sim_grade_pct:.1f}",
                                     "SIM grade %",
                                 )
+
+                    with ui.element("div").classes("tr-route-picker"):
+                        route = route_by_id(selected_route_id["value"])
+                        with ui.row().classes("items-center justify-between gap-3"):
+                            with ui.column().classes("gap-1"):
+                                route_title = ui.label(route.title).classes(
+                                    "tr-panel-title"
+                                )
+                                route_detail = ui.label(route.description).classes(
+                                    "tr-subtitle"
+                                )
+                            route_badge = ui.label(route.difficulty).classes(
+                                "tr-state-badge ready"
+                            )
+                        ui.select(
+                            self._route_select_options(),
+                            value=selected_route_id["value"],
+                            label="SIM route",
+                            on_change=lambda event: set_route(str(event.value)),
+                        ).classes("w-full")
+                        with ui.element("div").classes("tr-meta-grid tr-route-stats"):
+                            route_distance = meta_stat(
+                                f"{route.distance_m / 1000:.2f}",
+                                "Distance km",
+                            )
+                            route_gain = meta_stat(
+                                f"{route.elevation_gain_m:.0f}",
+                                "Gain m",
+                            )
+                            route_grade = meta_stat(
+                                f"{route.max_grade_pct:.1f}",
+                                "Max grade %",
+                            )
+                            meta_stat(str(len(route.segments)), "Segments")
 
                     with ui.element("div").classes("tr-btn-row"):
                         action_button(
@@ -880,7 +985,7 @@ class WebUI:
             ui.label(title).classes("text-2xl font-semibold text-gray-900 mb-2")
             ui.label(description).classes("text-gray-500")
 
-    def _render_session(self, mode: str) -> None:
+    def _render_session(self, mode: str, route_id: str | None = None) -> None:
         """Render the full-screen session cockpit."""
         apply_theme()
 
@@ -893,13 +998,20 @@ class WebUI:
         mode_title = {"free": "Free Ride", "erg": "ERG Mode", "sim": "SIM Mode"}.get(
             mode, "Free Ride"
         )
+        route: RideRoute | None = None
+        if mode_enum is RideMode.SIM:
+            try:
+                route = route_by_id(route_id or self._default_route_id())
+            except Exception:
+                route = route_by_id(None)
+            self.runtime.set_route_profile(route)
 
         with ui.element("div").classes("session-view"):
             with ui.element("div").classes("tr-cockpit"):
                 with ui.element("div").classes("tr-cockpit-top"):
                     action_button("Exit", lambda: self._exit_session())
                     with ui.element("div").classes("tr-cockpit-statusbar"):
-                        ui.html(
+                        self._state_badge = ui.html(
                             '<span class="tr-state-badge live">Active</span>',
                             sanitize=False,
                         )
@@ -937,6 +1049,17 @@ class WebUI:
                                 "+0.5%",
                                 lambda: self._adjust_sim_grade(0.5),
                             )
+                        if route is not None:
+                            with ui.element("div").classes("tr-route-live"):
+                                self._route_segment_label = ui.label(
+                                    route.segments[0].name
+                                ).classes("tr-panel-title")
+                                self._route_next_label = ui.label(
+                                    f"Next {route.segments[1 % len(route.segments)].name}"
+                                ).classes("tr-subtitle")
+                                self._route_progress_label = ui.label(
+                                    f"0.00 / {route.distance_m / 1000:.2f} km"
+                                ).classes("tr-status-meta")
 
                 with ui.element("div").classes("tr-metric-rail"):
                     self._cadence_label = metric_cell("--", "Cadence RPM")
@@ -946,12 +1069,17 @@ class WebUI:
                     metric_cell(mode.upper(), "Mode")
 
                 with ui.element("div").classes("tr-cockpit-controls"):
-                    action_button("Pause", lambda: self._toggle_pause())
+                    self._pause_button = action_button(
+                        "Pause", lambda: self._toggle_pause()
+                    )
                     with ui.element("div").classes("tr-cockpit-statusbar"):
                         ui.label("Power cockpit").classes("tr-section-label")
-                        ui.label("Fixed metric geometry keeps numbers stable.").classes(
-                            "tr-status-meta"
+                        source_label = (
+                            "Live trainer data"
+                            if self.controller.trainer.is_connected
+                            else "Demo samples"
                         )
+                        ui.label(source_label).classes("tr-status-meta")
                     action_button(
                         "Stop Ride",
                         lambda: self._stop_session(),
@@ -1037,6 +1165,28 @@ class WebUI:
             else:
                 self._target_label.set_text(f"Target {metrics.erg_target_w} W")
 
+        # Update SIM route context
+        route = self.runtime.route_profile
+        if isinstance(route, RideRoute) and self.controller.state.mode is RideMode.SIM:
+            position = route.position_at(metrics.distance_m)
+            if self._route_segment_label:
+                self._route_segment_label.set_text(
+                    f"{position.segment.name} · {position.segment.grade_pct:.1f}%"
+                )
+            if self._route_next_label:
+                self._route_next_label.set_text(
+                    "Next "
+                    f"{position.next_segment.name} in "
+                    f"{position.segment_remaining_m:.0f} m · "
+                    f"{position.next_segment.grade_pct:.1f}%"
+                )
+            if self._route_progress_label:
+                self._route_progress_label.set_text(
+                    f"{position.route_distance_m / 1000:.2f} / "
+                    f"{route.distance_m / 1000:.2f} km · "
+                    f"{position.route_progress:.0%}"
+                )
+
     def _adjust_target(self, delta: int) -> None:
         """Adjust ERG target power."""
         self.runtime.adjust_erg_target(delta)
@@ -1052,15 +1202,23 @@ class WebUI:
             self._status_label.set_text(
                 "Paused" if snapshot.paused else "Session active"
             )
+        if self._pause_button:
+            self._pause_button.set_text("Resume" if snapshot.paused else "Pause")
+        if self._state_badge:
+            badge_class = "demo" if snapshot.paused else "live"
+            badge_text = "Paused" if snapshot.paused else "Active"
+            self._state_badge.set_content(
+                f'<span class="tr-state-badge {badge_class}">{badge_text}</span>'
+            )
 
     def _stop_session(self) -> None:
         """Stop the current session."""
-        self.runtime.stop_session()
+        result = self.runtime.stop_session_result()
+        self._set_last_stop_result(result)
         if self._update_task:
             self._update_task.cancel()
-
-        # Navigate to summary or home
-        ui.navigate.to("/")
+            self._update_task = None
+        ui.navigate.to("/summary")
 
     def _exit_session(self) -> None:
         """Exit session without saving."""
@@ -1069,6 +1227,83 @@ class WebUI:
         if self._update_task:
             self._update_task.cancel()
         ui.navigate.to("/")
+
+    def _render_stop_summary(self) -> None:
+        """Render the post-ride stop result."""
+        self._render_header("Summary")
+        result = self._get_last_stop_result()
+
+        with page_container():
+            render_page_title(
+                "Ride summary",
+                "Stopped session result.",
+                "Saved rides are available in history and can be exported as CSV.",
+            )
+
+            if not isinstance(result, RideStopResult):
+                empty_state(
+                    "No stopped ride to summarize",
+                    "Start and stop a ride to see its summary here.",
+                    action_label="Start Ride",
+                    on_action=lambda: ui.navigate.to("/"),
+                    action_variant="primary",
+                )
+                return
+
+            snapshot = result.snapshot
+            saved_label = "Saved" if result.saved else "Not saved"
+            if result.persistence_error:
+                saved_label = "Save failed"
+            elif result.sample_count == 0:
+                saved_label = "No samples"
+
+            with ui.column().classes("tr-panel p-5 gap-4"):
+                panel_header(
+                    "Stopped ride",
+                    saved_label,
+                    badge="Saved" if result.saved else "Review",
+                )
+                with ui.element("div").classes("tr-meta-grid tr-summary-grid"):
+                    meta_stat(self._format_duration(snapshot.elapsed_s), "Duration")
+                    meta_stat(
+                        self._format_distance(snapshot.distance_m),
+                        "Distance",
+                    )
+                    meta_stat(self._format_power(snapshot.power_w), "Last power")
+                    meta_stat(str(result.sample_count), "Samples")
+
+                if result.persistence_error:
+                    with ui.element("div").classes("connection-status error"):
+                        ui.icon("error")
+                        ui.label(
+                            f"Session could not be saved: {result.persistence_error}"
+                        )
+                elif result.sample_count == 0:
+                    with ui.element("div").classes("connection-status info"):
+                        ui.icon("info")
+                        ui.label(
+                            "No trainer or demo samples were captured, so nothing was written to history."
+                        )
+
+                with ui.element("div").classes("tr-btn-row"):
+                    action_button(
+                        "Start Ride",
+                        lambda: ui.navigate.to("/"),
+                        variant="primary",
+                    )
+                    action_button(
+                        "History",
+                        lambda: ui.navigate.to("/history"),
+                        variant="secondary",
+                    )
+                    if result.saved_session_id:
+                        action_button(
+                            "Export CSV",
+                            lambda session_id=result.saved_session_id: self._export_session(
+                                session_id
+                            ),
+                            variant="secondary",
+                        )
 
     def _render_devices(self) -> None:
         """Render the devices management page."""
@@ -1239,9 +1474,12 @@ class WebUI:
                         ui.label("Duration")
                         ui.label("Power")
                         ui.label("Distance")
+                        ui.label("Actions")
                     if sessions:
                         for session in sessions:
-                            with ui.element("div").classes("tr-table-row"):
+                            with ui.element("div").classes(
+                                "tr-table-row tr-table-row-actions"
+                            ):
                                 ui.label(
                                     session.start_time.strftime("%Y-%m-%d %H:%M")
                                 ).classes("font-bold text-gray-900")
@@ -1251,6 +1489,21 @@ class WebUI:
                                 ui.label(
                                     self._format_distance(session.total_distance_m)
                                 )
+                                with ui.row().classes("gap-2"):
+                                    action_button(
+                                        "View",
+                                        lambda session_id=session.session_id: ui.navigate.to(
+                                            f"/history/{session_id}"
+                                        ),
+                                        variant="secondary",
+                                    )
+                                    action_button(
+                                        "CSV",
+                                        lambda session_id=session.session_id: self._export_session(
+                                            session_id
+                                        ),
+                                        variant="secondary",
+                                    )
                     else:
                         empty_state(
                             "No sessions recorded yet",
@@ -1259,6 +1512,110 @@ class WebUI:
                             on_action=lambda: ui.navigate.to("/"),
                             action_variant="primary",
                         )
+
+    def _render_history_detail(self, session_id: str) -> None:
+        """Render one persisted session with summary and export actions."""
+        self._render_header("History")
+        service = get_session_service()
+        session = service.get_session(session_id)
+        summary = service.get_session_summary(session_id)
+
+        with page_container():
+            render_page_title(
+                "Session detail",
+                "Saved ride metrics and export.",
+                "CSV export writes a local file under the app data directory.",
+            )
+
+            if session is None:
+                empty_state(
+                    "Session not found",
+                    "This ride is no longer available in local history.",
+                    action_label="Back to History",
+                    on_action=lambda: ui.navigate.to("/history"),
+                )
+                return
+
+            with ui.column().classes("tr-panel p-5 gap-4"):
+                route_label = self._session_route_label(session)
+                panel_header(
+                    session.start_time.strftime("%Y-%m-%d %H:%M"),
+                    route_label or f"{session.mode.value.upper()} ride",
+                    badge=session.mode.value.upper(),
+                )
+                self._render_session_summary_stats(session, summary)
+                with ui.element("div").classes("tr-btn-row"):
+                    action_button(
+                        "Export CSV",
+                        lambda: self._export_session(session.session_id),
+                        variant="primary",
+                    )
+                    action_button(
+                        "Back to History",
+                        lambda: ui.navigate.to("/history"),
+                        variant="secondary",
+                    )
+
+    def _render_session_summary_stats(
+        self,
+        session: SessionModel,
+        summary: SessionSummary | None,
+    ) -> None:
+        """Render compact stats for a persisted session."""
+        distance_m = (
+            summary.total_distance_m
+            if summary is not None
+            else session.total_distance_m
+        )
+        avg_power_w = (
+            summary.avg_power_w if summary is not None else session.avg_power_w
+        )
+        avg_hr_bpm = summary.avg_hr_bpm if summary is not None else session.avg_hr_bpm
+        normalized_power_w = (
+            summary.normalized_power_w
+            if summary is not None
+            else session.normalized_power_w
+        )
+        intensity_factor = (
+            summary.intensity_factor
+            if summary is not None
+            else session.intensity_factor
+        )
+        training_stress_score = (
+            summary.training_stress_score
+            if summary is not None
+            else session.training_stress_score
+        )
+
+        with ui.element("div").classes("tr-meta-grid tr-summary-grid"):
+            meta_stat(self._format_duration(session.duration_s), "Duration")
+            meta_stat(self._format_distance(distance_m), "Distance")
+            meta_stat(self._format_power(avg_power_w), "Avg power")
+            meta_stat(self._format_power(session.max_power_w), "Max power")
+            meta_stat(self._format_bpm(avg_hr_bpm), "Avg HR")
+            meta_stat(self._format_bpm(session.max_hr_bpm), "Max HR")
+            meta_stat(self._format_power(normalized_power_w), "NP")
+            meta_stat(self._format_ratio(intensity_factor), "IF")
+            meta_stat(self._format_score(training_stress_score), "TSS")
+            meta_stat(str(session.user_ftp_w), "FTP W")
+
+    @staticmethod
+    def _session_route_label(session: SessionModel) -> str | None:
+        if session.sim_route_title:
+            return f"SIM route: {session.sim_route_title}"
+        if session.sim_grade_pct is not None:
+            return f"SIM grade {session.sim_grade_pct:.1f}%"
+        if session.erg_target_power_w is not None:
+            return f"ERG target {session.erg_target_power_w} W"
+        return None
+
+    def _export_session(self, session_id: str) -> None:
+        """Export a saved session to CSV and notify the user."""
+        output_path = DataExporter().auto_export_session(session_id)
+        if output_path is None:
+            ui.notify("CSV export failed", color="red")
+            return
+        ui.notify(f"CSV exported to {output_path}", color="green")
 
     def _render_settings(self) -> None:
         """Render the settings page."""
@@ -1314,6 +1671,69 @@ class WebUI:
                             max=100,
                         ).classes("w-full")
 
+                    panel_header(
+                        "Ride defaults",
+                        "Defaults used when a new cockpit session starts.",
+                        badge="MVP",
+                    )
+                    with ui.element("div").classes("tr-form-grid"):
+                        erg_target_input = ui.number(
+                            "Default ERG target (W)",
+                            value=config.settings.default_erg_power_w,
+                            min=100,
+                            max=400,
+                        ).classes("w-full")
+                        sim_grade_input = ui.number(
+                            "Manual SIM grade (%)",
+                            value=config.settings.default_sim_grade_pct,
+                            min=-10,
+                            max=15,
+                            step=0.5,
+                        ).classes("w-full")
+
+                    with ui.element("div").classes("tr-form-grid"):
+                        route_select = ui.select(
+                            self._route_select_options(),
+                            value=self._default_route_id(),
+                            label="Default SIM route",
+                        ).classes("w-full")
+                        speed_source_select = ui.select(
+                            {
+                                "trainer": "Trainer reported",
+                                "virtual": "Virtual physics",
+                                "auto": "Auto",
+                            },
+                            value=config.settings.speed_source,
+                            label="Speed source",
+                        ).classes("w-full")
+
+                    panel_header(
+                        "App preferences",
+                        "Units and connection startup behavior.",
+                        badge="Local",
+                    )
+                    with ui.element("div").classes("tr-form-grid"):
+                        units_select = ui.select(
+                            {"metric": "Metric", "imperial": "Imperial"},
+                            value=config.settings.units,
+                            label="Units",
+                        ).classes("w-full")
+                        reconnect_timeout_input = ui.number(
+                            "Reconnect timeout (s)",
+                            value=config.settings.reconnect_timeout_s,
+                            min=5,
+                            max=300,
+                        ).classes("w-full")
+
+                    auto_connect_trainer_switch = ui.switch(
+                        "Auto-connect trainer when BLE auto-scan is enabled",
+                        value=config.settings.auto_connect_trainer,
+                    )
+                    auto_connect_hr_switch = ui.switch(
+                        "Auto-connect heart-rate monitor",
+                        value=config.settings.auto_connect_hr,
+                    )
+
             action_button(
                 "Save Settings",
                 lambda: self._save_settings(
@@ -1322,6 +1742,14 @@ class WebUI:
                     ftp_input.value,
                     max_hr_input.value,
                     age_input.value,
+                    erg_target_input.value,
+                    sim_grade_input.value,
+                    route_select.value,
+                    speed_source_select.value,
+                    units_select.value,
+                    auto_connect_trainer_switch.value,
+                    auto_connect_hr_switch.value,
+                    reconnect_timeout_input.value,
                 ),
                 variant="primary",
             )
@@ -1418,6 +1846,14 @@ class WebUI:
         ftp_w: object,
         max_hr_bpm: object,
         age: object,
+        default_erg_power_w: object,
+        default_sim_grade_pct: object,
+        default_sim_route_id: object,
+        speed_source: object,
+        units: object,
+        auto_connect_trainer: object,
+        auto_connect_hr: object,
+        reconnect_timeout_s: object,
     ) -> None:
         """Validate and persist user settings."""
         config = get_config()
@@ -1431,6 +1867,18 @@ class WebUI:
                     "ftp_w": self._optional_int(ftp_w),
                     "max_hr_bpm": self._optional_int(max_hr_bpm),
                     "age": self._required_int(age),
+                    "default_erg_power_w": self._required_int(default_erg_power_w),
+                    "default_sim_grade_pct": self._required_float(
+                        default_sim_grade_pct
+                    ),
+                    "default_sim_route_id": self._required_route_id(
+                        default_sim_route_id
+                    ),
+                    "speed_source": str(speed_source),
+                    "units": str(units),
+                    "auto_connect_trainer": bool(auto_connect_trainer),
+                    "auto_connect_hr": bool(auto_connect_hr),
+                    "reconnect_timeout_s": self._required_int(reconnect_timeout_s),
                 }
             )
             settings = UserSettings.model_validate(data)
@@ -1464,6 +1912,12 @@ class WebUI:
         return int(float(str(value)))
 
     @staticmethod
+    def _required_route_id(value: object) -> str:
+        route_id = str(value or "").strip()
+        route_by_id(route_id)
+        return route_id
+
+    @staticmethod
     def _format_duration(duration_s: float | None) -> str:
         if duration_s is None:
             return "--"
@@ -1486,6 +1940,24 @@ class WebUI:
             return "--"
         return f"{distance_m / 1000:.2f} km"
 
+    @staticmethod
+    def _format_bpm(value: float | int | None) -> str:
+        if value is None:
+            return "--"
+        return f"{value:.0f} bpm"
+
+    @staticmethod
+    def _format_ratio(value: float | None) -> str:
+        if value is None:
+            return "--"
+        return f"{value:.2f}"
+
+    @staticmethod
+    def _format_score(value: float | None) -> str:
+        if value is None:
+            return "--"
+        return f"{value:.0f}"
+
 
 def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
     """Run the web UI server."""
@@ -1495,7 +1967,7 @@ def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
     ui.run(
         host=host,
         port=port,
-        title="TerminalRide",
+        title="le-tour",
         favicon="🚴",
         dark=False,
         reload=False,

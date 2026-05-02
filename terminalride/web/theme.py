@@ -673,6 +673,21 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.tr-route-picker,
+.tr-route-live {
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius);
+    display: grid;
+    gap: 12px;
+    padding: 1rem;
+}
+
+.tr-route-stats,
+.tr-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .tr-meta-row {
     background: rgba(255, 254, 253, 0.72);
     border: 1px solid var(--tr-border);
@@ -783,9 +798,18 @@ body {
     border-bottom: 1px solid var(--tr-border);
     display: grid;
     gap: 14px;
-    grid-template-columns: 1.2fr 0.6fr 0.7fr 0.7fr 0.7fr;
+    grid-template-columns: 1.2fr 0.6fr 0.7fr 0.7fr 0.7fr auto;
     min-height: 46px;
     padding: 0 14px;
+}
+
+.tr-table-row-actions {
+    min-height: 64px;
+}
+
+.tr-table-row-actions .q-btn {
+    min-height: 34px !important;
+    padding: 0.42rem 0.62rem !important;
 }
 
 .tr-table-row:last-child {
@@ -911,6 +935,11 @@ body {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .tr-route-stats,
+    .tr-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .tr-power-panel {
         min-height: 300px;
     }
@@ -924,7 +953,7 @@ body {
         grid-template-columns: 1fr 0.7fr;
     }
 
-    .tr-table-row > :nth-child(n+3) {
+    .tr-table-row > :nth-child(n+3):not(:last-child) {
         display: none;
     }
 }

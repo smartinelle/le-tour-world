@@ -56,8 +56,8 @@ def render_app_header(
     with ui.header().classes("tr-header px-0 py-3"):
         with ui.row().classes("tr-shell w-full items-center justify-between"):
             with ui.link("", "/").classes("tr-brand"):
-                ui.html('<span class="tr-brand-mark">TR</span>', sanitize=False)
-                ui.label("TerminalRide")
+                ui.html('<span class="tr-brand-mark">LT</span>', sanitize=False)
+                ui.label("le-tour")
 
             with ui.row().classes("gap-3 items-center"):
                 with ui.row().classes("gap-1"):

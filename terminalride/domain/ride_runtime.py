@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Optional
 
 from terminalride.devices.base import HrSample
@@ -13,6 +14,22 @@ from .routes import RouteProfile
 from .state import RideMode, RideSnapshot
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RideStopResult:
+    """UI-neutral result of ending a ride."""
+
+    snapshot: RideSnapshot
+    session_id: Optional[str]
+    saved_session_id: Optional[str]
+    sample_count: int
+    persistence_error: Optional[str] = None
+
+    @property
+    def saved(self) -> bool:
+        """True when the stopped ride was persisted."""
+        return self.saved_session_id is not None and self.persistence_error is None
 
 
 class RideRuntime:
@@ -86,9 +103,22 @@ class RideRuntime:
 
     def stop_session(self) -> RideSnapshot:
         """Stop the ride and any runtime-owned sample source."""
+        return self.stop_session_result().snapshot
+
+    def stop_session_result(self) -> RideStopResult:
+        """Stop the ride and return persistence details for presentation layers."""
+        session_id = self.controller.state.session_id
+        sample_count = self.controller.recorded_sample_count
         self.stop_fake_source()
-        self.controller.stop_session()
-        return self.controller.snapshot()
+        saved_session_id = self.controller.stop_session()
+        snapshot = self.controller.snapshot()
+        return RideStopResult(
+            snapshot=snapshot,
+            session_id=session_id,
+            saved_session_id=saved_session_id,
+            sample_count=sample_count,
+            persistence_error=self.controller.last_persistence_error,
+        )
 
     def toggle_pause(self) -> RideSnapshot:
         """Toggle pause state and return the latest snapshot."""
@@ -152,4 +182,4 @@ class RideRuntime:
         return str(self.controller.trainer.device_info.get("name", "Connected Trainer"))
 
 
-__all__ = ["RideRuntime"]
+__all__ = ["RideRuntime", "RideStopResult"]

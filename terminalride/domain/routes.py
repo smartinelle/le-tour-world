@@ -108,6 +108,31 @@ class RideRoute:
         """Total route length in meters."""
         return sum(segment.length_m for segment in self.segments)
 
+    @property
+    def elevation_gain_m(self) -> float:
+        """Approximate positive elevation gain from constant-grade segments."""
+        return sum(
+            segment.length_m * (segment.grade_pct / 100.0)
+            for segment in self.segments
+            if segment.grade_pct > 0
+        )
+
+    @property
+    def max_grade_pct(self) -> float:
+        """Highest positive grade in the route."""
+        if not self.segments:
+            return 0.0
+        return max(segment.grade_pct for segment in self.segments)
+
+    @property
+    def difficulty(self) -> str:
+        """Human-readable route difficulty for setup screens."""
+        if self.max_grade_pct >= 6.0 or self.elevation_gain_m >= 120:
+            return "Hard"
+        if self.max_grade_pct >= 3.0 or self.elevation_gain_m >= 40:
+            return "Moderate"
+        return "Easy"
+
     def segment_at(self, distance_m: float) -> RouteSegment:
         """Return the segment at a route-relative distance."""
         return self.position_at(distance_m).segment
@@ -187,6 +212,9 @@ class RideRoute:
             "title": self.title,
             "description": self.description,
             "distance_m": self.distance_m,
+            "elevation_gain_m": self.elevation_gain_m,
+            "max_grade_pct": self.max_grade_pct,
+            "difficulty": self.difficulty,
             "segments": [segment.to_dict() for segment in self.segments],
             "start": self.position_at(0).to_dict() if self.segments else None,
             "upcoming": [

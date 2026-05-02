@@ -42,6 +42,8 @@ class SessionModel(BaseModel):
     # Mode-specific settings
     erg_target_power_w: Optional[int] = None
     sim_grade_pct: Optional[float] = None
+    sim_route_id: Optional[str] = None
+    sim_route_title: Optional[str] = None
 
     # Session statistics (calculated)
     total_distance_m: Optional[float] = None

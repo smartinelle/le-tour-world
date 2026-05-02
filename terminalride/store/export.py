@@ -188,9 +188,11 @@ class DataExporter:
             export_dir = Path(export_dir)
             export_dir.mkdir(parents=True, exist_ok=True)
 
-            # Generate filename: TerminalRide_YYYY-MM-DD_HH-MM_MODE_ID.csv
+            # Generate filename: le-tour_YYYY-MM-DD_HH-MM_MODE_ID.csv
             timestamp_str = session.start_time.strftime("%Y-%m-%d_%H-%M")
-            filename = f"TerminalRide_{timestamp_str}_{session.mode.value}_{session_id[:8]}.csv"
+            filename = (
+                f"le-tour_{timestamp_str}_{session.mode.value}_{session_id[:8]}.csv"
+            )
             output_path = export_dir / filename
 
             success = self.export_session_to_csv(session_id, output_path)

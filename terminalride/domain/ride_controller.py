@@ -61,6 +61,7 @@ class RideController:
         self._last_sample_ts: Optional[float] = None
         self._sample_records: list[SampleModel] = []
         self._route_profile: Optional[RouteProfile] = None
+        self._last_persistence_error: Optional[str] = None
 
         self.on_metrics_update: Optional[Callable[[RideMetrics], None]] = None
         self.on_state_change: Optional[Callable[[RideState], None]] = None
@@ -84,6 +85,16 @@ class RideController:
     def is_paused(self) -> bool:
         """True while an active session is paused."""
         return self._state.paused
+
+    @property
+    def recorded_sample_count(self) -> int:
+        """Number of samples captured for the active or just-stopped session."""
+        return len(self._sample_records)
+
+    @property
+    def last_persistence_error(self) -> Optional[str]:
+        """Most recent persistence failure from stopping a session."""
+        return self._last_persistence_error
 
     def snapshot(self) -> RideSnapshot:
         """Return a UI-neutral snapshot of current ride state and metrics."""
@@ -156,6 +167,7 @@ class RideController:
         self._started_monotonic = time.monotonic()
         self._last_sample_ts = None
         self._sample_records = []
+        self._last_persistence_error = None
 
         self._notify_state()
         self._notify_metrics()
@@ -183,7 +195,7 @@ class RideController:
                 saved_session_id = session_id
             except Exception as exc:
                 logger.warning("Failed to persist session %s: %s", session_id, exc)
-                saved_session_id = session_id
+                self._last_persistence_error = str(exc)
 
         self._state.active = False
         self._state.paused = False
@@ -379,6 +391,8 @@ class RideController:
         cadence_values = [s.cadence_rpm for s in samples if s.cadence_rpm is not None]
         speed_values = [s.speed_mps for s in samples if s.speed_mps is not None]
         hr_values = [s.hr_bpm for s in samples if s.hr_bpm is not None]
+        route_id = getattr(self._route_profile, "route_id", None)
+        route_title = getattr(self._route_profile, "title", None)
 
         return SessionModel(
             session_id=session_id,
@@ -395,6 +409,14 @@ class RideController:
             sim_grade_pct=(
                 self._metrics.sim_grade_pct
                 if self._state.mode is RideMode.SIM
+                else None
+            ),
+            sim_route_id=(
+                str(route_id) if self._state.mode is RideMode.SIM and route_id else None
+            ),
+            sim_route_title=(
+                str(route_title)
+                if self._state.mode is RideMode.SIM and route_title
                 else None
             ),
             total_distance_m=self._metrics.distance_m,

@@ -141,6 +141,22 @@ def test_stop_session_stops_fake_source():
     assert snapshot.active is False
 
 
+def test_stop_session_result_reports_unsaved_empty_rides():
+    """Runtime exposes no-sample stop results for UI summary flows."""
+    controller = make_controller(trainer_connected=False)
+
+    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource"):
+        runtime = RideRuntime(controller)
+        runtime.start_session(RideMode.FREE)
+        result = runtime.stop_session_result()
+
+    assert result.snapshot.active is False
+    assert result.session_id is not None
+    assert result.saved_session_id is None
+    assert result.sample_count == 0
+    assert result.saved is False
+
+
 def test_runtime_controls_return_snapshots():
     """Runtime control methods mutate controller state and return snapshots."""
     controller = make_controller(trainer_connected=False)

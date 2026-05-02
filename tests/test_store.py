@@ -244,7 +244,7 @@ class TestDataExporter:
 
         # Check filename format
         filename = exported_path.name
-        assert filename.startswith("TerminalRide_2024-03-15_14-30_sim_")
+        assert filename.startswith("le-tour_2024-03-15_14-30_sim_")
         assert filename.endswith(".csv")
 
     def test_export_formats_list(self):

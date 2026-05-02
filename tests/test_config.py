@@ -58,6 +58,7 @@ class TestUserSettingsDefaults:
 
         assert settings.default_erg_power_w == 150
         assert settings.default_sim_grade_pct == 0.0
+        assert settings.default_sim_route_id == "demo_rolling_route"
         assert settings.speed_source == "trainer"
 
 

@@ -35,6 +35,7 @@ class UserSettings(BaseModel):
     # Training defaults
     default_erg_power_w: int = Field(default=150, ge=100, le=400)
     default_sim_grade_pct: float = Field(default=0.0, ge=-10.0, le=15.0)
+    default_sim_route_id: str = "demo_rolling_route"
 
     # UI toggles
     show_legend: bool = False

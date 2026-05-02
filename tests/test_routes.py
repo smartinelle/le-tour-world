@@ -22,6 +22,9 @@ def test_default_demo_route_serializes_segments():
 
     assert payload["id"] == "demo_rolling_route"
     assert payload["distance_m"] == 2080
+    assert payload["elevation_gain_m"] == pytest.approx(38.96)
+    assert payload["max_grade_pct"] == 5.6
+    assert payload["difficulty"] == "Moderate"
     assert payload["segments"][0] == {
         "name": "Valley Rollers",
         "length_m": 420,
