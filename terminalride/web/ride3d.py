@@ -351,6 +351,7 @@ RIDE3D_HTML = """<!doctype html>
       <span id="sim-grade" class="control-value">Grade --</span>
       <button class="action" data-sim-delta="0.5">+0.5%</button>
     </div>
+    <span id="device-status">No trainer · demo source · No HR · demo source</span>
     <div id="route-hud"></div>
   </section>
 
@@ -446,7 +447,9 @@ def attach_ride3d_routes(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         runtime = runtime_provider()
         runtime.set_route_profile(route)
-        return runtime.start_session(mode).to_dict()
+        runtime.start_session(mode)
+        await runtime.prepare_hardware_session(mode)
+        return runtime.controller.snapshot().to_dict()
 
     @web_app.post("/api/ride/stop")
     async def stop_ride() -> dict[str, object]:

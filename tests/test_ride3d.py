@@ -1,12 +1,13 @@
 """Tests for the Three.js ride prototype page."""
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from starlette.testclient import TestClient
 
-from terminalride.domain.state import RideMode
+from terminalride.domain.state import RideMode, RideSnapshot
 from terminalride.web.ride3d import (
     RIDE3D_HTML,
     attach_ride3d_routes,
@@ -17,6 +18,7 @@ from terminalride.web.ride3d import (
 RIDE3D_JS = Path("terminalride/web/static/ride3d.js").read_text()
 RIDE_CLIENT_JS = Path("terminalride/web/static/ride_client.js").read_text()
 RIDE_MOTION_JS = Path("terminalride/web/static/ride_motion.js").read_text()
+WEB_APP_PY = Path("terminalride/web/app.py").read_text()
 
 
 def test_ride3d_route_endpoint_returns_default_route():
@@ -59,6 +61,32 @@ def test_ride3d_routes_endpoint_lists_bundled_routes():
     assert payload[0]["segment_count"] == 5
 
 
+def test_ride3d_start_endpoint_prepares_hardware_session():
+    """3D start uses the same runtime hardware preparation as other UIs."""
+    runtime = MagicMock()
+    runtime.controller.snapshot.return_value = RideSnapshot(
+        session_state="active",
+        active=True,
+        mode=RideMode.ERG,
+        trainer_connected=True,
+        trainer_name="KICKR Core",
+    )
+    runtime.prepare_hardware_session = AsyncMock()
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    response = TestClient(app).post(
+        "/api/ride/start",
+        json={"mode": "erg", "route_id": "demo_rolling_route"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["trainer_connected"] is True
+    runtime.start_session.assert_called_once_with(RideMode.ERG)
+    runtime.prepare_hardware_session.assert_awaited_once_with(RideMode.ERG)
+
+
 def test_ride3d_page_consumes_snapshot_stream():
     """3D prototype is a browser-only snapshot stream consumer."""
     assert '<script type="module" src="/static/ride3d.js"></script>' in RIDE3D_HTML
@@ -97,6 +125,28 @@ def test_ride3d_page_has_session_controls():
     assert '"/api/ride/routes"' in RIDE_CLIENT_JS
     assert "getRoute(routeId = null)" in RIDE_CLIENT_JS
     assert "getRoutes()" in RIDE_CLIENT_JS
+    assert '"/api/devices/status"' in RIDE_CLIENT_JS
+    assert "getDeviceStatus()" in RIDE_CLIENT_JS
+
+
+def test_ride3d_hud_shows_hardware_connection_source():
+    """3D HUD exposes whether samples are hardware-backed or demo-backed."""
+    assert 'id="device-status"' in RIDE3D_HTML
+    assert "No trainer · demo source" in RIDE3D_HTML
+    assert "trainer_connected" in RIDE3D_JS
+    assert "trainer_name" in RIDE3D_JS
+    assert "hr_connected" in RIDE3D_JS
+    assert "hr_name" in RIDE3D_JS
+    assert "No trainer · demo source" in RIDE3D_JS
+    assert "No HR · demo source" in RIDE3D_JS
+    assert "hud.deviceStatus.textContent" in RIDE3D_JS
+
+
+def test_web_app_uses_device_services_not_private_clients():
+    """Web UI should stay behind domain service APIs for hardware flows."""
+    assert "._client" not in WEB_APP_PY
+    assert "connection_status()" in WEB_APP_PY
+    assert "scan_devices(timeout_s=8.0)" in WEB_APP_PY
 
 
 def test_ride3d_page_has_route_selection_controls():

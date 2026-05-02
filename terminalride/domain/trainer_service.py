@@ -10,6 +10,7 @@ import logging
 from typing import Callable, Dict, Any, List, Optional
 
 from terminalride.devices.base import BikeSample
+from .device_state import DeviceConnectionStatus, DiscoveredDevice
 from .events import (
     DomainEvent,
     DeviceConnected,
@@ -56,6 +57,16 @@ class TrainerService:
             return {}
         return self._client.device_info
 
+    def connection_status(self) -> DeviceConnectionStatus:
+        """Return UI-neutral trainer connection state."""
+        return DeviceConnectionStatus.from_device_info(
+            self.device_info,
+            device_type="trainer",
+            connected=self.is_connected,
+            fallback_name="Connected Trainer",
+            has_control=self.has_control,
+        )
+
     # Lifecycle ----------------------------------------------------------
     async def scan_and_connect(self, timeout_s: float = 10.0) -> None:
         client = self._get_client()
@@ -69,10 +80,18 @@ class TrainerService:
             )
         )
 
-    async def scan_available(self, timeout_s: float = 5.0) -> List[Dict[str, Any]]:
-        """Scan for available trainers without connecting."""
+    async def scan_devices(self, timeout_s: float = 5.0) -> List[DiscoveredDevice]:
+        """Scan for available trainers as domain device models."""
         try:
-            return await self._get_client().scan_available(timeout_s=timeout_s)
+            devices = await self._get_client().scan_available(timeout_s=timeout_s)
+            return [
+                DiscoveredDevice.from_scan_result(
+                    device,
+                    device_type="trainer",
+                    fallback_name="Unknown Trainer",
+                )
+                for device in devices
+            ]
         except Exception as e:
             logger.error(f"Trainer scan failed: {e}")
             self._emit(
@@ -82,6 +101,11 @@ class TrainerService:
                 )
             )
             return []
+
+    async def scan_available(self, timeout_s: float = 5.0) -> List[Dict[str, Any]]:
+        """Scan for available trainers without connecting."""
+        devices = await self.scan_devices(timeout_s=timeout_s)
+        return [device.to_dict() for device in devices]
 
     async def connect_to_device(self, address: str) -> None:
         """Connect to a trainer by BLE address."""

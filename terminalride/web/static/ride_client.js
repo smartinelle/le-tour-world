@@ -8,6 +8,7 @@ export class RideApiClient {
     simGradeUrl = "/api/ride/sim-grade",
     routesUrl = "/api/ride/routes",
     routeUrl = "/api/ride/route",
+    devicesStatusUrl = "/api/devices/status",
   } = {}) {
     this.snapshotUrl = snapshotUrl;
     this.startUrl = startUrl;
@@ -17,6 +18,7 @@ export class RideApiClient {
     this.simGradeUrl = simGradeUrl;
     this.routesUrl = routesUrl;
     this.routeUrl = routeUrl;
+    this.devicesStatusUrl = devicesStatusUrl;
   }
 
   connectSnapshots({ onSnapshot, onError }) {
@@ -62,6 +64,14 @@ export class RideApiClient {
     const url = new URL(this.routeUrl, window.location.origin);
     if (routeId) url.searchParams.set("route_id", routeId);
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json();
+  }
+
+  async getDeviceStatus() {
+    const response = await fetch(this.devicesStatusUrl);
     if (!response.ok) {
       throw new Error(await response.text());
     }

@@ -55,6 +55,14 @@ def attach_snapshot_routes(
     async def ride_snapshot() -> dict[str, object]:
         return controller_provider().snapshot().to_dict()
 
+    @web_app.get("/api/devices/status")
+    async def device_status() -> dict[str, object]:
+        controller = controller_provider()
+        return {
+            "trainer": controller.trainer.connection_status().to_dict(),
+            "hr": controller.hr_service.connection_status().to_dict(),
+        }
+
     @web_app.get("/api/ride/snapshots")
     async def ride_snapshot_stream(request: Request) -> StreamingResponse:
         return StreamingResponse(

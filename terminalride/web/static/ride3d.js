@@ -356,6 +356,7 @@ const hud = {
   ergTarget: document.querySelector("#erg-target"),
   simControls: document.querySelector("#sim-controls"),
   simGrade: document.querySelector("#sim-grade"),
+  deviceStatus: document.querySelector("#device-status"),
   routeHud: document.querySelector("#route-hud"),
   routeSelect: document.querySelector("#route-select"),
 };
@@ -894,6 +895,13 @@ function updateHud(snapshot) {
   hud.mode.textContent = snapshot.active
     ? `${snapshot.mode || "free"} mode · ${sceneState.routeSegmentName} · ${sceneState.gradePct.toFixed(1)}%`
     : "Start a session to drive the road";
+  const trainerLabel = snapshot.trainer_connected
+    ? snapshot.trainer_name || "Trainer live"
+    : "No trainer · demo source";
+  const hrLabel = snapshot.hr_connected
+    ? snapshot.hr_name || "HR live"
+    : "No HR · demo source";
+  hud.deviceStatus.textContent = `${trainerLabel} · ${hrLabel}`;
   routeProfile.update(sceneState, snapshot.active);
   elevationProfile.update(sceneState, snapshot.active);
 

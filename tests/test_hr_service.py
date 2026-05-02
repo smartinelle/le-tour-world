@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
+from terminalride.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
 from terminalride.domain.hr_service import HrService, get_hr_service
 from terminalride.domain.events import (
     DeviceConnected,
@@ -47,6 +48,44 @@ class TestHrServiceBasics:
             service._client = mock_client
 
             assert service.device_info == {"name": "Polar H10", "battery_percent": 85}
+
+    def test_connection_status_is_ui_neutral(self):
+        """Test HR status exposes connection state without private client access."""
+        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+            mock_client = Mock()
+            mock_client.is_connected = True
+            mock_client.device_info = {
+                "name": "Polar H10",
+                "address": "AA:BB",
+                "rssi": -55,
+            }
+            MockClient.return_value = mock_client
+
+            service = HrService()
+            service._client = mock_client
+            service._last_hr = 141
+            service._last_contact = True
+
+            status = service.connection_status()
+
+            assert isinstance(status, DeviceConnectionStatus)
+            assert status.connected is True
+            assert status.device_type == "hr"
+            assert status.name == "Polar H10"
+            assert status.address == "AA:BB"
+            assert status.rssi == -55
+            assert status.last_hr_bpm == 141
+            assert status.sensor_contact is True
+
+    def test_connection_status_has_no_name_when_disconnected(self):
+        """Disconnected HR status should not invent a connected name."""
+        service = HrService()
+
+        status = service.connection_status()
+
+        assert status.connected is False
+        assert status.name is None
+        assert status.address is None
 
 
 class TestHrServiceSubscription:
@@ -135,6 +174,34 @@ class TestHrServiceScan:
 
             assert len(devices) == 1
             assert devices[0]["name"] == "Polar H10"
+
+    @pytest.mark.asyncio
+    async def test_scan_devices_returns_domain_models(self):
+        """Test scans can return UI-neutral HR device models."""
+        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.scan_available = AsyncMock(
+                return_value=[
+                    {
+                        "name": "Wahoo TICKR",
+                        "address": "CC:DD",
+                        "rssi": -62,
+                        "battery_percent": 91,
+                    }
+                ]
+            )
+            MockClient.return_value = mock_client
+
+            service = HrService()
+            devices = await service.scan_devices(timeout_s=3.0)
+
+            assert len(devices) == 1
+            assert isinstance(devices[0], DiscoveredDevice)
+            assert devices[0].device_type == "hr"
+            assert devices[0].name == "Wahoo TICKR"
+            assert devices[0].address == "CC:DD"
+            assert devices[0].rssi == -62
+            assert devices[0].metadata == {"battery_percent": 91}
 
     @pytest.mark.asyncio
     async def test_scan_available_error_emits_event(self):

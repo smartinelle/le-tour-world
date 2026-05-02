@@ -28,6 +28,8 @@ class RideRuntime:
         if route_profile is not None:
             self.controller.set_route_profile(route_profile)
         self._fake_source: Optional[FakeTrainerSampleSource] = None
+        self._trainer_samples_attached = False
+        self._hr_samples_attached = False
 
     def set_route_profile(self, route_profile: Optional[RouteProfile]) -> None:
         """Attach the route profile used by route-aware ride modes."""
@@ -53,6 +55,34 @@ class RideRuntime:
             self.start_fake_source()
 
         return self.controller.snapshot()
+
+    async def prepare_hardware_session(self, mode: RideMode) -> None:
+        """Attach connected hardware streams and apply mode-specific control."""
+        try:
+            await self._attach_hr_stream()
+            if not self.controller.trainer.is_connected:
+                return
+
+            if not self._trainer_samples_attached:
+                await self.controller.trainer.subscribe_samples(
+                    self.controller.handle_bike_sample
+                )
+                self._trainer_samples_attached = True
+
+            if mode in {RideMode.ERG, RideMode.SIM}:
+                await self.controller.trainer.request_control()
+                if mode is RideMode.ERG:
+                    await self.controller.trainer.set_target_power(
+                        self.controller.metrics.erg_target_w
+                    )
+                else:
+                    await self.controller.trainer.set_simulation(
+                        self.controller.metrics.sim_grade_pct
+                    )
+
+            logger.info("Hardware streams attached to active session")
+        except Exception as exc:
+            logger.warning("Failed to prepare hardware session: %s", exc)
 
     def stop_session(self) -> RideSnapshot:
         """Stop the ride and any runtime-owned sample source."""
@@ -105,6 +135,15 @@ class RideRuntime:
             return
         self._fake_source.stop()
         self._fake_source = None
+
+    async def _attach_hr_stream(self) -> None:
+        if not self.controller.hr_service.is_connected or self._hr_samples_attached:
+            return
+
+        await self.controller.hr_service.subscribe_hr_data(
+            self.controller.handle_hr_sample
+        )
+        self._hr_samples_attached = True
 
     def _trainer_name(self) -> str:
         if not self.controller.trainer.is_connected:

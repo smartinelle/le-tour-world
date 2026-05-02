@@ -973,38 +973,18 @@ class WebUI:
             )
             self._status_label.set_text(label)
 
-        if self.controller.trainer.is_connected:
+        if (
+            self.controller.trainer.is_connected
+            or self.controller.hr_service.is_connected
+        ):
             ui.timer(0.0, lambda: self._prepare_trainer_for_session(mode), once=True)
 
         # Start UI update loop in NiceGUI's page context.
         self._update_task = ui.timer(0.1, self._update_metrics, active=True)
 
     async def _prepare_trainer_for_session(self, mode: RideMode) -> None:
-        """Attach connected trainer data to the active ride session."""
-        try:
-            if not self.controller.trainer.is_connected:
-                return
-
-            await self.controller.trainer.subscribe_samples(
-                self.controller.handle_bike_sample
-            )
-
-            if mode in {RideMode.ERG, RideMode.SIM}:
-                await self.controller.trainer.request_control()
-                if mode is RideMode.ERG:
-                    await self.controller.trainer.set_target_power(
-                        self.controller.metrics.erg_target_w
-                    )
-                else:
-                    await self.controller.trainer.set_simulation(
-                        self.controller.metrics.sim_grade_pct
-                    )
-
-            logger.info("Trainer sample stream attached to active session")
-        except Exception as e:
-            logger.warning(f"Failed to prepare trainer for session: {e}")
-            if self._status_label:
-                self._status_label.set_text("Trainer data unavailable")
+        """Attach connected hardware data to the active ride session."""
+        await self.runtime.prepare_hardware_session(mode)
 
     def _update_metrics(self) -> None:
         """Update UI with current metrics."""
@@ -1108,56 +1088,56 @@ class WebUI:
                     badge="Hardware",
                 )
 
-                connected = self.controller.trainer.is_connected
-                trainer_name = (
-                    self.controller.trainer.device_info.get("name", "Trainer")
-                    if connected
-                    else None
-                )
+                trainer_status = self.controller.trainer.connection_status()
                 device_row(
                     "FTMS trainer",
                     (
-                        f"Connected to {trainer_name}"
-                        if connected
+                        f"Connected to {trainer_status.name or 'Trainer'}"
+                        if trainer_status.connected
                         else "Not connected. Demo samples are available."
                     ),
-                    connected=connected,
-                    action_label="Disconnect" if connected else "Scan",
+                    connected=trainer_status.connected,
+                    action_label="Disconnect" if trainer_status.connected else "Scan",
                     on_action=(
                         lambda: (
                             self._disconnect_trainer()
-                            if connected
+                            if trainer_status.connected
                             else self._scan_trainers()
                         )
                     ),
-                    action_variant="secondary" if connected else "primary",
-                    signal_bars=4 if connected else 0,
-                    state_label="Paired" if connected else "Demo",
+                    action_variant=(
+                        "secondary" if trainer_status.connected else "primary"
+                    ),
+                    signal_bars=(
+                        _rssi_to_bars(trainer_status.rssi)
+                        if trainer_status.connected
+                        else 0
+                    ),
+                    state_label="Paired" if trainer_status.connected else "Demo",
                 )
 
-                hr_connected = self.controller.hr_service.is_connected
-                hr_name = (
-                    self.controller.hr_service.device_info.get("name", "HR Monitor")
-                    if hr_connected
-                    else None
-                )
+                hr_status = self.controller.hr_service.connection_status()
                 device_row(
                     "Heart-rate monitor",
                     (
-                        f"Connected to {hr_name}"
-                        if hr_connected
+                        f"Connected to {hr_status.name or 'HR Monitor'}"
+                        if hr_status.connected
                         else "Optional. Pair a standard BLE HR strap."
                     ),
-                    connected=hr_connected,
-                    action_label="Disconnect" if hr_connected else "Scan",
+                    connected=hr_status.connected,
+                    action_label="Disconnect" if hr_status.connected else "Scan",
                     on_action=(
                         lambda: (
-                            self._disconnect_hr() if hr_connected else self._scan_hr()
+                            self._disconnect_hr()
+                            if hr_status.connected
+                            else self._scan_hr()
                         )
                     ),
-                    action_variant="secondary" if hr_connected else "primary",
-                    signal_bars=3 if hr_connected else 0,
-                    state_label="Paired" if hr_connected else "Optional",
+                    action_variant="secondary" if hr_status.connected else "primary",
+                    signal_bars=(
+                        _rssi_to_bars(hr_status.rssi) if hr_status.connected else 0
+                    ),
+                    state_label="Paired" if hr_status.connected else "Optional",
                 )
 
     async def _disconnect_trainer(self) -> None:
@@ -1188,7 +1168,8 @@ class WebUI:
         """Scan for available trainers."""
 
         async def scan_fn() -> List[Dict[str, Any]]:
-            return await self.controller.trainer.scan_available(timeout_s=8.0)
+            devices = await self.controller.trainer.scan_devices(timeout_s=8.0)
+            return [device.to_dict() for device in devices]
 
         async def connect_fn(address: str) -> None:
             await self.controller.trainer.connect_to_device(address)
@@ -1210,7 +1191,8 @@ class WebUI:
         """Scan for HR monitors."""
 
         async def scan_fn() -> List[Dict[str, Any]]:
-            return await self.controller.hr_service.scan_available(timeout_s=8.0)
+            devices = await self.controller.hr_service.scan_devices(timeout_s=8.0)
+            return [device.to_dict() for device in devices]
 
         async def connect_fn(address: str) -> None:
             await self.controller.hr_service.connect_to_device(address)

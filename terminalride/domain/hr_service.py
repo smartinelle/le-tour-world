@@ -11,6 +11,7 @@ from typing import Callable, Dict, Any, List, Optional
 
 from terminalride.devices.base import HrSample
 from terminalride.devices.hr_parse import ParsedHrData
+from .device_state import DeviceConnectionStatus, DiscoveredDevice
 from .events import (
     DomainEvent,
     DeviceConnected,
@@ -80,18 +81,37 @@ class HrService:
         """True if sensor has skin contact, False if not, None if unknown."""
         return self._last_contact
 
+    def connection_status(self) -> DeviceConnectionStatus:
+        """Return UI-neutral heart-rate connection state."""
+        return DeviceConnectionStatus.from_device_info(
+            self.device_info,
+            device_type="hr",
+            connected=self.is_connected,
+            fallback_name="Connected HR Monitor",
+            last_hr_bpm=self._last_hr,
+            sensor_contact=self._last_contact,
+        )
+
     # Lifecycle ----------------------------------------------------------
-    async def scan_available(self, timeout_s: float = 5.0) -> List[Dict[str, Any]]:
-        """Scan for available HR monitors without connecting.
+    async def scan_devices(self, timeout_s: float = 5.0) -> List[DiscoveredDevice]:
+        """Scan for available HR monitors as domain device models.
 
         Args:
             timeout_s: Maximum scan time in seconds.
 
         Returns:
-            List of device info dicts with name, address, rssi.
+            List of discovered HR device models.
         """
         try:
-            return await self._get_client().scan_available(timeout_s=timeout_s)
+            devices = await self._get_client().scan_available(timeout_s=timeout_s)
+            return [
+                DiscoveredDevice.from_scan_result(
+                    device,
+                    device_type="hr",
+                    fallback_name="Unknown HR Monitor",
+                )
+                for device in devices
+            ]
         except Exception as e:
             logger.error(f"HR scan failed: {e}")
             self._emit(
@@ -101,6 +121,11 @@ class HrService:
                 )
             )
             return []
+
+    async def scan_available(self, timeout_s: float = 5.0) -> List[Dict[str, Any]]:
+        """Scan for available HR monitors without connecting."""
+        devices = await self.scan_devices(timeout_s=timeout_s)
+        return [device.to_dict() for device in devices]
 
     async def scan_and_connect(
         self,

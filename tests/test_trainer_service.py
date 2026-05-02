@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
+from terminalride.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
 from terminalride.domain.trainer_service import TrainerService
 from terminalride.domain.events import (
     DeviceConnected,
@@ -60,6 +61,42 @@ class TestTrainerServiceBasics:
                 "name": "Wahoo KICKR",
                 "power_range": (0, 2000),
             }
+
+    def test_connection_status_is_ui_neutral(self):
+        """Test connection status hides private client access behind a model."""
+        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+            mock_client = Mock()
+            mock_client.is_connected = True
+            mock_client.has_control = True
+            mock_client.device_info = {
+                "name": "Wahoo KICKR",
+                "address": "12:34",
+                "rssi": -47,
+            }
+            MockClient.return_value = mock_client
+
+            service = TrainerService()
+            service._client = mock_client
+
+            status = service.connection_status()
+
+            assert isinstance(status, DeviceConnectionStatus)
+            assert status.connected is True
+            assert status.device_type == "trainer"
+            assert status.name == "Wahoo KICKR"
+            assert status.address == "12:34"
+            assert status.rssi == -47
+            assert status.has_control is True
+
+    def test_connection_status_has_no_name_when_disconnected(self):
+        """Disconnected trainer status should not invent a connected name."""
+        service = TrainerService()
+
+        status = service.connection_status()
+
+        assert status.connected is False
+        assert status.name is None
+        assert status.address is None
 
 
 class TestTrainerServiceSubscription:
@@ -127,6 +164,33 @@ class TestTrainerServiceConnect:
             assert len(devices) == 1
             assert devices[0]["name"] == "Wahoo KICKR"
             mock_client.scan_available.assert_called_once_with(timeout_s=5.0)
+
+    @pytest.mark.asyncio
+    async def test_scan_devices_returns_domain_models(self):
+        """Test scans can return UI-neutral discovered device models."""
+        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.scan_available = AsyncMock(
+                return_value=[
+                    {
+                        "name": "Tacx Neo",
+                        "address": "AA:BB",
+                        "rssi": -51.0,
+                        "manufacturer": "Garmin",
+                    }
+                ]
+            )
+            MockClient.return_value = mock_client
+
+            service = TrainerService()
+            devices = await service.scan_devices(timeout_s=3.0)
+
+            assert len(devices) == 1
+            assert isinstance(devices[0], DiscoveredDevice)
+            assert devices[0].name == "Tacx Neo"
+            assert devices[0].address == "AA:BB"
+            assert devices[0].rssi == -51
+            assert devices[0].metadata == {"manufacturer": "Garmin"}
 
     @pytest.mark.asyncio
     async def test_scan_available_error_emits_event(self):
