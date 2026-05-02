@@ -8,6 +8,53 @@ owns trainer communication, ride state, persistence, and domain logic; the
 browser is the presentation layer. This keeps the core usable for future
 interfaces such as a Three.js ride world, mobile app, or restored terminal UI.
 
+## Product Direction
+
+This README is private project context for me and the agents working in this
+repository. It should stay candid and useful for implementation decisions, not
+polished as a public marketing page.
+
+### Background and Goal
+
+This project started solely as a terminal-first indoor cycling app just for
+myself. The ambition has expanded: build a real application with real users,
+free or paid, while keeping the codebase small enough to move quickly.
+
+The broad product idea is a Zwift-like indoor cycling app, but with
+improvements: only the actually useful features, and no multiplayer/social
+features for now. The differentiator is not a social network; it is ride quality,
+usable training flows, and generated riding environments.
+
+Like Zwift, we want 3D worlds and routes. Ours are built with Three.js and should
+remain data-driven instead of hard-wired into the web UI. The future standout
+feature is that a rider can "vibe-code" / generate new worlds and routes on the
+spot through a prompt, or possibly by importing a fitting file. Earlier versions
+may simply allow importing worlds from other sources if those worlds follow our
+standards.
+
+Current rough business assumptions are deliberately exploratory: something like
+a 5 Euros/month base subscription, with generated worlds/routes as a higher tier
+or add-on, maybe around 10 Euros/month if users want to generate them on our
+platform with a certain amount of credits. This is a vision and working
+assumption, not a fixed product commitment.
+
+### Agent Guidance
+
+- Preserve the local-first, web-first shape while keeping the domain reusable.
+- Do not couple trainer control, generated routes, persistence, analytics, or
+  product rules directly to NiceGUI.
+- Keep generated route/world logic behind domain or application contracts so it
+  can power the current web UI, a future terminal UI, and a richer 3D browser
+  interface.
+- Use `docs/product/` for deeper product exploration and `docs/adr/` for
+  architecture decisions that affect boundaries, storage, auth, or generated
+  route contracts.
+- Because the project vision changed after the initial implementation, current
+  structures may not be optimal for the new goals. When working here, do not
+  blindly continue an old structure if it conflicts with the new direction.
+  Actively mention the discrepancy and propose a solution; sooner rewrites are
+  better than carrying structural mismatch indefinitely.
+
 ## Current Status
 
 - **Active UI:** NiceGUI web app in `terminalride/web`, started by `run_web.py`.
@@ -33,7 +80,13 @@ interfaces such as a Three.js ride world, mobile app, or restored terminal UI.
   - SIM Mode: grade-based simulation and virtual speed/distance.
 - **Web UI:** browser-based ride surface, device management, settings, and
   optional Supabase authentication.
+- **3D Ride Prototype:** a Three.js browser surface at `/ride3d` consumes the
+  same ride snapshot/control contracts instead of reaching into trainer internals.
 - **Data Persistence:** session and sample storage through the repository layer.
+- **Training Log:** recorded sessions are shown from the repository-backed
+  history surface.
+- **Persisted Settings:** rider profile defaults are saved to the local
+  TerminalRide config.
 - **CSV Export:** export training data for external analysis.
 - **Real-time Metrics:** power, cadence, speed, distance, heart rate, elapsed
   time, ERG target, and SIM grade.
@@ -74,6 +127,12 @@ Then open:
 http://127.0.0.1:8080
 ```
 
+The 3D prototype is available at:
+
+```text
+http://127.0.0.1:8080/ride3d
+```
+
 The local web app will:
 
 1. Render the browser UI.
@@ -81,6 +140,10 @@ The local web app will:
 3. Connect to the trainer through the Python FTMS client.
 4. Start Free Ride, ERG, or SIM sessions from the web UI.
 5. Record metrics and session samples through the domain/store layers.
+
+Automatic Python/Bleak trainer scanning on first page load is gated behind
+`TERMINALRIDE_ENABLE_BLE=1`. Manual device scanning from the Devices page remains
+available without that flag.
 
 ## Architecture
 
@@ -143,11 +206,35 @@ By default, local data is written below the TerminalRide config directory:
 
 ## Configuration
 
+### Environment
+
+Copy `.env.example` only when you need optional environment-backed behavior such
+as Supabase auth or a non-development NiceGUI storage secret.
+
+```bash
+cp .env.example .env
+```
+
+Relevant variables:
+
+- `TERMINALRIDE_STORAGE_SECRET`: NiceGUI storage/session secret. Set this to a
+  long random value outside local development.
+- `TERMINALRIDE_ENABLE_BLE`: set to `1`, `true`, or `yes` to allow automatic
+  BLE trainer scanning on first page load when the user setting also enables it.
+- `SUPABASE_URL` and `SUPABASE_ANON_KEY`: enable optional Supabase auth.
+- `APP_URL`: OAuth redirect base URL, usually `http://localhost:8080` locally.
+- `SUPABASE_SERVICE_ROLE_KEY`: optional admin key; never expose it to clients or
+  commit a real value.
+
+### Rider Settings
+
 Edit:
 
 ```text
 ~/.config/terminalride/config.json
 ```
+
+The web Settings page also writes this file.
 
 Example:
 
