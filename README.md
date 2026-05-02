@@ -38,6 +38,38 @@ or add-on, maybe around 10 Euros/month if users want to generate them on our
 platform with a certain amount of credits. This is a vision and working
 assumption, not a fixed product commitment.
 
+### First Launch Strategy
+
+The first launchable version should target early users rather than a broad
+consumer audience. The likely first users are tech-comfortable indoor cyclists,
+makers, and training nerds who can tolerate some local-app rough edges if the
+core ride loop is useful, reliable, and interesting.
+
+This phase is the bridge between a personal tool and a larger product. It should
+validate whether people want the core solo training experience before the project
+invests heavily in packaging polish, hosted accounts, subscriptions, broad
+integrations, or generated 3D worlds.
+
+The first MVP should be a polished non-3D ride cockpit:
+
+- Installable/runnable without requiring users to understand the codebase.
+- Reliable trainer and heart-rate connection flows.
+- Usable Free Ride, ERG, and SIM modes.
+- Persisted rider settings and defaults.
+- Repository-backed ride history.
+- CSV export for external analysis.
+- Simple SIM route choices with clear route metadata.
+- Honest documentation about what works, what is experimental, and what is not
+  built yet.
+
+The 3D route/world work should continue in parallel as a data-contract and
+runtime-surface effort, but it should not block the first useful launch. Prompt
+generated worlds and routes remain a future differentiator after the route/world
+contract is stable.
+
+The working MVP spec and feature audit live in
+`docs/product/mvp-spec.md`.
+
 ### Agent Guidance
 
 - Preserve the local-first, web-first shape while keeping the domain reusable.
