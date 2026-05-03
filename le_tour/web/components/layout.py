@@ -7,7 +7,7 @@ from typing import Any
 
 from nicegui import ui
 
-from terminalride.web.theme import WEB_STYLES
+from le_tour.web.theme import WEB_STYLES
 
 NAV_ITEMS: tuple[tuple[str, str], ...] = (
     ("Ride", "/"),

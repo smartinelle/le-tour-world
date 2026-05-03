@@ -1,4 +1,4 @@
-"""Shared web presentation theme for TerminalRide.
+"""Shared web presentation theme for le-tour.
 
 The token layer follows the Groq design system (DESIGN.md at the repo root):
 warm-gray neutrals, single neon-zest accent, Space Grotesk + IBM Plex Mono,

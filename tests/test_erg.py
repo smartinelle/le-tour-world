@@ -1,6 +1,6 @@
 """Tests for ERG PI controller."""
 
-from terminalride.modes.erg import ErgController
+from le_tour.modes.erg import ErgController
 
 
 class TestErgController:

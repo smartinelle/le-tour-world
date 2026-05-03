@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from terminalride.domain.routes import (
+from le_tour.domain.routes import (
     RouteSpecError,
     available_routes,
     available_route_specs,

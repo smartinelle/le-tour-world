@@ -2,7 +2,7 @@
 
 ## Product Thesis
 
-TerminalRide can make indoor cycling feel personal by letting riders create a
+le-tour can make indoor cycling feel personal by letting riders create a
 route or world from a short prompt, then ride it immediately. The important
 product promise is not "AI art in the background"; it is:
 
@@ -150,7 +150,7 @@ quickly:
 Suggested service boundary:
 
 ```text
-terminalride/domain/generated_routes/
+le_tour/domain/generated_routes/
   models.py          # RouteSpec, WorldSpec, TrainingSpec, RenderManifest
   generator.py       # prompt + constraints -> candidate specs
   validator.py       # safety and schema validation

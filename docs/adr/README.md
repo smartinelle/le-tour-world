@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-This directory tracks the significant technical and product decisions that shape TerminalRide.
+This directory tracks the significant technical and product decisions that shape le-tour.
 
 ## How we use ADRs
 - Start a new ADR whenever a change affects cross-cutting architecture, persistence, trainer/device integration, or user-facing workflows that other surfaces will need to honor.

@@ -1,4 +1,4 @@
-"""Logging setup utilities for TerminalRide."""
+"""Logging setup utilities for le-tour."""
 
 import logging
 import logging.handlers
@@ -44,7 +44,7 @@ def setup_logging(
     max_file_size: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
 ) -> None:
-    """Set up logging configuration for TerminalRide.
+    """Set up logging configuration for le-tour.
 
     Args:
         app_log_level: Log level for application code
@@ -70,7 +70,7 @@ def setup_logging(
 
     # File handler with rotation (JSONL format)
     file_handler = logging.handlers.RotatingFileHandler(
-        config.get_log_file_path("terminalride"),
+        config.get_log_file_path("le-tour"),
         maxBytes=max_file_size,
         backupCount=backup_count,
         encoding="utf-8",
@@ -95,7 +95,7 @@ def setup_logging(
     logging.getLogger("rich").setLevel(lib_level)
 
     # Application loggers at app level
-    logging.getLogger("terminalride").setLevel(getattr(logging, app_log_level.upper()))
+    logging.getLogger("le-tour").setLevel(getattr(logging, app_log_level.upper()))
 
 
 def log_event(event_type: str, **kwargs) -> None:
@@ -105,7 +105,7 @@ def log_event(event_type: str, **kwargs) -> None:
         event_type: Type of event (e.g., 'session_started', 'device_connected')
         **kwargs: Additional event data
     """
-    logger = logging.getLogger("terminalride.events")
+    logger = logging.getLogger("le-tour.events")
 
     # Create log record with extra data
     extra_data = {"event_type": event_type, "extra_data": kwargs}
@@ -158,6 +158,6 @@ def log_sample(
 
 def log_error(error_code: str, message: str, **kwargs) -> None:
     """Log error event."""
-    logger = logging.getLogger("terminalride.errors")
+    logger = logging.getLogger("le-tour.errors")
     extra_data = {"event_type": "error", "extra_data": {"code": error_code, **kwargs}}
     logger.error(message, extra=extra_data)

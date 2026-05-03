@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Demo TerminalRide functionality with your KICKR CORE."""
+"""Demo le-tour functionality with your KICKR CORE."""
 
 import asyncio
 import time
-from terminalride.devices.ftms_client import FtmsClient
-from terminalride.modes.erg import ErgController
-from terminalride.modes.sim import SimPhysics, SimConfig
-from terminalride.logging_setup import setup_logging
+from le_tour.devices.ftms_client import FtmsClient
+from le_tour.modes.erg import ErgController
+from le_tour.modes.sim import SimPhysics, SimConfig
+from le_tour.logging_setup import setup_logging
 
 
 class TrainerDemo:
@@ -17,7 +17,7 @@ class TrainerDemo:
         self.connected = False
 
     async def connect_and_demo(self):
-        print("🚴 TerminalRide - KICKR CORE Demo")
+        print("🚴 le-tour - KICKR CORE Demo")
         print("=" * 40)
 
         print("🔍 Connecting to your KICKR CORE...")

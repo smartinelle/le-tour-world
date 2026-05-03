@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from terminalride.config import (
+from le_tour.config import (
     UserSettings,
     AppConfig,
     get_config,
@@ -437,7 +437,7 @@ class TestConfigSingleton:
 
     def test_get_config_returns_instance(self, tmp_path):
         """Test get_config returns an AppConfig instance."""
-        import terminalride.config as module
+        import le_tour.config as module
 
         module._config = None
 
@@ -448,7 +448,7 @@ class TestConfigSingleton:
 
     def test_get_config_returns_same_instance(self, tmp_path):
         """Test get_config returns the same instance."""
-        import terminalride.config as module
+        import le_tour.config as module
 
         module._config = None
 
@@ -460,7 +460,7 @@ class TestConfigSingleton:
 
     def test_reload_config_creates_new_instance(self, tmp_path):
         """Test reload_config creates a new instance."""
-        import terminalride.config as module
+        import le_tour.config as module
 
         module._config = None
 

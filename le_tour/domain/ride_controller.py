@@ -15,10 +15,10 @@ from datetime import UTC, datetime
 from typing import Optional
 from uuid import uuid4
 
-from terminalride.analytics import calculate_training_metrics
-from terminalride.config import get_config
-from terminalride.devices.base import BikeSample, HrSample
-from terminalride.store.models import SampleModel, SessionModel, TrainingMode
+from le_tour.analytics import calculate_training_metrics
+from le_tour.config import get_config
+from le_tour.devices.base import BikeSample, HrSample
+from le_tour.store.models import SampleModel, SessionModel, TrainingMode
 
 from .hr_service import HrService
 from .routes import RouteProfile

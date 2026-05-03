@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from datetime import datetime
 
-from terminalride.domain.session_service import SessionService, get_session_service
-from terminalride.store.models import SessionModel, SampleModel, SessionSummary
+from le_tour.domain.session_service import SessionService, get_session_service
+from le_tour.store.models import SessionModel, SampleModel, SessionSummary
 
 
 class TestSessionServiceBasics:
@@ -13,9 +13,7 @@ class TestSessionServiceBasics:
 
     def test_init_with_default_repository(self):
         """Test initialization creates default repository."""
-        with patch(
-            "terminalride.domain.session_service.TrainingRepository"
-        ) as MockRepo:
+        with patch("le_tour.domain.session_service.TrainingRepository") as MockRepo:
             mock_repo = Mock()
             MockRepo.return_value = mock_repo
 
@@ -291,22 +289,22 @@ class TestSessionServiceSingleton:
     def test_get_session_service_returns_instance(self):
         """Test get_session_service returns a SessionService instance."""
         # Reset singleton
-        import terminalride.domain.session_service as module
+        import le_tour.domain.session_service as module
 
         module._session_service = None
 
-        with patch("terminalride.domain.session_service.TrainingRepository"):
+        with patch("le_tour.domain.session_service.TrainingRepository"):
             service = get_session_service()
 
         assert isinstance(service, SessionService)
 
     def test_get_session_service_returns_same_instance(self):
         """Test get_session_service returns the same instance."""
-        import terminalride.domain.session_service as module
+        import le_tour.domain.session_service as module
 
         module._session_service = None
 
-        with patch("terminalride.domain.session_service.TrainingRepository"):
+        with patch("le_tour.domain.session_service.TrainingRepository"):
             service1 = get_session_service()
             service2 = get_session_service()
 

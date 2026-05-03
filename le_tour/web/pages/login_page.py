@@ -178,7 +178,7 @@ def render_login_page() -> None:
                 with ui.column().classes("gap-3"):
                     with ui.row().classes("items-center gap-3"):
                         ui.html('<span class="tr-brand-mark">TR</span>', sanitize=False)
-                        ui.label("TerminalRide").classes("text-xl font-extrabold")
+                        ui.label("le-tour").classes("text-xl font-extrabold")
                     ui.label("Local ride control for FTMS trainers.").classes(
                         "tr-title"
                     )

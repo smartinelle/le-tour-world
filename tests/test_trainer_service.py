@@ -2,15 +2,15 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from terminalride.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
-from terminalride.domain.trainer_service import TrainerService
-from terminalride.domain.events import (
+from le_tour.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
+from le_tour.domain.trainer_service import TrainerService
+from le_tour.domain.events import (
     DeviceConnected,
     DeviceDisconnected,
     SampleReceived,
     ControlGranted,
 )
-from terminalride.devices.base import BikeSample
+from le_tour.devices.base import BikeSample
 
 
 class TestTrainerServiceBasics:
@@ -18,14 +18,14 @@ class TestTrainerServiceBasics:
 
     def test_initial_state(self):
         """Test service initial state."""
-        with patch("terminalride.domain.trainer_service.FtmsClient"):
+        with patch("le_tour.domain.trainer_service.FtmsClient"):
             service = TrainerService()
 
             assert len(service._subscribers) == 0
 
     def test_is_connected_delegates_to_client(self):
         """Test is_connected property delegates to client."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = Mock()
             mock_client.is_connected = True
             MockClient.return_value = mock_client
@@ -37,7 +37,7 @@ class TestTrainerServiceBasics:
 
     def test_has_control_delegates_to_client(self):
         """Test has_control property delegates to client."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = Mock()
             mock_client.has_control = True
             MockClient.return_value = mock_client
@@ -49,7 +49,7 @@ class TestTrainerServiceBasics:
 
     def test_device_info_delegates_to_client(self):
         """Test device_info property delegates to client."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = Mock()
             mock_client.device_info = {"name": "Wahoo KICKR", "power_range": (0, 2000)}
             MockClient.return_value = mock_client
@@ -64,7 +64,7 @@ class TestTrainerServiceBasics:
 
     def test_connection_status_is_ui_neutral(self):
         """Test connection status hides private client access behind a model."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = Mock()
             mock_client.is_connected = True
             mock_client.has_control = True
@@ -104,7 +104,7 @@ class TestTrainerServiceSubscription:
 
     def test_subscribe_adds_handler(self):
         """Test subscribing adds handler to list."""
-        with patch("terminalride.domain.trainer_service.FtmsClient"):
+        with patch("le_tour.domain.trainer_service.FtmsClient"):
             service = TrainerService()
             handler = Mock()
 
@@ -114,7 +114,7 @@ class TestTrainerServiceSubscription:
 
     def test_emit_calls_all_subscribers(self):
         """Test _emit calls all subscribed handlers."""
-        with patch("terminalride.domain.trainer_service.FtmsClient"):
+        with patch("le_tour.domain.trainer_service.FtmsClient"):
             service = TrainerService()
             handler1 = Mock()
             handler2 = Mock()
@@ -130,7 +130,7 @@ class TestTrainerServiceSubscription:
 
     def test_emit_handles_subscriber_error(self):
         """Test _emit continues if subscriber raises."""
-        with patch("terminalride.domain.trainer_service.FtmsClient"):
+        with patch("le_tour.domain.trainer_service.FtmsClient"):
             service = TrainerService()
             handler1 = Mock(side_effect=Exception("Error"))
             handler2 = Mock()
@@ -151,7 +151,7 @@ class TestTrainerServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_available_success(self):
         """Test successful scan returns trainer devices."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_available = AsyncMock(
                 return_value=[{"name": "Wahoo KICKR", "address": "12:34", "rssi": -45}]
@@ -168,7 +168,7 @@ class TestTrainerServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_devices_returns_domain_models(self):
         """Test scans can return UI-neutral discovered device models."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_available = AsyncMock(
                 return_value=[
@@ -195,7 +195,7 @@ class TestTrainerServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_available_error_emits_event(self):
         """Test scan failure emits ErrorEvent and returns no devices."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_available = AsyncMock(side_effect=Exception("BLE error"))
             MockClient.return_value = mock_client
@@ -214,7 +214,7 @@ class TestTrainerServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_and_connect_success(self):
         """Test successful connection emits DeviceConnected."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_and_connect = AsyncMock()
             mock_client.device_info = {
@@ -242,7 +242,7 @@ class TestTrainerServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_and_connect_with_timeout(self):
         """Test connection with custom timeout."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_and_connect = AsyncMock()
             mock_client.device_info = {"name": "Trainer"}
@@ -257,7 +257,7 @@ class TestTrainerServiceConnect:
     @pytest.mark.asyncio
     async def test_connect_to_device_success(self):
         """Test connecting by address emits DeviceConnected."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.connect_to_device = AsyncMock()
             mock_client.device_info = {
@@ -285,7 +285,7 @@ class TestTrainerServiceDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_emits_event(self):
         """Test disconnect emits DeviceDisconnected."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.disconnect = AsyncMock()
             MockClient.return_value = mock_client
@@ -310,7 +310,7 @@ class TestTrainerServiceSamples:
     @pytest.mark.asyncio
     async def test_subscribe_samples(self):
         """Test subscribing to bike data samples."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.subscribe_bike_data = AsyncMock()
             MockClient.return_value = mock_client
@@ -325,7 +325,7 @@ class TestTrainerServiceSamples:
     @pytest.mark.asyncio
     async def test_sample_emits_event_and_calls_handler(self):
         """Test that samples emit SampleReceived and call handler."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             captured_bridge = None
 
@@ -368,7 +368,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_request_control(self):
         """Test requesting trainer control."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.request_control = AsyncMock()
             mock_client.has_control = True
@@ -390,7 +390,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_request_control_denied(self):
         """Test control request denied."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.request_control = AsyncMock()
             mock_client.has_control = False
@@ -409,7 +409,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_start_session(self):
         """Test starting a training session."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.start_session = AsyncMock()
             MockClient.return_value = mock_client
@@ -423,7 +423,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_stop_session(self):
         """Test stopping a training session."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.stop_session = AsyncMock()
             MockClient.return_value = mock_client
@@ -437,7 +437,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_set_target_power(self):
         """Test setting ERG target power."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.set_target_power = AsyncMock()
             MockClient.return_value = mock_client
@@ -451,7 +451,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_set_simulation(self):
         """Test setting simulation grade."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.set_simulation_params = AsyncMock()
             MockClient.return_value = mock_client
@@ -465,7 +465,7 @@ class TestTrainerServiceControl:
     @pytest.mark.asyncio
     async def test_set_simulation_negative_grade(self):
         """Test setting negative simulation grade (downhill)."""
-        with patch("terminalride.domain.trainer_service.FtmsClient") as MockClient:
+        with patch("le_tour.domain.trainer_service.FtmsClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.set_simulation_params = AsyncMock()
             MockClient.return_value = mock_client

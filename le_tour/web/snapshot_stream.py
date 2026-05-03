@@ -10,9 +10,9 @@ from typing import Protocol
 from fastapi import HTTPException, Request
 from starlette.responses import StreamingResponse
 
-from terminalride.domain.device_state import DiscoveredDevice
-from terminalride.domain.ride_controller import RideController
-from terminalride.domain.state import RideSnapshot
+from le_tour.domain.device_state import DiscoveredDevice
+from le_tour.domain.ride_controller import RideController
+from le_tour.domain.state import RideSnapshot
 
 
 class RouteApp(Protocol):

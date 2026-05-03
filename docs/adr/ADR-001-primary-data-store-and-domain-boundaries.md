@@ -2,14 +2,14 @@
 - Status: Accepted
 - Date: 2025-09-19
 
-> Current direction update: this ADR was written while TerminalRide still had a
+> Current direction update: this ADR was written while le-tour still had a
 > Rich terminal UI. The terminal UI is now retired and should not be treated as a
 > future product surface. The domain-boundary decision remains valid because the
 > core must stay reusable for web, 3D browser, mobile/API, and headless
 > workflows.
 
 ## Context
-- At the time of this ADR, TerminalRide had to serve a Rich-based terminal UI
+- At the time of this ADR, le-tour had to serve a Rich-based terminal UI
   while remaining portable to future surfaces. That specific UI requirement is
   now historical; portability remains important for web, 3D browser, mobile/API,
   and headless workflows.
@@ -18,11 +18,11 @@
 - We require fast querying for history/statistics views without giving up the robustness of append-only logs.
 
 ## Decision
-- Keep `terminalride/domain` as the single owner of trainer orchestration and state: `TrainerService` wraps the FTMS client, publishes domain events, and exposes an API that does not depend on Rich or screen state.
+- Keep `le_tour/domain` as the single owner of trainer orchestration and state: `TrainerService` wraps the FTMS client, publishes domain events, and exposes an API that does not depend on Rich or screen state.
 - Use `TrainingRepository` as the persistence facade. It appends canonical session/sample records to JSONL files as the source of truth, and hydrates a local SQLite database for indexed lookups that power summaries and statistics.
 - UI code consumes domain events and repository outputs but never reaches into
   BLE clients or filesystem implementations directly. The current UI lives in
-  `terminalride/web`; the retired `terminalride/ui` package is historical only.
+  `le_tour/web`; the retired `le_tour/ui` package is historical only.
 - CSV exports stay layered on top of the repository so future adapters (e.g., FIT/TCX exporters or remote sync) can reuse the same session graph.
 
 ## Consequences
@@ -37,7 +37,7 @@
 - [ ] Document guidance for adding new storage adapters (e.g., cloud sync) in the developer docs.
 
 ## References
-- `8e3e7a1` Initial TerminalRide core implementation (UI-centric persistence)
+- `8e3e7a1` Initial le-tour core implementation (UI-centric persistence)
 - `4d4ca56` Domain/service refactor introducing repository and Rich decoupling
-- `terminalride/store/repository.py`
-- `terminalride/domain/trainer_service.py`
+- `le_tour/store/repository.py`
+- `le_tour/domain/trainer_service.py`

@@ -29,7 +29,7 @@ class TrainingRepository:
         self.samples_file = self.data_dir / "samples.jsonl"
 
         # SQLite database for queries (optional optimization)
-        self.db_file = self.data_dir / "terminalride.db"
+        self.db_file = self.data_dir / "le-tour.db"
         self._init_database()
 
     def _init_database(self) -> None:

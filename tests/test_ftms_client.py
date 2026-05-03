@@ -3,8 +3,8 @@
 import asyncio
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from terminalride.devices.ftms_client import FtmsClient
-from terminalride.devices.base import (
+from le_tour.devices.ftms_client import FtmsClient
+from le_tour.devices.base import (
     DeviceNotFoundError,
     ConnectionError,
     ControlNotAvailableError,
@@ -16,7 +16,7 @@ class TestFtmsClient:
 
     def test_implements_trainer_device_protocol(self):
         """Test that FtmsClient implements TrainerDevice protocol."""
-        from terminalride.devices.base import TrainerDevice
+        from le_tour.devices.base import TrainerDevice
 
         client = FtmsClient()
         assert isinstance(client, TrainerDevice)
@@ -30,7 +30,7 @@ class TestFtmsClient:
         assert client.device_info == {}
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.ftms_client.BleakScanner")
+    @patch("le_tour.devices.ftms_client.BleakScanner")
     async def test_scan_no_devices_found(self, mock_scanner):
         """Test scan when no FTMS devices are found."""
         mock_scanner.discover = AsyncMock(return_value=[])
@@ -41,8 +41,8 @@ class TestFtmsClient:
             await client.scan_and_connect(timeout_s=5.0)
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.ftms_client.BleakScanner")
-    @patch("terminalride.devices.ftms_client.BleakClient")
+    @patch("le_tour.devices.ftms_client.BleakScanner")
+    @patch("le_tour.devices.ftms_client.BleakClient")
     async def test_scan_and_connect_success(self, mock_client_class, mock_scanner):
         """Test successful scan and connect."""
         # Mock discovered device
@@ -67,8 +67,8 @@ class TestFtmsClient:
         assert client.device_info["address"] == "12:34:56:78:90:AB"
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.ftms_client.BleakScanner")
-    @patch("terminalride.devices.ftms_client.BleakClient")
+    @patch("le_tour.devices.ftms_client.BleakScanner")
+    @patch("le_tour.devices.ftms_client.BleakClient")
     async def test_connect_failure(self, mock_client_class, mock_scanner):
         """Test connection failure handling."""
         mock_device = Mock()

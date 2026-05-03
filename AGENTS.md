@@ -7,5 +7,5 @@
 - Format code with `black` and lint with `ruff` (line length 88).
 - Keep type hints and the strict `mypy` config in mind.
 - Use `rg` for searching; avoid expensive `grep -R` or `ls -R`.
-- Core logic lives in `terminalride/domain`, while the current UI resides in `terminalride/web`.
+- Core logic lives in `le_tour/domain`, while the current UI resides in `le_tour/web`.
 - This is a web-first indoor cycling app with a replaceable UI; design features so they can also power richer browser/3D surfaces, API clients, mobile clients, and headless workflows.

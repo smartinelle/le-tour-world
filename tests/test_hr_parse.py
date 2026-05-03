@@ -9,7 +9,7 @@ Tests cover:
 """
 
 import pytest
-from terminalride.devices.hr_parse import parse_heart_rate_measurement
+from le_tour.devices.hr_parse import parse_heart_rate_measurement
 
 
 class TestBasicHrParsing:

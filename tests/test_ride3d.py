@@ -7,18 +7,18 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from starlette.testclient import TestClient
 
-from terminalride.domain.state import RideMode, RideSnapshot
-from terminalride.web.ride3d import (
+from le_tour.domain.state import RideMode, RideSnapshot
+from le_tour.web.ride3d import (
     RIDE3D_HTML,
     attach_ride3d_routes,
     parse_delta,
     parse_ride_mode,
 )
 
-RIDE3D_JS = Path("terminalride/web/static/ride3d.js").read_text()
-RIDE_CLIENT_JS = Path("terminalride/web/static/ride_client.js").read_text()
-RIDE_MOTION_JS = Path("terminalride/web/static/ride_motion.js").read_text()
-WEB_APP_PY = Path("terminalride/web/app.py").read_text()
+RIDE3D_JS = Path("le_tour/web/static/ride3d.js").read_text()
+RIDE_CLIENT_JS = Path("le_tour/web/static/ride_client.js").read_text()
+RIDE_MOTION_JS = Path("le_tour/web/static/ride_motion.js").read_text()
+WEB_APP_PY = Path("le_tour/web/app.py").read_text()
 
 
 def test_ride3d_route_endpoint_returns_default_route():

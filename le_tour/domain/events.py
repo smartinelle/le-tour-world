@@ -1,4 +1,4 @@
-"""Domain event definitions for TerminalRide.
+"""Domain event definitions for le-tour.
 
 These events are UI-agnostic and can be consumed by any presentation layer.
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
-from terminalride.devices.base import BikeSample, HrSample
+from le_tour.devices.base import BikeSample, HrSample
 
 
 @dataclass(frozen=True)

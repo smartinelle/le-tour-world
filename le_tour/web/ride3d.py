@@ -9,9 +9,9 @@ from typing import Protocol
 from fastapi import HTTPException, Request
 from starlette.responses import FileResponse, HTMLResponse
 
-from terminalride.domain.routes import RouteSpecError, available_routes, route_by_id
-from terminalride.domain.ride_runtime import RideRuntime
-from terminalride.domain.state import RideMode
+from le_tour.domain.routes import RouteSpecError, available_routes, route_by_id
+from le_tour.domain.ride_runtime import RideRuntime
+from le_tour.domain.state import RideMode
 
 
 class RouteApp(Protocol):
@@ -38,7 +38,7 @@ RIDE3D_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TerminalRide 3D</title>
+  <title>le-tour 3D</title>
   <style>
     :root {
       --bg: #f4f2ee;

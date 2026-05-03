@@ -2,12 +2,12 @@
 
 import time
 from unittest.mock import MagicMock
-from terminalride.domain.ride_controller import (
+from le_tour.domain.ride_controller import (
     RideController,
     RideMode,
     RideMetrics,
 )
-from terminalride.domain.routes import default_demo_route
+from le_tour.domain.routes import default_demo_route
 
 
 class TestRideControllerBasics:

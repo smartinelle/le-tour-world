@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from terminalride.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
-from terminalride.domain.state import RideMode, RideSnapshot
-from terminalride.web.snapshot_stream import attach_snapshot_routes, format_sse_event
+from le_tour.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
+from le_tour.domain.state import RideMode, RideSnapshot
+from le_tour.web.snapshot_stream import attach_snapshot_routes, format_sse_event
 
 
 def test_format_sse_event_serializes_snapshot():

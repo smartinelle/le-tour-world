@@ -344,13 +344,13 @@ def load_bundled_route_spec(spec_name: str) -> RideRoute:
     """Load one packaged route spec by filename."""
     if spec_name not in available_route_specs():
         raise RouteSpecError(f"Unknown bundled route spec: {spec_name}")
-    route_file = files("terminalride.assets.routes").joinpath(spec_name)
+    route_file = files("le_tour.assets.routes").joinpath(spec_name)
     return load_route_spec(str(route_file))
 
 
 def available_route_specs() -> tuple[str, ...]:
     """Return bundled route spec names."""
-    route_files = files("terminalride.assets.routes")
+    route_files = files("le_tour.assets.routes")
     return tuple(
         sorted(
             route_file.name

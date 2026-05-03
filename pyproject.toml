@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "terminalride"
+name = "le-tour"
 version = "0.2.0"
 description = "Web-based indoor cycling app"
 requires-python = ">=3.11"

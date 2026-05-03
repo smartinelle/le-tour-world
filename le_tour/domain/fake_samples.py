@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from typing import Optional
 
-from terminalride.devices.base import BikeSample, HrSample
+from le_tour.devices.base import BikeSample, HrSample
 
 from .state import RideMode, RideSnapshot
 

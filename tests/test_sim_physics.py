@@ -1,7 +1,7 @@
 """Tests for SIM mode physics solver."""
 
 import math
-from terminalride.modes.sim import SimPhysics, SimConfig
+from le_tour.modes.sim import SimPhysics, SimConfig
 
 
 class TestSimPhysics:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from terminalride.devices.ftms_parse import parse_indoor_bike_data
+from le_tour.devices.ftms_parse import parse_indoor_bike_data
 
 
 def test_parse_all_fields():

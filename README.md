@@ -1,4 +1,4 @@
-# TerminalRide (Le-tour)
+# le-tour
 
 Web-first indoor cycling application for connecting to Wahoo KICKR and other
 BLE FTMS trainers.
@@ -89,15 +89,15 @@ The working MVP spec and feature audit live in
 
 ## Current Status
 
-- **Active UI:** NiceGUI web app in `terminalride/web`, started by `run_web.py`.
+- **Active UI:** NiceGUI web app in `le_tour/web`, started by `run_web.py`.
 - **Core domain:** UI-neutral ride/controller/device services in
-  `terminalride/domain`.
+  `le_tour/domain`.
 - **Trainer connection:** Python/Bleak FTMS client remains the primary local
   hardware path.
-- **Native terminal UI:** the old Rich/TUI entry points and `terminalride/ui`
+- **Native terminal UI:** the old Rich/TUI entry points and `le_tour/ui`
   package have been removed during the web migration. It is a thing of the past,
   not a future product surface.
-- **Browser BLE:** `terminalride/web/static/ble.js` is an experimental
+- **Browser BLE:** `le_tour/web/static/ble.js` is an experimental
   Web Bluetooth client. It is not the default path and browser support is
   limited compared with the Python/Bleak local app.
 
@@ -118,7 +118,7 @@ The working MVP spec and feature audit live in
 - **Training Log:** recorded sessions are shown from the repository-backed
   history surface.
 - **Persisted Settings:** rider profile defaults are saved to the local
-  TerminalRide config.
+  le-tour config.
 - **CSV Export:** export training data for external analysis.
 - **Real-time Metrics:** power, cadence, speed, distance, heart rate, elapsed
   time, ERG target, and SIM grade.
@@ -197,7 +197,7 @@ The local web app will:
 5. Record metrics and session samples through the domain/store layers.
 
 Automatic Python/Bleak trainer scanning on first page load is gated behind
-`TERMINALRIDE_ENABLE_BLE=1`. Manual device scanning from the Devices page remains
+`LE_TOUR_ENABLE_BLE=1`. Manual device scanning from the Devices page remains
 available without that flag.
 
 ### Bluetooth Platform Notes
@@ -220,12 +220,12 @@ available without that flag.
 
 ### Core Boundaries
 
-- `terminalride/domain`: ride lifecycle, device services, event models, and
+- `le_tour/domain`: ride lifecycle, device services, event models, and
   UI-neutral state.
-- `terminalride/devices`: BLE FTMS and Heart Rate clients plus parsers.
-- `terminalride/modes`: ERG and SIM mode logic.
-- `terminalride/store`: repository, models, CSV export, and storage adapters.
-- `terminalride/web`: NiceGUI UI, auth, pages, and browser-facing assets.
+- `le_tour/devices`: BLE FTMS and Heart Rate clients plus parsers.
+- `le_tour/modes`: ERG and SIM mode logic.
+- `le_tour/store`: repository, models, CSV export, and storage adapters.
+- `le_tour/web`: NiceGUI UI, auth, pages, and browser-facing assets.
 
 The frontend must consume domain state through stable contracts instead of
 reaching into BLE clients directly. This is especially important for the planned
@@ -257,7 +257,7 @@ the trainer is connected and control is available.
 Uses grade-based simulation parameters and the local SIM physics model to
 calculate virtual speed and distance.
 
-The SIM physics solver is in `terminalride/modes/sim.py` and uses:
+The SIM physics solver is in `le_tour/modes/sim.py` and uses:
 
 ```text
 P = 0.5 * rho * CdA * v^3 + m * g * Crr * v + m * g * sin(theta) * v + P0
@@ -265,17 +265,17 @@ P = 0.5 * rho * CdA * v^3 + m * g * Crr * v + m * g * sin(theta) * v + P0
 
 ## Data Management
 
-- Session metadata and samples flow through `terminalride/store`.
+- Session metadata and samples flow through `le_tour/store`.
 - JSONL remains the durable append-friendly source of truth.
 - SQLite supports faster local history/statistics queries.
 - CSV export is layered on top of repository data.
 - The web History page exports per-session CSV files under `exports/` in the
   local app data directory.
 
-By default, local data is written below the TerminalRide config directory:
+By default, local data is written below the le-tour config directory:
 
 ```text
-~/.config/terminalride/data
+~/.config/le-tour/data
 ```
 
 ## Configuration
@@ -291,9 +291,9 @@ cp .env.example .env
 
 Relevant variables:
 
-- `TERMINALRIDE_STORAGE_SECRET`: NiceGUI storage/session secret. Set this to a
+- `LE_TOUR_STORAGE_SECRET`: NiceGUI storage/session secret. Set this to a
   long random value outside local development.
-- `TERMINALRIDE_ENABLE_BLE`: set to `1`, `true`, or `yes` to allow automatic
+- `LE_TOUR_ENABLE_BLE`: set to `1`, `true`, or `yes` to allow automatic
   BLE trainer scanning on first page load when the user setting also enables it.
 - `SUPABASE_URL` and `SUPABASE_ANON_KEY`: enable optional Supabase auth.
 - `APP_URL`: OAuth redirect base URL, usually `http://localhost:8080` locally.
@@ -305,7 +305,7 @@ Relevant variables:
 Edit:
 
 ```text
-~/.config/terminalride/config.json
+~/.config/le-tour/config.json
 ```
 
 The web Settings page also writes this file.
@@ -409,7 +409,7 @@ Before calling an MVP release candidate launchable:
 
 ### Data Issues
 
-1. Check `~/.config/terminalride/data/sessions.jsonl`.
-2. Check `~/.config/terminalride/data/samples.jsonl`.
+1. Check `~/.config/le-tour/data/sessions.jsonl`.
+2. Check `~/.config/le-tour/data/samples.jsonl`.
 3. If SQLite query results are stale or corrupt, remove the SQLite cache and
    rebuild/import from JSONL once a maintenance tool exists.

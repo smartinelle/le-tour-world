@@ -2450,7 +2450,7 @@ wheels = [
 ]
 
 [[package]]
-name = "terminalride"
+name = "le-tour"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

@@ -1,4 +1,4 @@
-"""Configuration management for TerminalRide."""
+"""Configuration management for le-tour."""
 
 import os
 from pathlib import Path
@@ -55,9 +55,9 @@ class AppConfig:
             # Use platform-appropriate config directory
             home = Path.home()
             if os.name == "nt":  # Windows
-                config_dir = home / "AppData" / "Local" / "TerminalRide"
+                config_dir = home / "AppData" / "Local" / "le-tour"
             else:  # Unix-like (macOS, Linux)
-                config_dir = home / ".config" / "terminalride"
+                config_dir = home / ".config" / "le-tour"
 
         self.config_dir = Path(config_dir)
         self.config_file = self.config_dir / "config.json"

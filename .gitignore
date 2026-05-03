@@ -22,7 +22,7 @@ dist/
 
 # Logs
 *.log
-terminalride.jsonl
+le-tour.jsonl
 
 # OS
 .DS_Store

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the le-tour web UI."""
 
-from terminalride.web import run_web_ui
+from le_tour.web import run_web_ui
 
 if __name__ == "__main__":
     print("Starting le-tour Web UI...")

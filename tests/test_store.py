@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 import csv
 
-from terminalride.store.models import SessionModel, SampleModel, TrainingMode
-from terminalride.store.repository import TrainingRepository
-from terminalride.store.export import DataExporter
+from le_tour.store.models import SessionModel, SampleModel, TrainingMode
+from le_tour.store.repository import TrainingRepository
+from le_tour.store.export import DataExporter
 
 
 class TestDataModels:

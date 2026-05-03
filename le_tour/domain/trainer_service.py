@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Dict, Any, List, Optional
 
-from terminalride.devices.base import BikeSample
+from le_tour.devices.base import BikeSample
 from .device_state import DeviceConnectionStatus, DiscoveredDevice
 from .events import (
     DomainEvent,
@@ -165,7 +165,7 @@ class TrainerService:
         global FtmsClient
         if self._client is None:
             if FtmsClient is None:
-                from terminalride.devices.ftms_client import FtmsClient as Client
+                from le_tour.devices.ftms_client import FtmsClient as Client
 
                 FtmsClient = Client
             self._client = FtmsClient()

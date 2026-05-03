@@ -1,4 +1,4 @@
-"""Web UI package for TerminalRide."""
+"""Web UI package for le-tour."""
 
 from .app import run_web_ui
 

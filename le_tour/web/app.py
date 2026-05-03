@@ -1,4 +1,4 @@
-"""NiceGUI web interface for TerminalRide.
+"""NiceGUI web interface for le-tour.
 
 Clean, minimal design with orange accent.
 Big metrics for visibility from bike distance.
@@ -437,7 +437,7 @@ def get_runtime() -> RideRuntime:
 
 
 class WebUI:
-    """Web-based UI for TerminalRide."""
+    """Web-based UI for le-tour."""
 
     def __init__(self) -> None:
         # Controller is now retrieved dynamically per request
@@ -478,7 +478,7 @@ class WebUI:
 
     def _auto_connect_enabled(self) -> bool:
         """True when automatic BLE scanning is explicitly enabled."""
-        flag = os.getenv("TERMINALRIDE_ENABLE_BLE", "").lower()
+        flag = os.getenv("LE_TOUR_ENABLE_BLE", "").lower()
         return (
             flag in {"1", "true", "yes"} and get_config().settings.auto_connect_trainer
         )
@@ -510,10 +510,10 @@ class WebUI:
 
     def setup(self) -> None:
         """Set up the web UI routes and pages."""
-        if not getattr(app, "_terminalride_snapshot_routes_attached", False):
+        if not getattr(app, "_le_tour_snapshot_routes_attached", False):
             attach_snapshot_routes(app, get_controller)
             attach_ride3d_routes(app, get_runtime)
-            app._terminalride_snapshot_routes_attached = True
+            app._le_tour_snapshot_routes_attached = True
 
         # =====================================================================
         # Authentication Routes
@@ -2219,7 +2219,7 @@ def run_web_ui(host: str = "127.0.0.1", port: int = 8080) -> None:
         show=False,
         loop="asyncio",
         storage_secret=os.environ.get(
-            "TERMINALRIDE_STORAGE_SECRET",
-            "terminalride-dev-secret-change-in-production",
+            "LE_TOUR_STORAGE_SECRET",
+            "le-tour-dev-secret-change-in-production",
         ),
     )

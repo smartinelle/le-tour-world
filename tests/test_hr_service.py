@@ -2,15 +2,15 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from terminalride.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
-from terminalride.domain.hr_service import HrService, get_hr_service
-from terminalride.domain.events import (
+from le_tour.domain.device_state import DeviceConnectionStatus, DiscoveredDevice
+from le_tour.domain.hr_service import HrService, get_hr_service
+from le_tour.domain.events import (
     DeviceConnected,
     DeviceDisconnected,
     HrSampleReceived,
     ErrorEvent,
 )
-from terminalride.devices.base import HrSample
+from le_tour.devices.base import HrSample
 
 
 class TestHrServiceBasics:
@@ -18,7 +18,7 @@ class TestHrServiceBasics:
 
     def test_initial_state(self):
         """Test service initial state."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             service = HrService()
 
             assert service.last_hr is None
@@ -27,7 +27,7 @@ class TestHrServiceBasics:
 
     def test_is_connected_delegates_to_client(self):
         """Test is_connected property delegates to client."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = Mock()
             mock_client.is_connected = True
             MockClient.return_value = mock_client
@@ -39,7 +39,7 @@ class TestHrServiceBasics:
 
     def test_device_info_delegates_to_client(self):
         """Test device_info property delegates to client."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = Mock()
             mock_client.device_info = {"name": "Polar H10", "battery_percent": 85}
             MockClient.return_value = mock_client
@@ -51,7 +51,7 @@ class TestHrServiceBasics:
 
     def test_connection_status_is_ui_neutral(self):
         """Test HR status exposes connection state without private client access."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = Mock()
             mock_client.is_connected = True
             mock_client.device_info = {
@@ -93,7 +93,7 @@ class TestHrServiceSubscription:
 
     def test_subscribe_adds_handler(self):
         """Test subscribing adds handler to list."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             service = HrService()
             handler = Mock()
 
@@ -103,7 +103,7 @@ class TestHrServiceSubscription:
 
     def test_unsubscribe_removes_handler(self):
         """Test unsubscribing removes handler from list."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             service = HrService()
             handler = Mock()
 
@@ -114,7 +114,7 @@ class TestHrServiceSubscription:
 
     def test_unsubscribe_nonexistent_handler(self):
         """Test unsubscribing non-existent handler doesn't raise."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             service = HrService()
             handler = Mock()
 
@@ -123,7 +123,7 @@ class TestHrServiceSubscription:
 
     def test_emit_calls_all_subscribers(self):
         """Test _emit calls all subscribed handlers."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             service = HrService()
             handler1 = Mock()
             handler2 = Mock()
@@ -139,7 +139,7 @@ class TestHrServiceSubscription:
 
     def test_emit_handles_subscriber_error(self):
         """Test _emit continues if subscriber raises."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             service = HrService()
             handler1 = Mock(side_effect=Exception("Error"))
             handler2 = Mock()
@@ -160,7 +160,7 @@ class TestHrServiceScan:
     @pytest.mark.asyncio
     async def test_scan_available_success(self):
         """Test successful scan returns devices."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_available = AsyncMock(
                 return_value=[
@@ -178,7 +178,7 @@ class TestHrServiceScan:
     @pytest.mark.asyncio
     async def test_scan_devices_returns_domain_models(self):
         """Test scans can return UI-neutral HR device models."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_available = AsyncMock(
                 return_value=[
@@ -206,7 +206,7 @@ class TestHrServiceScan:
     @pytest.mark.asyncio
     async def test_scan_available_error_emits_event(self):
         """Test scan error emits ErrorEvent."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_available = AsyncMock(side_effect=Exception("BLE error"))
             MockClient.return_value = mock_client
@@ -230,7 +230,7 @@ class TestHrServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_and_connect_success(self):
         """Test successful connection emits DeviceConnected."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_and_connect = AsyncMock()
             mock_client.device_info = {
@@ -255,7 +255,7 @@ class TestHrServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_and_connect_with_name(self):
         """Test connection with device_name parameter."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_and_connect = AsyncMock()
             mock_client.device_info = {"name": "Wahoo TICKR"}
@@ -273,7 +273,7 @@ class TestHrServiceConnect:
     @pytest.mark.asyncio
     async def test_scan_and_connect_failure_emits_error(self):
         """Test connection failure emits ErrorEvent and re-raises."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.scan_and_connect = AsyncMock(
                 side_effect=Exception("Connection failed")
@@ -295,7 +295,7 @@ class TestHrServiceConnect:
     @pytest.mark.asyncio
     async def test_connect_to_device_success(self):
         """Test successful address connection emits DeviceConnected."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.connect_to_device = AsyncMock()
             mock_client.device_info = {
@@ -324,7 +324,7 @@ class TestHrServiceDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_emits_event(self):
         """Test disconnect emits DeviceDisconnected."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.disconnect = AsyncMock()
             MockClient.return_value = mock_client
@@ -355,7 +355,7 @@ class TestHrServiceData:
     @pytest.mark.asyncio
     async def test_subscribe_hr_data(self):
         """Test subscribing to HR data."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.subscribe_hr_data = AsyncMock()
             MockClient.return_value = mock_client
@@ -370,7 +370,7 @@ class TestHrServiceData:
     @pytest.mark.asyncio
     async def test_hr_sample_updates_last_hr(self):
         """Test that HR samples update last_hr property."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             captured_handler = None
 
@@ -396,7 +396,7 @@ class TestHrServiceData:
     @pytest.mark.asyncio
     async def test_hr_sample_emits_event(self):
         """Test that HR samples emit HrSampleReceived events."""
-        with patch("terminalride.domain.hr_service.HrClient") as MockClient:
+        with patch("le_tour.domain.hr_service.HrClient") as MockClient:
             mock_client = AsyncMock()
             captured_handler = None
 
@@ -427,9 +427,9 @@ class TestHrServiceSingleton:
 
     def test_get_hr_service_returns_instance(self):
         """Test get_hr_service returns an HrService instance."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             # Reset singleton
-            import terminalride.domain.hr_service as module
+            import le_tour.domain.hr_service as module
 
             module._hr_service = None
 
@@ -439,9 +439,9 @@ class TestHrServiceSingleton:
 
     def test_get_hr_service_returns_same_instance(self):
         """Test get_hr_service returns the same instance."""
-        with patch("terminalride.domain.hr_service.HrClient"):
+        with patch("le_tour.domain.hr_service.HrClient"):
             # Reset singleton
-            import terminalride.domain.hr_service as module
+            import le_tour.domain.hr_service as module
 
             module._hr_service = None
 

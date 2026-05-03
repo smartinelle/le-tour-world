@@ -1,7 +1,7 @@
 """Tests for fake development sample source."""
 
-from terminalride.domain.fake_samples import FakeTrainerSampleSource
-from terminalride.domain.state import RideMode, RideSnapshot
+from le_tour.domain.fake_samples import FakeTrainerSampleSource
+from le_tour.domain.state import RideMode, RideSnapshot
 
 
 def test_fake_source_emit_once_uses_domain_handlers():

@@ -2,7 +2,7 @@
 
 import re
 
-from terminalride.web.theme import WEB_STYLES
+from le_tour.web.theme import WEB_STYLES
 
 
 def test_theme_preserves_material_icon_ligature_fonts():

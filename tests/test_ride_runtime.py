@@ -3,10 +3,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from terminalride.domain.ride_controller import RideController
-from terminalride.domain.ride_runtime import RideRuntime
-from terminalride.domain.routes import default_demo_route
-from terminalride.domain.state import RideMode
+from le_tour.domain.ride_controller import RideController
+from le_tour.domain.ride_runtime import RideRuntime
+from le_tour.domain.routes import default_demo_route
+from le_tour.domain.state import RideMode
 
 
 def make_controller(
@@ -32,7 +32,7 @@ def test_start_session_uses_fake_source_when_trainer_disconnected():
     """Runtime starts fake samples for no-hardware rides."""
     controller = make_controller(trainer_connected=False)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource") as source:
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
         runtime = RideRuntime(controller)
         snapshot = runtime.start_session(RideMode.FREE)
 
@@ -46,7 +46,7 @@ def test_start_session_skips_fake_source_when_trainer_connected():
     """Runtime does not start fake samples when trainer hardware is connected."""
     controller = make_controller(trainer_connected=True)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource") as source:
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
         runtime = RideRuntime(controller)
         snapshot = runtime.start_session(RideMode.ERG)
 
@@ -102,7 +102,7 @@ async def test_prepare_hardware_session_attaches_hr_without_trainer():
     """A real HR strap can be used while trainer samples remain simulated."""
     controller = make_controller(trainer_connected=False, hr_connected=True)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource") as source:
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
         runtime = RideRuntime(controller)
         runtime.start_session(RideMode.FREE)
         await runtime.prepare_hardware_session(RideMode.FREE)
@@ -132,7 +132,7 @@ def test_stop_session_stops_fake_source():
     """Runtime stops its fake source when the ride stops."""
     controller = make_controller(trainer_connected=False)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource") as source:
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
         runtime = RideRuntime(controller)
         runtime.start_session(RideMode.FREE)
         snapshot = runtime.stop_session()
@@ -145,7 +145,7 @@ def test_stop_session_result_reports_unsaved_empty_rides():
     """Runtime exposes no-sample stop results for UI summary flows."""
     controller = make_controller(trainer_connected=False)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource"):
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource"):
         runtime = RideRuntime(controller)
         runtime.start_session(RideMode.FREE)
         result = runtime.stop_session_result()
@@ -161,7 +161,7 @@ def test_runtime_controls_return_snapshots():
     """Runtime control methods mutate controller state and return snapshots."""
     controller = make_controller(trainer_connected=False)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource"):
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource"):
         runtime = RideRuntime(controller)
         runtime.start_session(RideMode.ERG)
         paused = runtime.toggle_pause()
@@ -179,7 +179,7 @@ def test_runtime_can_attach_route_profile():
     controller = make_controller(trainer_connected=False)
     runtime = RideRuntime(controller)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource"):
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource"):
         runtime.set_route_profile(default_demo_route())
         snapshot = runtime.start_session(RideMode.SIM)
 
@@ -190,7 +190,7 @@ def test_fake_source_ignores_fake_hr_when_hr_hardware_connected():
     """Fake trainer source should not overwrite a connected HR strap."""
     controller = make_controller(trainer_connected=False, hr_connected=True)
 
-    with patch("terminalride.domain.ride_runtime.FakeTrainerSampleSource") as source:
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
         runtime = RideRuntime(controller)
         runtime.start_session(RideMode.FREE)
 

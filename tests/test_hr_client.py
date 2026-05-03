@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from terminalride.devices.hr_client import HrClient
-from terminalride.devices.base import DeviceNotFoundError, ConnectionError
+from le_tour.devices.hr_client import HrClient
+from le_tour.devices.base import DeviceNotFoundError, ConnectionError
 
 
 class TestHrClient:
@@ -27,7 +27,7 @@ class TestHrClient:
         assert client.device_info["name"] == "Test HR"
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakScanner")
     async def test_scan_no_devices_found(self, mock_scanner):
         """Test scan when no HR devices are found."""
         mock_scanner.discover = AsyncMock(return_value=[])
@@ -38,8 +38,8 @@ class TestHrClient:
             await client.scan_and_connect(timeout_s=5.0)
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
-    @patch("terminalride.devices.hr_client.BleakClient")
+    @patch("le_tour.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakClient")
     async def test_scan_and_connect_success(self, mock_client_class, mock_scanner):
         """Test successful scan and connect."""
         # Mock discovered device
@@ -64,8 +64,8 @@ class TestHrClient:
         assert client.device_info["address"] == "AA:BB:CC:DD:EE:FF"
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
-    @patch("terminalride.devices.hr_client.BleakClient")
+    @patch("le_tour.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakClient")
     async def test_scan_and_connect_by_name(self, mock_client_class, mock_scanner):
         """Test scan and connect with specific device name."""
         # Mock multiple discovered devices
@@ -92,7 +92,7 @@ class TestHrClient:
         assert client.device_info["name"] == "Polar H10"
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakScanner")
     async def test_scan_and_connect_name_not_found(self, mock_scanner):
         """Test scan when specified device name not found."""
         mock_device = Mock()
@@ -106,8 +106,8 @@ class TestHrClient:
             await client.scan_and_connect(device_name="Polar")
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
-    @patch("terminalride.devices.hr_client.BleakClient")
+    @patch("le_tour.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakClient")
     async def test_connect_failure(self, mock_client_class, mock_scanner):
         """Test connection failure handling."""
         mock_device = Mock()
@@ -133,7 +133,7 @@ class TestHrClient:
             await client.subscribe_hr_data(lambda x: None)
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakScanner")
     async def test_scan_available(self, mock_scanner):
         """Test scanning for available devices without connecting."""
         device1 = Mock()
@@ -157,7 +157,7 @@ class TestHrClient:
         assert devices[1]["name"] == "Wahoo TICKR"
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakScanner")
     async def test_scan_available_empty(self, mock_scanner):
         """Test scanning when no devices found."""
         mock_scanner.discover = AsyncMock(return_value=[])
@@ -179,8 +179,8 @@ class TestHrClient:
         assert client.device_info == {}
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
-    @patch("terminalride.devices.hr_client.BleakClient")
+    @patch("le_tour.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakClient")
     async def test_disconnect(self, mock_client_class, mock_scanner):
         """Test successful disconnection."""
         mock_device = Mock()
@@ -203,8 +203,8 @@ class TestHrClient:
         mock_client.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
-    @patch("terminalride.devices.hr_client.BleakClient")
+    @patch("le_tour.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakClient")
     async def test_connect_to_device_success(self, mock_client_class, mock_scanner):
         """Test connecting to a specific device by address."""
         mock_device = Mock()
@@ -226,7 +226,7 @@ class TestHrClient:
         assert client.device_info["address"] == "AA:BB:CC:DD:EE:FF"
 
     @pytest.mark.asyncio
-    @patch("terminalride.devices.hr_client.BleakScanner")
+    @patch("le_tour.devices.hr_client.BleakScanner")
     async def test_connect_to_device_not_found(self, mock_scanner):
         """Test connecting to device that's not found."""
         mock_scanner.discover = AsyncMock(return_value=[])

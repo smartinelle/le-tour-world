@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Callable, Dict, Any, List, Optional
 
-from terminalride.devices.base import HrSample
-from terminalride.devices.hr_parse import ParsedHrData
+from le_tour.devices.base import HrSample
+from le_tour.devices.hr_parse import ParsedHrData
 from .device_state import DeviceConnectionStatus, DiscoveredDevice
 from .events import (
     DomainEvent,
@@ -219,7 +219,7 @@ class HrService:
         global HrClient
         if self._client is None:
             if HrClient is None:
-                from terminalride.devices.hr_client import HrClient as Client
+                from le_tour.devices.hr_client import HrClient as Client
 
                 HrClient = Client
             self._client = HrClient()

@@ -7,7 +7,7 @@ committed product promises.
 
 ## Now: 2026-05-02
 
-TerminalRide is a web-first indoor cycling app running as a local Python process
+le-tour is a web-first indoor cycling app running as a local Python process
 with a browser UI. The product is no longer aiming to restore or support a
 terminal UI. The old Rich/TUI direction is historical context only.
 
@@ -15,7 +15,7 @@ The current working product shape is:
 
 - Local Python runtime owns trainer communication, ride state, persistence, and
   domain logic.
-- NiceGUI provides the active browser UI in `terminalride/web`.
+- NiceGUI provides the active browser UI in `le_tour/web`.
 - Python/Bleak is the primary hardware path for FTMS trainers and BLE heart-rate
   monitors.
 - Web Bluetooth exists as an experimental browser-side path, but it is not the
@@ -74,7 +74,7 @@ The final vision of the product is outlined in the README.md file. Obviously, we
 Here are my current thoughts on the roadmap and next steps:
 Right now, to my knowledge, the app runs both on local files and in the browser. Would it be an app, it would have to be downloaded and then used in the browser.
 I would really like to avoid that, because i have never dealt with the additional requirements of local running files. But I am also not knowledgable enough to know the pros and cons of this.
-We should probably change the name away from TerminalRide. I actually like the name le-tour, so we might just stick with that. Meanwhile we are working on improving the design as well.
+The product name is now le-tour. The Python package uses `le_tour` because Python modules cannot contain hyphens. Meanwhile we are working on improving the design as well.
 
 For now, what I want the most is a working non-3d dockpit version, that I myself can actually use. In parallel to that we will continue to work on the 3d world and routes, and (then) on packaging the app for distribution. When we will actually have the app in distribution, we will listen to user-feedback. One thing I am sure people will want is more integrations.
 

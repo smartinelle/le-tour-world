@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from terminalride.devices.base import HrSample
+from le_tour.devices.base import HrSample
 
 from .fake_samples import FakeTrainerSampleSource
 from .ride_controller import RideController
