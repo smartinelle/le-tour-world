@@ -28,8 +28,7 @@ Please include:
 
 Please report privately if you find issues involving:
 
-- authentication or Supabase configuration
-- leaked secrets, tokens, `.env` values, or service-role keys
+- leaked secrets, tokens, or `.env` values
 - local ride data exposure
 - unsafe trainer-control behavior in ERG or SIM mode
 - unauthorized Bluetooth device control

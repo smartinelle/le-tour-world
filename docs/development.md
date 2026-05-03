@@ -43,9 +43,7 @@ faster local queries.
 
 - `LE_TOUR_STORAGE_SECRET`: NiceGUI storage/session secret.
 - `LE_TOUR_ENABLE_BLE`: enable automatic trainer scanning on first page load.
-- `SUPABASE_URL` and `SUPABASE_ANON_KEY`: optional Supabase auth.
-- `SUPABASE_SERVICE_ROLE_KEY`: optional admin key; never expose or commit it.
-- `APP_URL`: OAuth redirect base URL, usually `http://localhost:8080`.
+Cloud accounts and hosted sync are not part of the current early-access flow.
 
 ## Release Checks
 

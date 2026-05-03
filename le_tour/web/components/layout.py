@@ -71,11 +71,9 @@ def panel_header(
 def render_app_header(
     current: str,
     *,
-    user: dict[str, Any] | None = None,
-    logout_path: str = "/logout",
     statuses: tuple[tuple[str, bool], ...] = (),
 ) -> None:
-    """Render the app header and optional authenticated user controls.
+    """Render the app header.
 
     `statuses` is a tuple of (label, connected) pairs rendered as pill chips
     next to the nav. Pass an empty tuple on pages that don't surface device
@@ -101,17 +99,3 @@ def render_app_header(
                         f"{label}</span>",
                         sanitize=False,
                     )
-
-                if user:
-                    with ui.row().classes("tr-user-cluster"):
-                        avatar_url = user.get("avatar_url", "")
-                        if avatar_url:
-                            ui.image(str(avatar_url)).classes("tr-avatar-img")
-                        else:
-                            initial = str(user.get("name", "U"))[0].upper()
-                            ui.element("div").classes("tr-avatar").text(initial)
-
-                        ui.label(str(user.get("name", "User"))).classes(
-                            "tr-user-name hidden md:block"
-                        )
-                        ui.link("Logout", logout_path).classes("tr-logout-link")

@@ -9,7 +9,7 @@ small, focused contributions are much easier to review than broad rewrites.
 - Keep trainer control, ride state, persistence, and analytics independent from
   the web UI.
 - Keep UI code in `le_tour/web` and domain logic in `le_tour/domain`.
-- Do not reintroduce the retired Rich terminal UI as a product surface.
+- Do not add terminal UI surfaces; le-tour is web-first.
 
 ## Development Setup
 
@@ -45,8 +45,7 @@ your change adds, removes, or leaves those errors unchanged.
 - Add or update tests for behavior changes.
 - Avoid unrelated formatting churn.
 - Document hardware assumptions when touching BLE, FTMS, ERG, SIM, or HR code.
-- Do not commit real `.env` files, Supabase keys, tokens, ride data, or personal
-  health data.
+- Do not commit real `.env` files, tokens, ride data, or personal health data.
 
 By contributing, you agree that your contribution may be distributed under the
 project license, AGPL-3.0.

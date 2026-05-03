@@ -1,7 +1,7 @@
 # Agent Instructions
 
 - Maintain a clear separation between frontend/UI code and backend/domain logic.
-- The old Rich terminal UI is retired and should not be treated as a future product surface.
+- Do not add or revive terminal UI surfaces; le-tour is web-first.
 - When modifying code, prefer modular designs and abstractions that keep the UI replaceable.
 - Run `uv run pytest -q` before committing to ensure tests pass.
 - Format code with `black` and lint with `ruff` (line length 88).

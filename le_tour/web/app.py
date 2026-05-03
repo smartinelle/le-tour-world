@@ -2,7 +2,6 @@
 
 Clean, minimal design with orange accent.
 Big metrics for visibility from bike distance.
-Supports multi-user authentication via Supabase.
 """
 
 import asyncio
@@ -22,8 +21,6 @@ from ..config import UserSettings, get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
 from ..store.export import DataExporter
 from ..store.models import SessionModel, SessionSummary
-from ..supabase_client import is_supabase_configured
-from .auth import AuthManager
 from .components.controls import action_button, hero_button, segmented_control
 from .components.devices import device_row
 from .components.layout import (
@@ -35,7 +32,6 @@ from .components.layout import (
 )
 from .components.metrics import meta_stat, metric_cell, power_panel
 from .components.status import empty_state, status_tile
-from .pages import render_login_page
 from .ride3d import attach_ride3d_routes
 from .snapshot_stream import attach_snapshot_routes
 
@@ -357,7 +353,6 @@ class ScanDialog:
 def _get_shared_controller() -> RideController:
     """Get or create the shared RideController singleton.
 
-    Used in local-only mode (Supabase not configured) where there's a single user.
     Uses NiceGUI's app storage to persist the controller across page loads,
     ensuring device connections are maintained throughout the session.
     """
@@ -377,62 +372,13 @@ def _get_shared_runtime() -> RideRuntime:
     return app._shared_runtime
 
 
-def _get_user_controller() -> RideController:
-    """Get or create a per-user RideController instance.
-
-    Each authenticated user gets their own RideController stored in their
-    session storage. This ensures device connections and ride state are
-    isolated between users.
-
-    In multi-user mode with Web Bluetooth, the RideController manages state
-    while the actual BLE communication happens in the browser.
-
-    Returns:
-        RideController instance for the current user
-
-    Raises:
-        ValueError: If user is not authenticated
-    """
-    if not AuthManager.is_authenticated():
-        raise ValueError("User not authenticated - cannot get user controller")
-
-    # Store controller in user's session storage
-    if "controller" not in app.storage.user:
-        user = AuthManager.get_current_user()
-        user_id = user.get("id", "unknown") if user else "unknown"
-        app.storage.user["controller"] = RideController()
-        app.storage.user["runtime"] = RideRuntime(app.storage.user["controller"])
-        logger.info(f"Created RideController for user {user_id}")
-    elif "runtime" not in app.storage.user:
-        app.storage.user["runtime"] = RideRuntime(app.storage.user["controller"])
-
-    return app.storage.user["controller"]
-
-
-def _get_user_runtime() -> RideRuntime:
-    """Get or create a per-user RideRuntime instance."""
-    _get_user_controller()
-    return app.storage.user["runtime"]
-
-
 def get_controller() -> RideController:
-    """Get the appropriate controller based on current mode.
-
-    - If Supabase is configured and user is authenticated: per-user controller
-    - Otherwise: shared singleton controller (local mode)
-
-    This provides backward compatibility for local-only usage while
-    supporting multi-user scenarios.
-    """
-    if is_supabase_configured() and AuthManager.is_authenticated():
-        return _get_user_controller()
+    """Get the shared controller for the local app process."""
     return _get_shared_controller()
 
 
 def get_runtime() -> RideRuntime:
     """Get the runtime that owns sample-source lifecycle for this context."""
-    if is_supabase_configured() and AuthManager.is_authenticated():
-        return _get_user_runtime()
     return _get_shared_runtime()
 
 
@@ -497,15 +443,10 @@ class WebUI:
 
     def _set_last_stop_result(self, result: RideStopResult) -> None:
         """Store the latest stop result for the current UI context."""
-        if is_supabase_configured() and AuthManager.is_authenticated():
-            app.storage.user["last_stop_result"] = result
-        else:
-            app._last_stop_result = result
+        app._last_stop_result = result
 
     def _get_last_stop_result(self) -> object:
         """Return the latest stop result for the current UI context."""
-        if is_supabase_configured() and AuthManager.is_authenticated():
-            return app.storage.user.get("last_stop_result")
         return getattr(app, "_last_stop_result", None)
 
     def setup(self) -> None:
@@ -515,145 +456,40 @@ class WebUI:
             attach_ride3d_routes(app, get_runtime)
             app._le_tour_snapshot_routes_attached = True
 
-        # =====================================================================
-        # Authentication Routes
-        # =====================================================================
-
-        @ui.page("/login")
-        def login_page():
-            """Login page with Google OAuth."""
-            # If already authenticated, redirect to home
-            if AuthManager.is_authenticated():
-                ui.navigate.to("/")
-                return
-            render_login_page()
-
-        @ui.page("/auth/callback")
-        async def auth_callback():
-            """Handle OAuth callback from Supabase/Google."""
-            # Get tokens from URL fragment (Supabase returns them in hash)
-            # NiceGUI can't read hash directly, so we use JS
-            ui.html("""
-                <script>
-                    // Extract tokens from URL hash
-                    const hash = window.location.hash.substring(1);
-                    const params = new URLSearchParams(hash);
-                    const accessToken = params.get('access_token');
-                    const refreshToken = params.get('refresh_token');
-                    
-                    if (accessToken) {
-                        // Send tokens to server
-                        fetch('/auth/complete', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                access_token: accessToken,
-                                refresh_token: refreshToken
-                            })
-                        }).then(() => {
-                            window.location.href = '/';
-                        });
-                    } else {
-                        // No tokens, redirect to login
-                        window.location.href = '/login?error=auth_failed';
-                    }
-                </script>
-                <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
-                    <p>Completing login...</p>
-                </div>
-            """)
-
-        @app.post("/auth/complete")
-        async def auth_complete(request):
-            """Complete OAuth flow by storing tokens in session."""
-            try:
-
-                body = await request.json()
-                access_token = body.get("access_token")
-                refresh_token = body.get("refresh_token")
-
-                if access_token:
-                    success = await AuthManager.handle_oauth_callback(
-                        access_token, refresh_token or ""
-                    )
-                    return {"success": success}
-                return {"success": False, "error": "No access token"}
-            except Exception as e:
-                logger.error(f"Auth complete error: {e}")
-                return {"success": False, "error": str(e)}
-
-        @ui.page("/logout")
-        async def logout_page():
-            """Log out and redirect to login."""
-            await AuthManager.logout()
-            ui.navigate.to("/login")
-
-        # =====================================================================
-        # Main Application Routes (Protected)
-        # =====================================================================
-
         @ui.page("/")
         async def home_page():
-            # If auth is configured and user not logged in, redirect
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             await self._render_home_with_auto_connect()
 
         @ui.page("/session/{mode}")
         def session_page(mode: str, request: Request):
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_session(mode, request.query_params.get("route_id"))
 
         @ui.page("/summary")
         def summary_page():
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_stop_summary()
 
         @ui.page("/devices")
         def devices_page():
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             ui.navigate.to("/settings?tab=devices")
 
         @ui.page("/history")
         def history_page():
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_history()
 
         @ui.page("/history/{session_id}")
         def history_detail_page(session_id: str):
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_history_detail(session_id)
 
         @ui.page("/settings")
         def settings_page(request: Request):
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_settings(request.query_params.get("tab"))
 
         @ui.page("/settings/devices")
         def settings_devices_page():
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_settings("devices")
 
         @ui.page("/design-system")
         def design_system_page():
-            if is_supabase_configured() and not AuthManager.is_authenticated():
-                ui.navigate.to("/login")
-                return
             self._render_design_system()
 
     def _render_header(self, current: str = "") -> None:
@@ -668,14 +504,8 @@ class WebUI:
             statuses.append((trainer.device_info.get("name", "Trainer"), True))
         if hr.is_connected:
             statuses.append((hr.device_info.get("name", "HR Monitor"), True))
-        user = (
-            AuthManager.get_current_user()
-            if is_supabase_configured() and AuthManager.is_authenticated()
-            else None
-        )
         render_app_header(
             current,
-            user=user,
             statuses=tuple(statuses),
         )
 

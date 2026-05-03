@@ -12,7 +12,7 @@ Use this as the manual release gate for early-access builds.
 
 - Fresh clone can run with `uv sync` and `uv run python run_web.py`.
 - README first-run steps match the visible web app.
-- App starts at `http://127.0.0.1:8080` with no Supabase configuration.
+- App starts at `http://127.0.0.1:8080` with only local configuration.
 - The UI clearly distinguishes live hardware from demo samples.
 - On macOS hardware tests, the server is launched from a Bluetooth-approved
   terminal app.
@@ -54,4 +54,4 @@ For each launch-supported BLE heart-rate strap:
 
 - The `/ride3d` page remains an experimental prototype.
 - Web Bluetooth remains experimental and is not the default hardware path.
-- Supabase auth/storage remains optional and is not required for local-first use.
+- Hosted accounts and cloud sync are not part of the current early-access flow.

@@ -112,8 +112,7 @@ Manual scanning from the Devices page remains available without that flag.
 - Hardware support is only lightly tested.
 - Browser-side Web Bluetooth is experimental and not the default hardware path.
 - The 3D ride surface is a prototype, not the primary ride cockpit.
-- Supabase auth/storage code exists but is optional and not required for local
-  use.
+- No login, hosted accounts, or cloud sync in the current early-access flow.
 - No FIT, TCX, Strava, Garmin, or Wahoo cloud integrations yet.
 - No multiplayer, racing, events, chat, clubs, or social features.
 
