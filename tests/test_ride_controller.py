@@ -189,6 +189,31 @@ class TestRideControllerBasics:
         assert saved_session.sim_route_id == "demo_rolling_route"
         assert saved_session.sim_route_title == "Rolling Demo Route"
 
+    def test_stop_session_persists_training_metrics(self):
+        """Saved sessions include analytics needed by history without samples."""
+        service = MagicMock()
+        controller = RideController(session_service=service)
+        controller.start_session(RideMode.ERG)
+        controller._started_monotonic = time.monotonic() - 120.0
+
+        for power_w in (200, 220, 240):
+            controller.handle_bike_sample(
+                {
+                    "ts": time.time(),
+                    "power_w": power_w,
+                    "cadence_rpm": 86,
+                    "speed_mps": 8.0,
+                }
+            )
+
+        saved_session_id = controller.stop_session()
+
+        assert saved_session_id is not None
+        saved_session = service.save_session.call_args.args[0]
+        assert saved_session.normalized_power_w is not None
+        assert saved_session.intensity_factor is not None
+        assert saved_session.training_stress_score is not None
+
 
 class TestPauseResume:
     """Pause and resume tests."""

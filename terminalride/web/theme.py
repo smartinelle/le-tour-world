@@ -334,6 +334,21 @@ body {
     background: var(--color-warm-mist) !important;
 }
 
+.q-btn.tr-btn-danger {
+    border-color: var(--color-deep-ember) !important;
+    color: var(--color-deep-ember) !important;
+}
+
+.q-btn.tr-btn-danger:hover {
+    background: var(--color-warm-mist) !important;
+}
+
+.q-btn.tr-btn-danger-fill {
+    background: var(--color-deep-ember) !important;
+    border-color: var(--color-deep-ember) !important;
+    color: var(--color-canvas-white) !important;
+}
+
 /* ── Status strip & tiles ─────────────────────────────────────── */
 
 .tr-status-strip {
@@ -470,19 +485,26 @@ body {
 
 /* Settings 2x2: all four sections at once, equal columns and rows. */
 .tr-settings-grid {
+    align-items: stretch;
     display: grid;
     gap: var(--spacing-24);
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
 }
 
 .tr-settings-grid > .tr-panel {
     display: flex;
     flex-direction: column;
+    min-height: 404px;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 859px) {
     .tr-settings-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tr-settings-grid > .tr-panel {
+        min-height: 0;
     }
 }
 
@@ -514,6 +536,7 @@ body {
     margin-top: var(--spacing-24);
     min-height: 200px;
     padding: 0;
+    width: 100%;
 }
 
 .tr-setup-hint {
@@ -534,13 +557,24 @@ body {
     justify-content: center;
     padding: var(--spacing-16) 0;
     text-align: center;
+    width: 100%;
 }
 
 .tr-setup-erg-row {
     align-items: center;
-    display: flex;
+    display: grid;
     gap: var(--spacing-32);
-    justify-content: center;
+    grid-template-columns: minmax(110px, 1fr) auto minmax(110px, 1fr);
+    max-width: 560px;
+    width: 100%;
+}
+
+.tr-setup-erg-row .q-btn:first-child {
+    justify-self: end;
+}
+
+.tr-setup-erg-row .q-btn:last-child {
+    justify-self: start;
 }
 
 .tr-setup-erg-readout {
@@ -563,8 +597,14 @@ body {
 }
 
 .tr-setup-sim {
+    align-items: stretch;
     display: grid;
     gap: var(--spacing-16);
+    width: 100%;
+}
+
+.tr-setup-sim .q-field {
+    width: 100%;
 }
 
 .tr-erg-target-value {
@@ -583,9 +623,10 @@ body {
     background: var(--color-canvas-white);
     border: 1px solid var(--color-steel-gray);
     border-radius: var(--radius-cards);
-    height: 96px;
+    height: 128px;
     overflow: hidden;
     position: relative;
+    width: 100%;
 }
 
 .tr-route-profile svg {
@@ -997,6 +1038,7 @@ body {
     display: grid;
     gap: var(--spacing-8);
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
 }
 
 .tr-route-picker,
@@ -1011,6 +1053,19 @@ body {
 
 .tr-route-stats,
 .tr-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tr-object-panel {
+    align-self: center;
+    width: min(1040px, 100%);
+}
+
+.tr-object-panel .tr-summary-grid-session {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.tr-object-panel .tr-summary-grid-snapshot {
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -1082,6 +1137,10 @@ body {
 .tr-sessions {
     border-top: 1px solid var(--color-steel-gray);
     display: grid;
+    width: 100%;
+}
+
+.tr-sessions-compact {
     grid-template-columns:
         180px        /* date */
         80px         /* mode */
@@ -1091,6 +1150,24 @@ body {
         70px         /* tss */
         minmax(0, 1fr)  /* spacer */
         40px;        /* chevron */
+}
+
+.tr-sessions-full {
+    grid-template-columns:
+        180px           /* date */
+        64px            /* mode */
+        82px            /* duration */
+        92px            /* distance */
+        82px            /* avg power */
+        82px            /* max power */
+        82px            /* avg hr */
+        82px            /* max hr */
+        82px            /* normalized power */
+        58px            /* intensity factor */
+        58px            /* training stress */
+        58px            /* ftp */
+        minmax(0, 1fr)  /* spacer */
+        32px;           /* chevron */
 }
 
 .tr-sessions-row { display: contents; }
@@ -1106,6 +1183,12 @@ body {
     font-variant-numeric: tabular-nums;
     height: 56px;
     padding: 0 var(--spacing-16);
+    white-space: nowrap;
+}
+
+.tr-sessions-full .tr-sessions-row > * {
+    font-size: 12px;
+    padding: 0 10px;
 }
 
 .tr-sessions-row > .num { justify-content: flex-end; }
@@ -1148,6 +1231,42 @@ body {
 }
 
 .tr-panel-action:hover { color: var(--color-obsidian-slate); }
+
+.tr-panel-action-button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    text-align: right;
+}
+
+/* Detail action rows keep navigation on the left and destructive/export actions
+   on the right without turning the footer into a toolbar. */
+.tr-detail-actions {
+    align-items: center;
+    display: flex;
+    gap: var(--spacing-16);
+    justify-content: space-between;
+    width: 100%;
+}
+
+.tr-detail-actions-right {
+    align-items: center;
+    display: flex;
+    gap: var(--spacing-16);
+}
+
+.tr-dialog-card {
+    background: var(--color-canvas-white) !important;
+    border-radius: var(--radius-cards) !important;
+    box-shadow: none !important;
+    display: grid;
+    gap: var(--spacing-16);
+    min-width: min(420px, calc(100vw - 32px));
+    padding: var(--spacing-24) !important;
+}
 
 /* History summary bar — 4 inline aggregate tiles above the sessions table. */
 
@@ -1332,6 +1451,69 @@ body {
 
 /* ── Responsive ───────────────────────────────────────────────── */
 
+@media (max-width: 1279px) {
+    .tr-sessions-full {
+        grid-template-columns:
+            180px           /* date */
+            64px            /* mode */
+            82px            /* duration */
+            92px            /* distance */
+            82px            /* avg power */
+            82px            /* max power */
+            82px            /* avg hr */
+            82px            /* normalized power */
+            58px            /* intensity factor */
+            58px            /* training stress */
+            minmax(0, 1fr)  /* spacer */
+            32px;           /* chevron */
+    }
+
+    .tr-sessions-full .tr-sessions-row > :nth-child(8),
+    .tr-sessions-full .tr-sessions-row > :nth-child(12) {
+        display: none;
+    }
+}
+
+@media (max-width: 1159px) {
+    .tr-sessions-full {
+        grid-template-columns:
+            180px           /* date */
+            64px            /* mode */
+            82px            /* duration */
+            92px            /* distance */
+            82px            /* avg power */
+            82px            /* normalized power */
+            58px            /* intensity factor */
+            58px            /* training stress */
+            minmax(0, 1fr)  /* spacer */
+            32px;           /* chevron */
+    }
+
+    .tr-sessions-full .tr-sessions-row > :nth-child(6),
+    .tr-sessions-full .tr-sessions-row > :nth-child(7) {
+        display: none;
+    }
+}
+
+@media (max-width: 1023px) {
+    .tr-sessions-full {
+        grid-template-columns:
+            180px           /* date */
+            70px            /* mode */
+            90px            /* duration */
+            100px           /* distance */
+            90px            /* avg power */
+            minmax(0, 1fr)  /* spacer */
+            40px;           /* chevron */
+    }
+
+    .tr-sessions-full .tr-sessions-row > :nth-child(9),
+    .tr-sessions-full .tr-sessions-row > :nth-child(10),
+    .tr-sessions-full .tr-sessions-row > :nth-child(11) {
+        display: none;
+    }
+}
+
 @media (max-width: 860px) {
     .tr-shell { width: min(100% - 28px, var(--page-max-width)); }
 
@@ -1370,12 +1552,25 @@ body {
         grid-template-columns: 1fr;
     }
 
+    .tr-setup-erg-row {
+        gap: var(--spacing-16);
+        grid-template-columns: 1fr;
+        max-width: none;
+    }
+
+    .tr-setup-erg-row .q-btn:first-child,
+    .tr-setup-erg-row .q-btn:last-child {
+        justify-self: stretch;
+    }
+
 .tr-metric-rail {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .tr-route-stats,
-    .tr-summary-grid {
+    .tr-summary-grid,
+    .tr-object-panel .tr-summary-grid-session,
+    .tr-object-panel .tr-summary-grid-snapshot {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -1388,7 +1583,13 @@ body {
     .tr-history-row,
     .tr-device-row { grid-template-columns: 1fr; }
 
-    /* Sessions table: collapse to date + chevron only on phone. */
+    .tr-detail-actions,
+    .tr-detail-actions-right {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    /* Sessions tables collapse to date + chevron only on phone. */
     .tr-sessions {
         grid-template-columns: minmax(0, 1fr) 40px;
     }
@@ -1398,9 +1599,9 @@ body {
     }
 }
 
-/* Tablet layer — keep sessions readable but drop the spacer. */
+/* Tablet layer — keep compact recent-ride rows readable but drop the spacer. */
 @media (min-width: 861px) and (max-width: 1023px) {
-    .tr-sessions {
+    .tr-sessions-compact {
         grid-template-columns:
             minmax(0, 1.4fr)  /* date */
             70px              /* mode */
@@ -1409,9 +1610,9 @@ body {
             40px;             /* chevron */
     }
 
-    .tr-sessions-row > :nth-child(5),
-    .tr-sessions-row > :nth-child(6),
-    .tr-sessions-row > :nth-child(7) {
+    .tr-sessions-compact .tr-sessions-row > :nth-child(5),
+    .tr-sessions-compact .tr-sessions-row > :nth-child(6),
+    .tr-sessions-compact .tr-sessions-row > :nth-child(7) {
         display: none;
     }
 }

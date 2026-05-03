@@ -3,7 +3,7 @@
 import json
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator, List, Optional
 from contextlib import contextmanager
 import logging
 
@@ -32,7 +32,7 @@ class TrainingRepository:
         self.db_file = self.data_dir / "terminalride.db"
         self._init_database()
 
-    def _init_database(self):
+    def _init_database(self) -> None:
         """Initialize SQLite database with schema."""
         try:
             with self._get_db_connection() as conn:
@@ -97,7 +97,7 @@ class TrainingRepository:
             logger.error(f"Failed to initialize database: {e}")
 
     @contextmanager
-    def _get_db_connection(self):
+    def _get_db_connection(self) -> Iterator[sqlite3.Connection]:
         """Get database connection with automatic cleanup."""
         conn = sqlite3.connect(self.db_file)
         conn.row_factory = sqlite3.Row  # Enable column access by name
@@ -109,45 +109,15 @@ class TrainingRepository:
     def save_session(self, session: SessionModel) -> None:
         """Save training session to JSONL and database."""
         try:
+            json_data = session.model_dump_json()
+
             # Save to JSONL (primary storage)
             with open(self.sessions_file, "a", encoding="utf-8") as f:
-                json_data = session.model_dump_json()
                 f.write(json_data + "\n")
 
             # Save to database (for queries)
             with self._get_db_connection() as conn:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO sessions (
-                        session_id, created_at, mode, start_time, end_time, duration_s,
-                        trainer_name, user_mass_kg, user_ftp_w, avg_power_w, max_power_w,
-                        avg_cadence_rpm, avg_speed_mps, total_distance_m,
-                        normalized_power_w, intensity_factor, training_stress_score,
-                        notes, data_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        session.session_id,
-                        session.created_at.isoformat(),
-                        session.mode.value,
-                        session.start_time.isoformat(),
-                        session.end_time.isoformat() if session.end_time else None,
-                        session.duration_s,
-                        session.trainer_name,
-                        session.user_mass_kg,
-                        session.user_ftp_w,
-                        session.avg_power_w,
-                        session.max_power_w,
-                        session.avg_cadence_rpm,
-                        session.avg_speed_mps,
-                        session.total_distance_m,
-                        session.normalized_power_w,
-                        session.intensity_factor,
-                        session.training_stress_score,
-                        session.notes,
-                        json_data,
-                    ),
-                )
+                self._upsert_session_row(conn, session, json_data)
                 conn.commit()
 
             logger.info(f"Session {session.session_id} saved successfully")
@@ -155,6 +125,49 @@ class TrainingRepository:
         except Exception as e:
             logger.error(f"Failed to save session {session.session_id}: {e}")
             raise
+
+    def _upsert_session_row(
+        self,
+        conn: sqlite3.Connection,
+        session: SessionModel,
+        json_data: str | None = None,
+    ) -> None:
+        """Write one session row without appending to the JSONL event log."""
+        if json_data is None:
+            json_data = session.model_dump_json()
+
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO sessions (
+                session_id, created_at, mode, start_time, end_time, duration_s,
+                trainer_name, user_mass_kg, user_ftp_w, avg_power_w, max_power_w,
+                avg_cadence_rpm, avg_speed_mps, total_distance_m,
+                normalized_power_w, intensity_factor, training_stress_score,
+                notes, data_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                session.session_id,
+                session.created_at.isoformat(),
+                session.mode.value,
+                session.start_time.isoformat(),
+                session.end_time.isoformat() if session.end_time else None,
+                session.duration_s,
+                session.trainer_name,
+                session.user_mass_kg,
+                session.user_ftp_w,
+                session.avg_power_w,
+                session.max_power_w,
+                session.avg_cadence_rpm,
+                session.avg_speed_mps,
+                session.total_distance_m,
+                session.normalized_power_w,
+                session.intensity_factor,
+                session.training_stress_score,
+                session.notes,
+                json_data,
+            ),
+        )
 
     def save_sample(self, sample: SampleModel) -> None:
         """Save training sample to JSONL and database."""
@@ -231,6 +244,7 @@ class TrainingRepository:
                         logger.warning(f"Failed to parse session data: {e}")
                         continue
 
+                self._cache_missing_session_summaries(sessions)
                 return sessions
 
         except Exception as e:
@@ -240,29 +254,51 @@ class TrainingRepository:
     def get_session_samples(self, session_id: str) -> List[SampleModel]:
         """Get all samples for a session."""
         try:
-            # For efficiency, read from JSONL file
-            samples = []
-            if not self.samples_file.exists():
+            with self._get_db_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT
+                        session_id, timestamp, elapsed_s, power_w, cadence_rpm,
+                        speed_mps, distance_m, hr_bpm, erg_target_power_w,
+                        sim_grade_pct
+                    FROM samples
+                    WHERE session_id = ?
+                    ORDER BY elapsed_s ASC
+                """,
+                    (session_id,),
+                )
+                samples = [
+                    SampleModel.model_validate(dict(row)) for row in cursor.fetchall()
+                ]
+
+            if samples:
                 return samples
 
-            with open(self.samples_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        sample_data = json.loads(line.strip())
-                        if sample_data.get("session_id") == session_id:
-                            sample = SampleModel.model_validate(sample_data)
-                            samples.append(sample)
-                    except Exception as e:
-                        logger.debug(f"Failed to parse sample line: {e}")
-                        continue
-
-            # Sort by elapsed time
-            samples.sort(key=lambda s: s.elapsed_s)
-            return samples
+            return self._get_session_samples_from_jsonl(session_id)
 
         except Exception as e:
             logger.error(f"Failed to get samples for session {session_id}: {e}")
             return []
+
+    def _get_session_samples_from_jsonl(self, session_id: str) -> List[SampleModel]:
+        """Fallback sample reader for data that has not been indexed in SQLite."""
+        samples: list[SampleModel] = []
+        if not self.samples_file.exists():
+            return samples
+
+        with open(self.samples_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    sample_data = json.loads(line.strip())
+                    if sample_data.get("session_id") == session_id:
+                        sample = SampleModel.model_validate(sample_data)
+                        samples.append(sample)
+                except Exception as e:
+                    logger.debug(f"Failed to parse sample line: {e}")
+                    continue
+
+        samples.sort(key=lambda s: s.elapsed_s)
+        return samples
 
     def get_session_summary(self, session_id: str) -> Optional[SessionSummary]:
         """Get session summary with calculated statistics."""
@@ -338,6 +374,60 @@ class TrainingRepository:
             logger.error(f"Failed to calculate session summary: {e}")
             return None
 
+    def _cache_missing_session_summaries(self, sessions: list[SessionModel]) -> None:
+        """Backfill sample-derived metrics into loaded sessions when missing."""
+        updated_sessions: list[SessionModel] = []
+
+        for index, session in enumerate(sessions):
+            if not self._session_needs_summary_cache(session):
+                continue
+
+            summary = self.get_session_summary(session.session_id)
+            if summary is None:
+                continue
+
+            updated_session = session.model_copy(
+                update={
+                    "total_distance_m": summary.total_distance_m,
+                    "avg_power_w": summary.avg_power_w,
+                    "max_power_w": summary.max_power_w,
+                    "avg_cadence_rpm": summary.avg_cadence_rpm,
+                    "avg_speed_mps": summary.avg_speed_mps,
+                    "avg_hr_bpm": summary.avg_hr_bpm,
+                    "max_hr_bpm": summary.max_hr_bpm,
+                    "normalized_power_w": summary.normalized_power_w,
+                    "intensity_factor": summary.intensity_factor,
+                    "training_stress_score": summary.training_stress_score,
+                }
+            )
+            sessions[index] = updated_session
+            updated_sessions.append(updated_session)
+
+        if not updated_sessions:
+            return
+
+        try:
+            with self._get_db_connection() as conn:
+                for session in updated_sessions:
+                    self._upsert_session_row(conn, session)
+                conn.commit()
+        except Exception as e:
+            logger.warning("Failed to cache session summary metrics: %s", e)
+
+    @staticmethod
+    def _session_needs_summary_cache(session: SessionModel) -> bool:
+        """Return true when list views would otherwise need sample summaries."""
+        if session.total_distance_m is None:
+            return True
+        if session.avg_power_w is not None:
+            return (
+                session.max_power_w is None
+                or session.normalized_power_w is None
+                or session.intensity_factor is None
+                or session.training_stress_score is None
+            )
+        return session.avg_hr_bpm is not None and session.max_hr_bpm is None
+
     def delete_session(self, session_id: str) -> bool:
         """Delete session and all its samples."""
         try:
@@ -352,7 +442,7 @@ class TrainingRepository:
 
                 conn.commit()
 
-                deleted = cursor.rowcount > 0
+                deleted: bool = cursor.rowcount > 0
                 if deleted:
                     logger.info(f"Session {session_id} deleted successfully")
 

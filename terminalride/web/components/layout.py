@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from nicegui import ui
@@ -39,13 +40,13 @@ def panel_header(
     detail: str,
     *,
     badge: str | None = None,
-    action: tuple[str, str] | None = None,
+    action: tuple[str, str | Callable[[], Any]] | None = None,
 ) -> None:
     """Render a compact panel heading.
 
     `badge` is used only for stateful indicators (Ready/Demo, Saved/Review).
-    `action` is a (label, href) tuple for a right-aligned navigation link
-    such as "View all →". Pass at most one of badge/action.
+    `action` is a (label, href_or_callback) tuple for a right-aligned
+    navigation/action affordance. Pass at most one of badge/action.
     """
     with ui.element("div").classes("tr-panel-header"):
         with ui.column().classes("gap-1"):
@@ -54,8 +55,17 @@ def panel_header(
         if badge:
             ui.html(f'<span class="tr-state-badge">{badge}</span>', sanitize=False)
         elif action:
-            label, href = action
-            ui.link(label, href).classes("tr-panel-action")
+            label, target = action
+            if callable(target):
+                with (
+                    ui.element("button")
+                    .props("type=button")
+                    .classes("tr-panel-action tr-panel-action-button")
+                    .on("click", target)
+                ):
+                    ui.label(label)
+            else:
+                ui.link(label, target).classes("tr-panel-action")
 
 
 def render_app_header(

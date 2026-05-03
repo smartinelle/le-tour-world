@@ -8,6 +8,7 @@ Supports multi-user authentication via Supabase.
 import asyncio
 import logging
 import os
+from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable
 
 from starlette.requests import Request
@@ -811,9 +812,9 @@ class WebUI:
                     action_variant="primary",
                 )
                 return
-            with ui.element("div").classes("tr-sessions"):
+            with ui.element("div").classes("tr-sessions tr-sessions-compact w-full"):
                 for session in sessions:
-                    self._render_session_row(session)
+                    self._render_session_row(session, compact=True)
 
         connected = self.controller.trainer.is_connected
         # Status display lives in the header now; keep these handles around so
@@ -1231,7 +1232,7 @@ class WebUI:
             elif result.sample_count == 0:
                 saved_label = "No ride data saved"
 
-            with ui.column().classes("tr-panel p-5 gap-4"):
+            with ui.column().classes("tr-panel tr-object-panel p-5 gap-4"):
                 panel_header(
                     saved_label,
                     saved_label,
@@ -1240,8 +1241,12 @@ class WebUI:
                 if result.saved_session_id:
                     service = get_session_service()
                     session = service.get_session(result.saved_session_id)
-                    summary = service.get_session_summary(result.saved_session_id)
                     if session is not None:
+                        summary = (
+                            service.get_session_summary(result.saved_session_id)
+                            if self._needs_calculated_summary(session)
+                            else None
+                        )
                         self._render_session_summary_stats(session, summary)
                     else:
                         self._render_snapshot_summary_stats(snapshot)
@@ -1261,25 +1266,27 @@ class WebUI:
                             "No trainer or demo data was recorded, so nothing was written to history."
                         )
 
-                with ui.element("div").classes("tr-btn-row"):
+                with ui.element("div").classes("tr-detail-actions"):
                     action_button(
                         "Start New Ride",
                         lambda: ui.navigate.to("/"),
                         variant="primary",
                     )
-                    action_button(
-                        "View History",
-                        lambda: ui.navigate.to("/history"),
-                        variant="secondary",
-                    )
-                    if result.saved_session_id:
+                    with ui.element("div").classes("tr-detail-actions-right"):
                         action_button(
-                            "Export CSV",
-                            lambda session_id=result.saved_session_id: self._export_session(
-                                session_id
-                            ),
+                            "View History",
+                            lambda: ui.navigate.to("/history"),
                             variant="secondary",
                         )
+                        saved_session_id = result.saved_session_id
+                        if saved_session_id:
+                            action_button(
+                                "Export CSV",
+                                lambda session_id=saved_session_id: self._export_session(
+                                    session_id
+                                ),
+                                variant="secondary",
+                            )
 
     async def _disconnect_trainer(self) -> None:
         """Disconnect the trainer and refresh the page."""
@@ -1360,16 +1367,21 @@ class WebUI:
 
         with page_container():
             if sessions:
-                with ui.element("div").classes("tr-summary-bar"):
+                with ui.element("div").classes("tr-summary-bar w-full"):
                     self._summary_tile(aggregates["count"], "Sessions")
                     self._summary_tile(aggregates["distance"], "Distance")
                     self._summary_tile(aggregates["duration"], "Duration")
                     self._summary_tile(aggregates["power"], "Avg Power")
 
-            with ui.column().classes("tr-panel p-5 gap-3"):
+            with ui.column().classes("tr-panel p-5 gap-3 w-full"):
                 panel_header(
                     "Sessions",
-                    "Duration, mode, distance, power, and training stress.",
+                    f"{len(sessions)} recorded rides.",
+                    action=(
+                        ("Export all CSV", self._export_sessions_summary)
+                        if sessions
+                        else None
+                    ),
                 )
                 if not sessions:
                     empty_state(
@@ -1380,7 +1392,9 @@ class WebUI:
                         action_variant="primary",
                     )
                 else:
-                    with ui.element("div").classes("tr-sessions"):
+                    with ui.element("div").classes(
+                        "tr-sessions tr-sessions-full w-full"
+                    ):
                         self._sessions_head_row()
                         for session in sessions:
                             self._render_session_row(session)
@@ -1390,7 +1404,11 @@ class WebUI:
         self._render_header("History")
         service = get_session_service()
         session = service.get_session(session_id)
-        summary = service.get_session_summary(session_id)
+        summary = (
+            service.get_session_summary(session_id)
+            if session is not None and self._needs_calculated_summary(session)
+            else None
+        )
 
         with page_container():
             render_page_title(
@@ -1408,24 +1426,31 @@ class WebUI:
                 )
                 return
 
-            with ui.column().classes("tr-panel p-5 gap-4"):
+            with ui.column().classes("tr-panel tr-object-panel p-5 gap-4"):
                 route_label = self._session_route_label(session)
                 panel_header(
                     session.start_time.strftime("%Y-%m-%d %H:%M"),
                     route_label or f"{session.mode.value.upper()} ride",
                 )
                 self._render_session_summary_stats(session, summary)
-                with ui.element("div").classes("tr-btn-row"):
-                    action_button(
-                        "Export CSV",
-                        lambda: self._export_session(session.session_id),
-                        variant="primary",
-                    )
+                with ui.element("div").classes("tr-detail-actions"):
                     action_button(
                         "Back to History",
                         lambda: ui.navigate.to("/history"),
                         variant="secondary",
                     )
+                    with ui.element("div").classes("tr-detail-actions-right"):
+                        action_button(
+                            "Export CSV",
+                            lambda: self._export_session(session.session_id),
+                            variant="secondary",
+                        )
+                        action_button(
+                            "Delete",
+                            lambda: self._confirm_delete_session(session.session_id),
+                            variant="secondary",
+                            classes="tr-btn-danger",
+                        )
 
     def _render_session_summary_stats(
         self,
@@ -1441,7 +1466,11 @@ class WebUI:
         avg_power_w = (
             summary.avg_power_w if summary is not None else session.avg_power_w
         )
+        max_power_w = (
+            summary.max_power_w if summary is not None else session.max_power_w
+        )
         avg_hr_bpm = summary.avg_hr_bpm if summary is not None else session.avg_hr_bpm
+        max_hr_bpm = summary.max_hr_bpm if summary is not None else session.max_hr_bpm
         normalized_power_w = (
             summary.normalized_power_w
             if summary is not None
@@ -1458,21 +1487,38 @@ class WebUI:
             else session.training_stress_score
         )
 
-        with ui.element("div").classes("tr-meta-grid tr-summary-grid"):
+        with ui.element("div").classes(
+            "tr-meta-grid tr-summary-grid tr-summary-grid-session"
+        ):
             meta_stat(self._format_duration(session.duration_s), "Duration")
             meta_stat(self._format_distance(distance_m), "Distance")
             meta_stat(self._format_power(avg_power_w), "Avg power")
-            meta_stat(self._format_power(session.max_power_w), "Max power")
+            meta_stat(self._format_power(max_power_w), "Max power")
             meta_stat(self._format_bpm(avg_hr_bpm), "Avg HR")
-            meta_stat(self._format_bpm(session.max_hr_bpm), "Max HR")
+            meta_stat(self._format_bpm(max_hr_bpm), "Max HR")
             meta_stat(self._format_power(normalized_power_w), "Normalized Power")
             meta_stat(self._format_ratio(intensity_factor), "Intensity")
             meta_stat(self._format_score(training_stress_score), "Training Stress")
             meta_stat(str(session.user_ftp_w), "FTP")
 
+    @staticmethod
+    def _needs_calculated_summary(session: SessionModel) -> bool:
+        """Return whether an older saved session needs sample-derived metrics."""
+        if session.total_distance_m is None:
+            return True
+        if session.avg_power_w is None or session.max_power_w is None:
+            return False
+        return (
+            session.normalized_power_w is None
+            or session.intensity_factor is None
+            or session.training_stress_score is None
+        )
+
     def _render_snapshot_summary_stats(self, snapshot: object) -> None:
         """Render fallback summary stats when no persisted session is available."""
-        with ui.element("div").classes("tr-meta-grid tr-summary-grid"):
+        with ui.element("div").classes(
+            "tr-meta-grid tr-summary-grid tr-summary-grid-snapshot"
+        ):
             meta_stat(
                 self._format_duration(getattr(snapshot, "elapsed_s", None)),
                 "Duration",
@@ -1504,6 +1550,51 @@ class WebUI:
             ui.notify("CSV export failed", color="red")
             return
         ui.notify(f"CSV exported to {output_path}", color="green")
+
+    def _export_sessions_summary(self) -> None:
+        """Export a CSV with one summary row per saved session."""
+        export_dir = get_config().get_data_dir() / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        output_path = export_dir / f"le-tour_sessions_{timestamp}.csv"
+
+        success = DataExporter().export_session_summary_csv(
+            output_path,
+            limit=10_000,
+        )
+        if not success:
+            ui.notify("CSV export failed", color="red")
+            return
+        ui.notify(f"CSV exported to {output_path}", color="green")
+
+    def _confirm_delete_session(self, session_id: str) -> None:
+        """Ask before deleting a saved session and its samples."""
+        dialog = ui.dialog()
+
+        def delete_confirmed() -> None:
+            dialog.close()
+            deleted = get_session_service().delete_session(session_id)
+            if not deleted:
+                ui.notify("Delete failed", color="red")
+                return
+            ui.notify("Session deleted", color="green")
+            ui.navigate.to("/history")
+
+        with dialog, ui.card().classes("tr-dialog-card"):
+            ui.label("Delete session?").classes("tr-panel-title")
+            ui.label("This removes the saved session and its samples.").classes(
+                "tr-status-meta"
+            )
+            with ui.element("div").classes("tr-detail-actions"):
+                action_button("Cancel", dialog.close, variant="secondary")
+                action_button(
+                    "Delete",
+                    delete_confirmed,
+                    variant="primary",
+                    classes="tr-btn-danger-fill",
+                )
+
+        dialog.open()
 
     def _render_settings(self, selected_tab: str | None = None) -> None:
         """Render all four settings sections at once in a 2x2 grid.
@@ -1982,6 +2073,12 @@ class WebUI:
         return f"{value:.0f} bpm"
 
     @staticmethod
+    def _format_integer(value: float | int | None) -> str:
+        if value is None:
+            return "--"
+        return f"{value:.0f}"
+
+    @staticmethod
     def _format_ratio(value: float | None) -> str:
         if value is None:
             return "--"
@@ -1993,8 +2090,39 @@ class WebUI:
             return "--"
         return f"{value:.0f}"
 
-    def _render_session_row(self, session: SessionModel) -> None:
+    def _render_session_row(
+        self,
+        session: SessionModel,
+        summary: SessionSummary | None = None,
+        *,
+        compact: bool = False,
+    ) -> None:
         """Render one body row of the sessions grid table."""
+        distance_m = (
+            summary.total_distance_m
+            if summary is not None
+            else session.total_distance_m
+        )
+        avg_power_w = (
+            summary.avg_power_w if summary is not None else session.avg_power_w
+        )
+        avg_hr_bpm = summary.avg_hr_bpm if summary is not None else session.avg_hr_bpm
+        normalized_power_w = (
+            summary.normalized_power_w
+            if summary is not None
+            else session.normalized_power_w
+        )
+        intensity_factor = (
+            summary.intensity_factor
+            if summary is not None
+            else session.intensity_factor
+        )
+        training_stress_score = (
+            summary.training_stress_score
+            if summary is not None
+            else session.training_stress_score
+        )
+
         with (
             ui.element("div")
             .classes("tr-sessions-row body")
@@ -2006,9 +2134,20 @@ class WebUI:
             ui.label(session.start_time.strftime("%d %b %Y · %H:%M"))
             ui.label(session.mode.value.upper())
             ui.label(self._format_duration(session.duration_s)).classes("num")
-            ui.label(self._format_distance(session.total_distance_m)).classes("num")
-            ui.label(self._format_power(session.avg_power_w)).classes("num")
-            ui.label(self._format_score(session.training_stress_score)).classes("num")
+            ui.label(self._format_distance(distance_m)).classes("num")
+            ui.label(self._format_power(avg_power_w)).classes("num")
+            if compact:
+                ui.label(self._format_score(training_stress_score)).classes("num")
+                ui.label("")  # spacer cell
+                ui.label("›").classes("chevron")
+                return
+            ui.label(self._format_power(session.max_power_w)).classes("num")
+            ui.label(self._format_integer(avg_hr_bpm)).classes("num")
+            ui.label(self._format_integer(session.max_hr_bpm)).classes("num")
+            ui.label(self._format_power(normalized_power_w)).classes("num")
+            ui.label(self._format_ratio(intensity_factor)).classes("num")
+            ui.label(self._format_score(training_stress_score)).classes("num")
+            ui.label(str(session.user_ftp_w)).classes("num")
             ui.label("")  # spacer cell
             ui.label("›").classes("chevron")
 
@@ -2021,7 +2160,13 @@ class WebUI:
             ui.label("Duration").classes("num")
             ui.label("Distance").classes("num")
             ui.label("Avg Power").classes("num")
+            ui.label("Max Power").classes("num")
+            ui.label("Avg HR").classes("num")
+            ui.label("Max HR").classes("num")
+            ui.label("NP").classes("num")
+            ui.label("IF").classes("num")
             ui.label("TSS").classes("num")
+            ui.label("FTP").classes("num")
             ui.label("")  # spacer
             ui.label("")  # chevron column
 

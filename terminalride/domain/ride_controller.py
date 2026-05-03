@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Optional
 from uuid import uuid4
 
+from terminalride.analytics import calculate_training_metrics
 from terminalride.config import get_config
 from terminalride.devices.base import BikeSample, HrSample
 from terminalride.store.models import SampleModel, SessionModel, TrainingMode
@@ -391,6 +392,12 @@ class RideController:
         cadence_values = [s.cadence_rpm for s in samples if s.cadence_rpm is not None]
         speed_values = [s.speed_mps for s in samples if s.speed_mps is not None]
         hr_values = [s.hr_bpm for s in samples if s.hr_bpm is not None]
+        training_metrics = calculate_training_metrics(
+            power_samples=power_values,
+            duration_seconds=self._metrics.elapsed_s,
+            ftp_w=config.user_ftp_w,
+            sample_rate_hz=1.0,
+        )
         route_id = getattr(self._route_profile, "route_id", None)
         route_title = getattr(self._route_profile, "title", None)
 
@@ -426,6 +433,15 @@ class RideController:
             avg_speed_mps=self._mean(speed_values),
             avg_hr_bpm=self._mean(hr_values),
             max_hr_bpm=max(hr_values) if hr_values else None,
+            normalized_power_w=(
+                training_metrics.normalized_power_w if training_metrics else None
+            ),
+            intensity_factor=(
+                training_metrics.intensity_factor if training_metrics else None
+            ),
+            training_stress_score=(
+                training_metrics.training_stress_score if training_metrics else None
+            ),
         )
 
     def _notify_metrics(self) -> None:

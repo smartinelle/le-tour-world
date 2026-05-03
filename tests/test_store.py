@@ -170,6 +170,35 @@ class TestTrainingRepository:
         assert summary.avg_power_w == 220.0  # Average of 200,210,220,230,240
         assert summary.max_power_w == 240
 
+    def test_list_sessions_caches_missing_summary_metrics(self):
+        """Listing sessions backfills metrics so history does not rescan samples."""
+        session = SessionModel(
+            mode=TrainingMode.ERG,
+            start_time=datetime.now(UTC),
+            duration_s=300.0,
+        )
+        self.repo.save_session(session)
+
+        for i in range(5):
+            self.repo.save_sample(
+                SampleModel(
+                    session_id=session.session_id,
+                    elapsed_s=i * 60.0,
+                    power_w=200 + i * 10,
+                    cadence_rpm=80,
+                    distance_m=i * 500.0,
+                )
+            )
+
+        listed = self.repo.list_sessions(limit=10)
+        cached_session = self.repo.get_session(session.session_id)
+
+        assert listed[0].normalized_power_w is not None
+        assert listed[0].intensity_factor is not None
+        assert listed[0].training_stress_score is not None
+        assert cached_session is not None
+        assert cached_session.normalized_power_w == listed[0].normalized_power_w
+
 
 class TestDataExporter:
     """Test data export functionality."""
