@@ -1,12 +1,12 @@
-# MVP Release Checklist
+# Release Checklist
 
-Use this as the manual release gate for the early-user MVP.
+Use this as the manual release gate for early-access builds.
 
 ## Automated Checks
 
 - `uv run pytest -q`
-- `uv run black .`
-- `uv run ruff check .`
+- `uv run black --check le_tour tests run_web.py examples`
+- `uv run ruff check le_tour tests run_web.py examples`
 
 ## First-Run Smoke Test
 
@@ -15,7 +15,7 @@ Use this as the manual release gate for the early-user MVP.
 - App starts at `http://127.0.0.1:8080` with no Supabase configuration.
 - The UI clearly distinguishes live hardware from demo samples.
 - On macOS hardware tests, the server is launched from a Bluetooth-approved
-  terminal app rather than Codex.
+  terminal app.
 
 ## Hardware Smoke Matrix
 
@@ -55,5 +55,3 @@ For each launch-supported BLE heart-rate strap:
 - The `/ride3d` page remains an experimental prototype.
 - Web Bluetooth remains experimental and is not the default hardware path.
 - Supabase auth/storage remains optional and is not required for local-first use.
-- Prompt-generated routes/worlds remain deferred until route contracts are more
-  stable.

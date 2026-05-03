@@ -2,9 +2,9 @@
 - 
 
 ## Testing
-- [ ] `python -m pytest -q`
-- [ ] `ruff check .`
-- [ ] `black .`
+- [ ] `uv run pytest -q`
+- [ ] `uv run ruff check le_tour tests run_web.py examples`
+- [ ] `uv run black --check le_tour tests run_web.py examples`
 - [ ] Other (describe): 
 
 ## Documentation & ADRs
