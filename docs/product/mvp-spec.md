@@ -69,19 +69,19 @@ Status meanings:
 | Install/run onboarding | Early user can get running without understanding the codebase. | README documents `uv sync` and `uv run python run_web.py`; no packaged launcher or simplified release flow yet. | Partial | Add a first-run guide, platform notes for Bluetooth permissions, troubleshooting, and a single recommended command path. Later evaluate a packaged app/launcher. |
 | Local-first architecture | Python owns hardware/runtime/data; browser UI remains replaceable. | Domain services, runtime, snapshots, repository, and NiceGUI UI are separated. 3D consumes browser contracts. | Ready | Preserve boundaries during feature work. Add ADRs when storage/auth/route contracts change. |
 | Non-3D ride cockpit | Main ride surface is usable without 3D. | NiceGUI home/session pages exist with large metrics, start/stop/pause, ERG/SIM controls, and demo-data fallback. | Partial | Polish session states, stop/summary flow, error states, route context, and real riding-distance readability. Remove explanatory UI copy that feels like internal implementation notes. |
-| Device page and trainer pairing | Rider can scan, select, connect, disconnect, and understand trainer state. | Device page and scan dialog exist. `TrainerService` wraps FTMS client. Auto-connect is gated by `TERMINALRIDE_ENABLE_BLE`. | Partial | Hardware-test with real trainers, improve retry/reconnect, document OS Bluetooth permissions, clarify demo-vs-live state, and resolve/verify FTMS command TODOs. |
+| Settings device pairing | Rider can scan, select, connect, disconnect, and understand trainer state. | Device pairing lives under Settings. Scan dialogs exist for trainer and HR. `TrainerService` wraps FTMS client. Auto-connect is gated by `TERMINALRIDE_ENABLE_BLE`. | Partial | Hardware-test with real trainers, improve retry/reconnect, document OS Bluetooth permissions, clarify demo-vs-live state, and resolve/verify FTMS command TODOs. |
 | Heart-rate monitor pairing | Optional BLE HR strap works independently of trainer. | `HrService`, HR parsing, scan/connect UI, and tests exist. Runtime can use real HR with simulated trainer samples. | Partial | Show richer HR status, sensor contact where available, connection loss state, and hardware-test common straps. |
 | Free Ride | Rider can record a no-control session. | `RideController` and `RideRuntime` start Free Ride, attach samples, and persist when samples exist. UI exposes Free mode. | Partial | Verify with real hardware. Make post-ride save behavior obvious, especially when no samples were captured. |
 | ERG mode | Rider can start ERG, see target, and adjust target power. | ERG target defaults come from config. UI has +/- 10 W controls. Runtime requests control and sends target power. | Partial | Verify FTMS target-power command behavior on hardware. Add clearer target controls and failure state if trainer control is unavailable. |
-| SIM mode | Rider can ride grade-based simulation with understandable route/grade context. | SIM physics and manual grade adjustment exist. Domain route profiles can drive SIM. `/ride3d` can select bundled routes and set runtime route profile. Non-3D cockpit does not yet expose route selection. | Partial | Add route selection to the main cockpit/home flow. Show current segment, current grade, upcoming grade, and route distance/progress in non-3D SIM. |
-| SIM route metadata | Built-in routes have clear names, distance, segments, grades, surface/scenery metadata. | `terminalride/domain/routes.py` validates bundled JSON specs. Two bundled routes exist. Tests cover selection, validation, lookup, and serialization. | Partial | Add user-facing route cards/list, difficulty/elevation metadata, route preview/profile, and docs for the route spec format. |
+| SIM mode | Rider can ride grade-based simulation with understandable route/grade context. | SIM physics, route selection in the main ride setup, route profile preview, live route progress, and manual grade adjustment exist. `/ride3d` can also select bundled routes against the same runtime contract. | Partial | Hardware-test route-driven trainer control and improve live SIM context where needed, especially current/upcoming grade clarity and route progress readability. |
+| SIM route metadata | Built-in routes have clear names, distance, segments, grades, surface/scenery metadata. | `terminalride/domain/routes.py` validates bundled JSON specs. Two bundled routes exist. The main ride setup shows a route selector, elevation/profile preview, distance, gain, max grade, and segments. Tests cover selection, validation, lookup, and serialization. | Partial | Add a richer route library/cards surface and docs for the route spec format when custom routes become user-facing. |
 | Live metrics | Rider sees power, cadence, HR, speed, distance, elapsed time, mode/target. | Session cockpit displays core metrics. Snapshot model includes UI-neutral ride state. | Partial | Validate metric update smoothness, missing-data states, unit choices, and layout at riding distance and smaller screens. |
 | Pause/stop lifecycle | Rider can pause/resume and stop without corrupting data. | Runtime and UI expose pause/stop. Controller stops and persists samples. | Partial | Add clearer paused visual state, stop confirmation if needed, post-ride summary, and explicit behavior for exit vs stop. |
 | Persistence | Completed sessions and samples are saved locally. | Repository writes JSONL as source and SQLite for queries. Controller records samples and saves on stop. Tests cover repository behavior. | Ready | Add failure visibility in UI. Verify longer ride durability and duplicate/partial-write behavior. |
-| History | Rider can see completed sessions. | History page lists recent repository sessions with mode, duration, power, and distance. | Partial | Add session detail view, delete/export actions, empty/error states, and richer summary metrics if needed for MVP. |
-| CSV export | Rider can export training data. | `DataExporter` supports per-session CSV, summary CSV, and auto-export. Tests cover CSV export. No obvious web UI action exposes it. | Partial | Add export action from history/session detail or document a supported CLI path. Decide export directory and file naming in UI. |
-| Rider settings | Rider can persist profile/defaults used by physics and metrics. | Settings page saves name, mass, FTP, max HR, age. Config also supports units, defaults, speed source, auto-connect, physics parameters. | Partial | Expose MVP-relevant defaults: ERG target, SIM grade/route preference, units, speed source, auto-connect. Improve validation messaging. |
-| Analytics | Basic training metrics are available from stored data. | Repository summary calculates NP, IF, and TSS from samples; README lists analytics. Main history table does not show them. | Partial | Decide whether NP/IF/TSS are MVP-visible. If yes, add session detail/summary display and verify FTP assumptions. |
+| History | Rider can see completed sessions. | History page lists repository sessions with responsive metric columns. Session detail shows summary metrics and supports CSV export and delete. Empty states exist. | Partial | Hardware-test longer histories and refine error/empty states where needed. Add future secondary detail panels such as charts, notes, route profile, or sample timeline after the core list is stable. |
+| CSV export | Rider can export training data. | `DataExporter` supports per-session CSV, summary CSV, and auto-export. History exposes summary CSV export, and session detail/stop summary expose per-session CSV export when applicable. Tests cover CSV export. | Ready | Verify export file naming and destination copy in early-user docs. Consider FIT/TCX only after CSV feedback. |
+| Rider settings | Rider can persist profile/defaults used by physics and metrics. | Settings shows Profile, Ride Defaults, Devices, and App Preferences together. It saves name, mass, FTP, max HR, age, default ERG target, default SIM route/grade, units, speed source, reconnect timeout, and auto-connect preferences. | Partial | Improve validation messaging and hardware-state recovery. Decide which advanced physics settings, if any, should become user-facing. |
+| Analytics | Basic training metrics are available from stored data. | Repository summary calculates NP, IF, and TSS from samples. History table, session detail, and stop summary expose training metrics where data supports them. | Partial | Verify FTP assumptions and metric accuracy against known rides. Add explanatory labels only if early users need them. |
 | 3D prototype | Experimental route/world surface proves future direction without blocking MVP. | `/ride3d` exists with Three.js, route selection, snapshot stream, device controls, and start/stop controls. Tests cover browser contracts. | Ready for prototype | Keep experimental label. Do not make it the MVP-critical surface. Use it to validate route contracts. |
 | Snapshot/API contracts | Browser/3D clients consume runtime state without trainer internals. | `/api/ride/snapshot`, SSE snapshots, device endpoints, and 3D ride endpoints exist. | Ready | Keep contract stable or version changes. Add route/session metadata only through domain/application models. |
 | Web Bluetooth | Browser-side BLE is optional/experimental. | `ble.js` exists and README describes limited support. Python/Bleak remains primary. | Defer | Keep out of MVP default. Document as experimental only. |
@@ -96,10 +96,10 @@ Status meanings:
 1. Harden the non-3D cockpit ride loop: start, pause, stop, summary, and visible
    live/demo source state.
 2. Make device pairing and failure recovery good enough for real trainer use.
-3. Add SIM route selection and route metadata to the main cockpit.
-4. Expose CSV export and session details from history.
-5. Improve settings around FTP, units, ERG target, SIM defaults, speed source,
-   and auto-connect.
+3. Polish SIM route context in the main setup and live cockpit.
+4. Harden history, session detail, delete, and CSV export against real ride data.
+5. Improve settings validation and hardware-state recovery around FTP, units,
+   ERG target, SIM defaults, speed source, and auto-connect.
 6. Write first-run and troubleshooting docs for early users.
 7. Run a hardware smoke-test pass and fix the high-friction failures.
 8. Decide whether the first public release is `uv`-based early access, a simple
@@ -112,10 +112,9 @@ Status meanings:
 - Is an `uv`-based early-access install acceptable for the first external users?
 - What exact trainer models should be considered supported at launch?
 - Is CSV export enough, or do early users expect FIT/TCX immediately?
-- Should SIM route selection live on the home setup screen, inside the session
-  cockpit, or both?
-- Does MVP history need a session detail page, or is a table plus CSV export
-  enough for the first testers?
+- What additional SIM route context belongs in the live cockpit versus the
+  pre-ride setup?
+- What secondary session-detail panels matter first: chart, route profile,
+  notes/tags, sample timeline, or export/history tools?
 - What manual hardware test checklist must pass before calling a release
   launchable?
-

@@ -141,8 +141,8 @@ Then open `http://127.0.0.1:8080`.
 Use the browser UI from there:
 
 1. Open **Settings** and set rider weight, FTP, units, ERG target, and SIM route.
-2. Open **Devices** and scan for an FTMS trainer. Pair a heart-rate monitor only
-   if you want HR in the ride.
+2. Open **Settings** > **Devices** and scan for an FTMS trainer. Pair a
+   heart-rate monitor only if you want HR in the ride.
 3. Start **Free**, **ERG**, or **SIM** from the ride console.
 4. Stop the ride from the cockpit and check the summary.
 5. Use **History** to review the saved session or export CSV.
@@ -364,7 +364,7 @@ Current hardware smoke coverage:
 2. Ensure Bluetooth is enabled.
 3. Run `uv run python run_web.py`.
 4. Open `http://127.0.0.1:8080`.
-5. Connect the trainer from the Devices flow or use the auto-connect path.
+5. Connect the trainer from Settings > Devices or use the auto-connect path.
 6. Start a ride mode and verify live metrics update.
 7. For ERG, verify the trainer responds to target changes.
 8. For SIM, select each bundled route and verify grade/segment context updates.
