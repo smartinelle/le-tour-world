@@ -9,7 +9,7 @@ Tests cover:
 """
 
 import pytest
-from terminalride.devices.hr_parse import parse_heart_rate_measurement, ParsedHrData
+from le_tour.devices.hr_parse import parse_heart_rate_measurement
 
 
 class TestBasicHrParsing:
@@ -157,11 +157,16 @@ class TestRRIntervals:
         # RR1 = 800 ms, RR2 = 750 ms
         rr1_raw = int(800 * 1024 / 1000)
         rr2_raw = int(750 * 1024 / 1000)
-        data = bytes([
-            0x10, 72,
-            rr1_raw & 0xFF, (rr1_raw >> 8) & 0xFF,
-            rr2_raw & 0xFF, (rr2_raw >> 8) & 0xFF,
-        ])
+        data = bytes(
+            [
+                0x10,
+                72,
+                rr1_raw & 0xFF,
+                (rr1_raw >> 8) & 0xFF,
+                rr2_raw & 0xFF,
+                (rr2_raw >> 8) & 0xFF,
+            ]
+        )
         parsed = parse_heart_rate_measurement(data)
 
         assert len(parsed.rr_intervals_ms) == 2
@@ -175,11 +180,16 @@ class TestRRIntervals:
         # Energy = 100 kJ
         # RR = 850 ms
         rr_raw = int(850 * 1024 / 1000)
-        data = bytes([
-            0x18, 72,
-            0x64, 0x00,  # Energy = 100
-            rr_raw & 0xFF, (rr_raw >> 8) & 0xFF,
-        ])
+        data = bytes(
+            [
+                0x18,
+                72,
+                0x64,
+                0x00,  # Energy = 100
+                rr_raw & 0xFF,
+                (rr_raw >> 8) & 0xFF,
+            ]
+        )
         parsed = parse_heart_rate_measurement(data)
 
         assert parsed.hr_bpm == 72
@@ -198,12 +208,17 @@ class TestComplexPackets:
         # Energy = 200 kJ = 0x00C8
         # RR = 700 ms
         rr_raw = int(700 * 1024 / 1000)
-        data = bytes([
-            0x1F,  # All flags
-            0xA5, 0x00,  # HR
-            0xC8, 0x00,  # Energy
-            rr_raw & 0xFF, (rr_raw >> 8) & 0xFF,  # RR
-        ])
+        data = bytes(
+            [
+                0x1F,  # All flags
+                0xA5,
+                0x00,  # HR
+                0xC8,
+                0x00,  # Energy
+                rr_raw & 0xFF,
+                (rr_raw >> 8) & 0xFF,  # RR
+            ]
+        )
         parsed = parse_heart_rate_measurement(data)
 
         assert parsed.hr_bpm == 165
@@ -230,11 +245,16 @@ class TestComplexPackets:
         # Garmin HRM-Pro sends similar format
         rr1 = int(800 * 1024 / 1000)
         rr2 = int(790 * 1024 / 1000)
-        data = bytes([
-            0x16, 155,  # Flags + HR
-            rr1 & 0xFF, (rr1 >> 8) & 0xFF,
-            rr2 & 0xFF, (rr2 >> 8) & 0xFF,
-        ])
+        data = bytes(
+            [
+                0x16,
+                155,  # Flags + HR
+                rr1 & 0xFF,
+                (rr1 >> 8) & 0xFF,
+                rr2 & 0xFF,
+                (rr2 >> 8) & 0xFF,
+            ]
+        )
         parsed = parse_heart_rate_measurement(data)
 
         assert parsed.hr_bpm == 155
@@ -298,4 +318,3 @@ class TestDataclass:
         parsed = parse_heart_rate_measurement(data)
 
         assert parsed.flags == 0x16
-

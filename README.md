@@ -1,281 +1,152 @@
-# TerminalRide (Le-tour)
+# le-tour
 
-Terminal-first indoor cycling application for connecting to Wahoo KICKR and other BLE FTMS trainers.
+le-tour is an early-access, local-first indoor cycling app for Bluetooth FTMS
+trainers. It runs a local Python process with a browser UI so the app can talk
+to nearby trainers and heart-rate monitors without sending ride control through
+a cloud service.
+
+The project is currently aimed at technical early users. There are no packaged
+installers yet; you run it from source with `uv`.
+
+## Current Status
+
+- Local browser UI for solo indoor rides.
+- Python/Bleak hardware path for FTMS trainers and BLE heart-rate monitors.
+- Free Ride, ERG, and SIM modes.
+- Local ride history with session samples.
+- CSV export.
+- Experimental Three.js ride surface at `/ride3d`.
+
+Tested hardware so far:
+
+- Wahoo KICKR CORE 6043 on macOS.
+
+Other FTMS trainers may work, but they are not launch-supported until someone
+has tested scan, connect, Free Ride, ERG, SIM, stop, history, and export.
+
+## Safety
+
+le-tour can control trainer resistance in ERG and SIM modes. Stop riding and
+disconnect the trainer if resistance feels wrong, unexpected, or unsafe. Treat
+this as alpha software and keep your bike/trainer setup physically safe before
+testing new builds.
+
+## Requirements
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)
+- macOS or Linux with Bluetooth access
+- BLE FTMS-compatible trainer for real rides
+- Optional BLE heart-rate monitor
+
+Windows is not currently launch-supported. Chrome or Edge is recommended for the
+browser UI; Chrome/Edge are required if you experiment with browser-side Web
+Bluetooth.
+
+## Quick Start
+
+```bash
+git clone https://github.com/jimfable/le-tour.git
+cd le-tour
+uv sync
+uv run python run_web.py
+```
+
+Open:
+
+```text
+http://127.0.0.1:8080
+```
+
+The app stores local config and ride data under:
+
+```text
+~/.config/le-tour
+```
+
+If no trainer is connected, le-tour uses demo samples so the cockpit, history,
+and export flow can still be explored.
+
+## Basic Ride Flow
+
+1. Open **Settings** and set rider weight, FTP, units, ERG target, and default
+   SIM route.
+2. Open **Settings** > **Devices** and scan for an FTMS trainer.
+3. Optionally connect a BLE heart-rate monitor.
+4. Start **Free**, **ERG**, or **SIM** from the ride cockpit.
+5. Stop the ride and review the saved summary.
+6. Open **History** to inspect saved rides or export CSV.
+
+## Bluetooth Notes
+
+On macOS, grant Bluetooth permission to the terminal app that launches
+`uv run python run_web.py`. If scanning fails after granting permission, restart
+that terminal app and try again.
+
+Close Zwift, Wahoo, Garmin, TrainerRoad, or other apps that may already hold the
+trainer connection.
+
+Automatic trainer scanning on first page load is disabled by default. To enable
+it, set:
+
+```bash
+LE_TOUR_ENABLE_BLE=1 uv run python run_web.py
+```
+
+Manual scanning from the Devices page remains available without that flag.
 
 ## Features
 
-- **BLE FTMS Support**: Connect to Wahoo KICKR and compatible trainers
-- **Heart Rate Monitors**: Connect to BLE HR straps (Wahoo TICKR, Garmin HRM, Polar H10, etc.)
-- **Training Modes**: 
-  - Free Ride: Natural cycling without constraints
-  - ERG Mode: Target power training with PI controller
-  - SIM Mode: Physics-based simulation with grade control
-- **Terminal UI**: Rich-based TUI for full-screen experience
-- **Data Persistence**: Session recording with JSONL/SQLite dual storage
-- **CSV Export**: Export training data for analysis
-- **Real-time Metrics**: Power, cadence, speed, distance, heart rate
-- **Training Analytics**: Normalized Power (NP), Intensity Factor (IF), Training Stress Score (TSS)
+- **Trainer support:** BLE FTMS trainers through Python/Bleak.
+- **Heart rate:** BLE Heart Rate Service monitors.
+- **Free Ride:** ride and record trainer data without resistance control.
+- **ERG:** target-power training with adjustable target watts.
+- **SIM:** grade-based simulation with bundled route profiles.
+- **History:** local sessions and samples stored on disk.
+- **Export:** per-session and summary CSV exports.
+- **3D prototype:** experimental Three.js surface at `/ride3d`.
 
-## Installation
+## Known Limitations
 
-### Prerequisites
-
-- Python 3.11+ 
-- macOS/Linux (Windows support requires additional BLE stack configuration)
-- BLE adapter for trainer connectivity
-
-### Setup
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd le-tour
-
-# Create virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the application
-python -m terminalride
-```
-
-## Usage
-
-### Starting the Application
-
-```bash
-python -m terminalride
-```
-
-The app will:
-1. Show startup screen
-2. Scan for BLE FTMS trainers  
-3. Connect automatically when found
-4. Display home menu
-
-### Navigation
-
-**Home Menu:**
-- `1` - Free Ride Mode
-- `2` - ERG Mode (Target Power)  
-- `3` - SIM Mode (Virtual Route)
-- `d` - Device Management (scan & connect)
-- `s` - Statistics & History
-- `c` - Settings
-- `q` - Quit
-
-**Device Management:**
-- `t` - Scan for trainers
-- `h` - Scan for HR monitors
-- `1-9` - Connect to trainer by number
-- `a-i` - Connect to HR monitor by letter
-- `T` - Disconnect trainer (Shift+T)
-- `H` - Disconnect HR monitor (Shift+H)
-- `Esc` - Back to home
-
-**Training Views:**
-- `Space` - Pause/Resume session
-- `+/-` - Adjust target power (ERG mode)
-- `↑/↓` - Change grade (SIM mode)  
-- `l` - Mark lap
-- `s` - Save & stop session
-- `Esc` - Return to home
-
-**General:**
-- `?` - Toggle help overlay
-
-### Training Modes
-
-#### Free Ride
-Natural cycling experience with no constraints. Pedal at your own pace while the app records all metrics.
-
-#### ERG Mode  
-Target power training using advanced PI controller:
-- Set target power (100-400W)
-- Trainer automatically adjusts resistance
-- Maintains consistent power output
-- Anti-windup and rate limiting for smooth control
-
-#### SIM Mode
-Physics-based cycling simulation:
-- Realistic power/speed relationship
-- Grade control (-10% to +15%)
-- Accounts for rolling resistance, air resistance, and gravity
-- Uses Newton's method for accurate speed calculations
-
-### Data Management
-
-#### Session Recording
-- Automatic session creation when entering training modes
-- Real-time sample recording (power, cadence, speed, distance)
-- Session metadata (mode, duration, trainer info)
-
-#### Data Storage
-- Primary: JSONL format for data integrity
-- Secondary: SQLite for fast queries and analysis
-- Location: `~/.terminalride/` directory
-
-#### Export Options
-- CSV export for individual sessions
-- Compatible with external analysis tools
-- Session summaries with calculated metrics
-
-## Architecture
-
-### Core Components
-
-- **`terminalride/app.py`** - Main application controller with async event loops
-- **`terminalride/ui/views.py`** - Rich-based TUI views and navigation
-- **`terminalride/devices/ftms_client.py`** - BLE FTMS protocol implementation
-- **`terminalride/modes/`** - Training mode controllers (ERG/SIM)
-- **`terminalride/store/`** - Data persistence and export
-
-### Key Features
-
-- **Protocol-oriented design** - Clean device abstractions
-- **Async/await** - Non-blocking BLE communication and UI updates  
-- **Type safety** - Comprehensive mypy type checking
-- **Robust error handling** - Graceful degradation and recovery
-- **Comprehensive testing** - Unit tests for all core functionality
+- No packaged app or installer yet.
+- Hardware support is only lightly tested.
+- Browser-side Web Bluetooth is experimental and not the default hardware path.
+- The 3D ride surface is a prototype, not the primary ride cockpit.
+- No login, hosted accounts, or cloud sync in the current early-access flow.
+- No FIT, TCX, Strava, Garmin, or Wahoo cloud integrations yet.
+- No multiplayer, racing, events, chat, clubs, or social features.
 
 ## Development
 
-See `docs/adr/` for the current set of accepted architecture decisions before making structural changes.
-
-### Running Tests
+Useful commands:
 
 ```bash
-python -m pytest tests/ -v
+uv sync
+uv run pytest -q
+uv run black --check le_tour tests run_web.py examples
+uv run ruff check le_tour tests run_web.py examples
 ```
 
-### Code Quality
+Format before submitting changes:
 
 ```bash
-# Linting
-ruff check .
-ruff check . --fix  # Auto-fix issues
-
-# Formatting  
-black .
-
-# Type checking
-mypy .
+uv run black le_tour tests run_web.py examples
+uv run ruff check le_tour tests run_web.py examples
 ```
 
-### Testing with Real Hardware
-
-1. Power on your FTMS trainer (e.g., Wahoo KICKR)
-2. Ensure Bluetooth is enabled
-3. Run the app - it will auto-discover and connect
-4. Enter training mode and start pedaling
-5. Data will be recorded automatically
-
-### Demo Script
-
-A simple hardware demo is available at `examples/demo_trainer.py`:
-
-```bash
-python examples/demo_trainer.py
-```
-
-This connects to a trainer and demonstrates ERG/SIM control outside the full TUI.
-
-## Technical Details
-
-### BLE FTMS Protocol (Trainers)
-
-- Service UUID: `00001826-0000-1000-8000-00805f9b34fb`
-- Indoor Bike Data: Real-time power, cadence, speed
-- Control Point: ERG power control, SIM grade control
-- Auto-reconnection with exponential backoff
-
-### BLE Heart Rate Profile
-
-- Service UUID: `0000180D-0000-1000-8000-00805f9b34fb`
-- Supports: Wahoo TICKR, Garmin HRM-Pro/Dual, Polar H10/H9/OH1
-- Features: Heart rate, sensor contact detection, RR intervals
-- **Note**: Whoop is NOT supported (closed ecosystem, no BLE broadcast)
-
-### ERG Controller 
-
-PI controller with:
-- Proportional gain: 0.5
-- Integral gain: 0.1  
-- Anti-windup protection
-- Rate limiting: ±2W/second
-- Power range: 100-400W
-
-### SIM Physics
-
-Power balance equation:
-```
-P = 0.5 * ρ * CdA * v³ + m * g * Crr * v + m * g * sin(θ) * v + P₀
-```
-
-Where:
-- ρ = air density (1.225 kg/m³)
-- CdA = aerodynamic drag (0.4 m²)  
-- m = rider mass (configurable)
-- Crr = rolling resistance (0.0045)
-- P₀ = drivetrain loss (10W)
-
-## Configuration
-
-Edit `~/.config/terminalride/config.json` (or via the in-app Settings view):
-
-```json
-{
-    "name": "Rider",
-    "age": 30,
-    "gender": "male",
-    "mass_kg": 75.0,
-    "ftp_w": 250,
-    "log_level": "info",
-    "connection_timeout_s": 10.0
-}
-```
-
-## Troubleshooting
-
-### BLE Connection Issues
-
-1. **Trainer not found**: Ensure trainer is in pairing mode
-2. **Connection drops**: Check BLE adapter power management  
-3. **Permission denied**: Run with sudo on some Linux distributions
-4. **macOS permissions**: Grant Bluetooth access in System Preferences
-
-### Performance Issues
-
-1. **High CPU usage**: Reduce UI refresh rate in code
-2. **Memory leaks**: Check for unclosed BLE connections
-3. **Slow startup**: Clear old log files from data directory
-
-### Data Issues
-
-1. **Missing sessions**: Check `~/.terminalride/sessions.jsonl`
-2. **Corrupt data**: Delete `~/.terminalride/terminalride.db` to clear the cache. JSONL remains the source of truth, but historical sessions must be re-imported manually (see ADR-001 follow-ups).
-3. **Export failures**: Verify write permissions in export directory
+Architecture notes live in [docs/development.md](docs/development.md).
 
 ## Contributing
 
-1. Fork the repository
-2. Create feature branch
-3. Ensure all tests pass
-4. Reference or add an ADR for architecture-impacting changes (`docs/adr/`)
-5. Add tests for new functionality  
-6. Submit pull request
+Issues and focused pull requests are welcome. Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) before starting larger changes.
+
+## Security
+
+Please do not report security issues in public GitHub issues. See
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-[License information to be added]
-
-## Acknowledgments
-
-- Rich library for excellent TUI capabilities
-- Bleak for cross-platform BLE support
-- FTMS specification for standardized trainer communication
-- Wahoo for creating robust training hardware
+le-tour is licensed under the GNU Affero General Public License v3.0. See
+[LICENSE](LICENSE).

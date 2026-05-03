@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import pytest
-from terminalride.analytics import (
+from le_tour.analytics import (
     TrainingMetrics,
     calculate_normalized_power,
     calculate_intensity_factor,
@@ -460,4 +460,3 @@ class TestEdgeCases:
 
         assert metrics is not None
         assert metrics.intensity_factor < 1.0
-

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "demo_rolling_route",
+  "title": "Rolling Demo Route",
+  "description": "A compact loop with rolling terrain, one climb, and varied scenery.",
+  "segments": [
+    {
+      "name": "Valley Rollers",
+      "length_m": 420,
+      "grade_pct": 0.4,
+      "turn_deg": 18,
+      "road_width_m": 8.8,
+      "kind": "warmup",
+      "surface": "asphalt",
+      "scenery": "fields"
+    },
+    {
+      "name": "Pine Rise",
+      "length_m": 360,
+      "grade_pct": 3.2,
+      "turn_deg": -36,
+      "road_width_m": 7.4,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Mill Descent",
+      "length_m": 320,
+      "grade_pct": -2.1,
+      "turn_deg": -24,
+      "road_width_m": 8.2,
+      "kind": "descent",
+      "surface": "asphalt",
+      "scenery": "village"
+    },
+    {
+      "name": "Ridge Steps",
+      "length_m": 460,
+      "grade_pct": 5.6,
+      "turn_deg": 42,
+      "road_width_m": 6.8,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "ridge"
+    },
+    {
+      "name": "River Run",
+      "length_m": 520,
+      "grade_pct": -0.6,
+      "turn_deg": 0,
+      "road_width_m": 9.6,
+      "kind": "recovery",
+      "surface": "gravel",
+      "scenery": "river"
+    }
+  ]
+}

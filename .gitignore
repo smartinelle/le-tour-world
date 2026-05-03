@@ -10,6 +10,9 @@ __pycache__/
 .coverage
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
+build/
+dist/
 
 # IDE
 .vscode/
@@ -19,8 +22,12 @@ __pycache__/
 
 # Logs
 *.log
-terminalride.jsonl
+le-tour.jsonl
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Environment variables (secrets!)
+.env
+!.env.example
