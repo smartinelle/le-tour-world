@@ -658,10 +658,9 @@ body {
     width: 1px;
 }
 
-/* ── List rows (history, devices) ─────────────────────────────── */
+/* ── List rows ───────────────────────────────────────────────── */
 
-.tr-history-row,
-.tr-device-row {
+.tr-history-row {
     align-items: center;
     background: var(--color-warm-mist);
     border: none;
@@ -1098,15 +1097,53 @@ body {
 }
 
 .tr-device-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    background: var(--color-warm-mist);
+    border: none;
+    border-radius: var(--radius-cards);
+    display: grid;
+    gap: var(--spacing-16);
+    grid-template-columns: minmax(0, 1fr) 112px 132px;
     min-height: 96px;
+    padding: var(--spacing-16);
+    width: 100%;
 }
 
-.tr-device-meta {
-    align-items: end;
+.tr-device-main {
+    align-items: center;
+    display: grid;
+    gap: var(--spacing-16);
+    grid-template-columns: auto minmax(0, 1fr);
+    min-width: 0;
+}
+
+.tr-device-copy {
+    min-width: 0;
+}
+
+.tr-device-row .tr-status-name,
+.tr-device-row .tr-status-meta {
+    overflow-wrap: anywhere;
+}
+
+.tr-device-state {
+    align-items: flex-end;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-8);
+    justify-self: stretch;
+    min-width: 0;
+}
+
+.tr-device-state .tr-state-badge {
+    justify-content: center;
+    width: 100%;
+}
+
+.q-btn.tr-device-action {
+    justify-self: stretch;
+    min-width: 132px !important;
+    width: 132px !important;
 }
 
 .tr-signal-bars {
@@ -1582,6 +1619,15 @@ body {
 
     .tr-history-row,
     .tr-device-row { grid-template-columns: 1fr; }
+
+    .tr-device-state {
+        align-items: flex-start;
+    }
+
+    .q-btn.tr-device-action {
+        min-width: 0 !important;
+        width: 100% !important;
+    }
 
     .tr-object-panel {
         width: 100%;

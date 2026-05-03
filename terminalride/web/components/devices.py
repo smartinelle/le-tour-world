@@ -24,12 +24,12 @@ def device_row(
 ) -> Any:
     """Render a hardware bay row."""
     with ui.element("div").classes("tr-device-row") as row:
-        with ui.row().classes("items-center gap-3"):
+        with ui.element("div").classes("tr-device-main"):
             status_dot(connected)
-            with ui.column().classes("gap-1"):
+            with ui.column().classes("tr-device-copy gap-1"):
                 ui.label(title).classes("tr-status-name")
                 ui.label(detail).classes("tr-status-meta")
-        with ui.element("div").classes("tr-device-meta"):
+        with ui.element("div").classes("tr-device-state"):
             badge_class = "ready" if connected else "demo"
             ui.html(
                 f'<span class="tr-state-badge {badge_class}">'
@@ -50,6 +50,6 @@ def device_row(
             action_label,
             on_action,
             variant="primary" if action_variant == "primary" else "secondary",
-            min_width="120px",
+            classes="tr-device-action",
         )
     return row
