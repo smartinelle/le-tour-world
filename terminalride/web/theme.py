@@ -1057,8 +1057,8 @@ body {
 }
 
 .tr-object-panel {
-    align-self: center;
-    width: min(1040px, 100%);
+    align-self: stretch;
+    width: calc((100% - var(--spacing-24)) / 2);
 }
 
 .tr-object-panel .tr-summary-grid-session {
@@ -1582,6 +1582,10 @@ body {
 
     .tr-history-row,
     .tr-device-row { grid-template-columns: 1fr; }
+
+    .tr-object-panel {
+        width: 100%;
+    }
 
     .tr-detail-actions,
     .tr-detail-actions-right {

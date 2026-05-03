@@ -76,8 +76,8 @@ Groq's aesthetic marries industrial-minimalism with high-energy accents. A muted
 
 | Element | Value |
 |---------|-------|
-| misc | 5px |
-| cards | 0px |
+| misc | 6px |
+| cards | 12px |
 | forms | 10px |
 | buttons | 1000px |
 
@@ -85,7 +85,7 @@ Groq's aesthetic marries industrial-minimalism with high-energy accents. A muted
 
 - **Page max-width:** 1440px
 - **Section gap:** 48-80px
-- **Card padding:** 0px
+- **Card padding:** 20-24px
 - **Element gap:** 4-16px
 
 ## Components
@@ -103,7 +103,7 @@ Background: transparent (rgba(0,0,0,0)), Text: Obsidian Slate (#2d2f33), Border:
 ### Utility Button
 **Role:** Tertiary action
 
-Background: Deep Pewter (#2a2a25), Text: Warm Mist (#f3f3ee), No border. Radius: 5px. Padding: 12px. Used for footer or less prominent interaction. Text uses Space Grotesk.
+Background: Deep Pewter (#2a2a25), Text: Warm Mist (#f3f3ee), No border. Radius: 6px. Padding: 12px. Used for footer or less prominent interaction. Text uses Space Grotesk.
 
 ### Navigation Link
 **Role:** Header navigation
@@ -113,12 +113,12 @@ Background: transparent (rgba(0,0,0,0)), Text: Obsidian Slate (#2d2f33), No bord
 ### Hero Card
 **Role:** Informational block
 
-Background: transparent (rgba(0,0,0,0)), No border, No shadow. Radius: 0px. Padding: 0px. Used in the main content area for visual emphasis. Text uses Space Grotesk.
+Background: Canvas White (#ffffff) or Warm Mist (#f3f3ee), No shadow. Radius: 12px. Padding: 20-24px. Used in the main content area for visual emphasis. Text uses Space Grotesk.
 
 ### Testimonial Card
 **Role:** Social proof
 
-Background: Ash Concrete (#e8e8de), No border, No shadow. Radius: 0px. Padding: 0px. Used for customer quotes. Text uses Space Grotesk.
+Background: Ash Concrete (#e8e8de), No border, No shadow. Radius: 12px. Padding: 20-24px. Used for customer quotes. Text uses Space Grotesk.
 
 ## Do's and Don'ts
 
@@ -126,6 +126,7 @@ Background: Ash Concrete (#e8e8de), No border, No shadow. Radius: 0px. Padding: 
 - Always use Neon Zest (#f43e01) exclusively for primary calls to action or critical indicators to preserve its impact.
 - Maintain a clear visual hierarchy by limiting headline weights to Space Grotesk 300 or 400, rather than bolder weights, to align with the understated authority.
 - Apply a 1000px border-radius to all primary interactive elements (buttons, navigation pills) for a consistent, modern softness.
+- Use softly rounded 12px product cards and panels. On the live reference, large surfaces read as rounded; square cards feel accidental in this product UI.
 - Utilize a base spacing unit of 8px, applying multiples like 4px, 8px, 12px, 16px for comfortable density.
 - Use Space Grotesk with -0.0200em letter spacing for headlines to give them an expansive, deliberate feel.
 - Employ IBM Plex Mono only for technical content, ensuring its 0.1000em letter spacing clearly distinguishes it from untracked text.
@@ -133,7 +134,7 @@ Background: Ash Concrete (#e8e8de), No border, No shadow. Radius: 0px. Padding: 
 ### Don't
 - Never introduce additional vivid color accents; Neon Zest (#f43e01) is the sole saturated brand color.
 - Avoid using drop shadows for elevation; rely on background color changes (e.g., Canvas White, Warm Mist, Ash Concrete) for depth.
-- Do not vary border radii outside of the established 1000px for buttons, 5px for utility elements, and 0px for informational cards to maintain shape consistency.
+- Do not vary border radii outside of the established 1000px for buttons, 6px for small utility elements, 10px for forms, and 12px for product cards.
 - Do not use generic system fonts; always specify Space Grotesk or IBM Plex Mono for brand consistency.
 - Avoid arbitrary uses of uppercase; only apply to specific, clearly defined labels or components following established patterns.
 
@@ -144,6 +145,78 @@ This site prominently features a mixed visual language. Product screenshots are 
 ## Layout
 
 The page adheres to a max-width contained model (1440px), where content is centered within a clear canvas. The hero section often adopts a split-layout pattern, with a prominent headline and call-to-action on one side and a product visual or abstract graphic on the other. Section rhythm alternates between light (Canvas White, Warm Mist) and darker (Black, Deep Pewter) backgrounds, creating clear visual breaks and an implicit flow down the page. Content arrangement frequently uses a text-left/image-right alternating pattern. There's also a grid for customer testimonials, appearing in a three-column layout. The overall density is comfortable, with generous section gaps. A sticky header with top-level navigation ensures constant access to key links and a 'Start Building' CTA.
+
+## le-tour Product Layout Rules
+
+The Groq reference is the visual inspiration, but le-tour is a web-first product UI. Product screens must follow a consistent content grid rather than treating every card independently.
+
+### Content Container
+
+- All main app pages use a shared content container with `--page-max-width: 1440px`.
+- Header, page titles, cards, tables, and grids should align to the same left and right content edges.
+- Do not leave cards at natural or shrink-to-content width unless the component is intentionally compact, such as a badge, pill, dialog, or small HUD overlay.
+
+### Standard Grid
+
+- The default product layout is a two-column grid inside the content container.
+- Gap between major columns: `24px`.
+- A single product module that does not need full width should occupy one standard half-width column and remain left-aligned.
+- This keeps detail pages ready for a future second module on the right, such as charts, route profiles, notes, samples, export tools, or secondary summaries.
+
+### Width Decisions
+
+Use full content width when:
+- Showing tables or dense comparison data.
+- Showing two or more sibling panels that should fill the active content area.
+- Showing primary cockpit/ride surfaces where distance readability matters.
+- Showing grids of settings, summaries, route cards, or repeated objects.
+
+Use one standard half-width column when:
+- Showing a single detail or summary card with limited metrics.
+- The content would become awkwardly stretched at full width.
+- A future second panel is plausible.
+
+Use centered constrained width only when:
+- The entire page is a focused object, such as login/auth, an empty state, a modal-like flow, or a dedicated editor step.
+- The page title and the constrained object are visually treated as one centered composition.
+
+Do not center a single card under a left-aligned page title. That creates conflicting alignment systems.
+
+### Card And Panel Composition
+
+- Cards should feel like deliberate surfaces, not arbitrary boxes floating in space.
+- Large panels should have softly rounded corners; current product cards use approximately `12px` radius.
+- Avoid square/eckig product panels unless explicitly designing a raw technical surface.
+- Avoid unnecessary dividers under panel headings; spacing and hierarchy should separate sections.
+- Do not nest cards inside cards unless the inner card is a repeated item, metric tile, dialog, or genuinely framed tool.
+
+### Internal Card Layout
+
+- A card that fills a grid column must also let its internal content use that width.
+- Avoid shrink-to-content inner wrappers inside cards. Inner layout containers such as setup sections, route graphics, metric grids, and control rows should generally use `width: 100%`.
+- If content should not stretch, constrain it intentionally with `max-width` and align it deliberately.
+- Center controls within the full available card width, not within a narrow accidental inner block.
+
+### Ride Setup Rules
+
+- The Ride Setup card and Recent Rides card form a two-column layout on wide screens.
+- Mode-specific setup content must fill the Ride Setup card interior.
+- ERG target controls should be centered as a balanced control group: decrement button, large target value, increment button.
+- SIM route graphics should use the available card width and have enough height to feel like the visual focus of SIM mode.
+- Switching modes must not cause sloppy layout jumps or accidental left-hanging content.
+
+### Detail And Summary Pages
+
+- History detail and stop summary use the standard half-width product column by default.
+- They should stay left-aligned with the page title and content container.
+- Metrics inside these cards should form a symmetrical grid.
+- On mobile, these cards expand to full content width.
+
+### Navigation
+
+- Header navigation items are text links, not toggle chips.
+- Active navigation state is shown through text color/accent, not by wrapping the item in a pill or tag.
+- Header and page body should share the same background color without an unnecessary divider line.
 
 ## Agent Prompt Guide
 
@@ -158,7 +231,7 @@ The page adheres to a max-width contained model (1440px), where content is cente
 ### 3-5 Example Component Prompts
 1. Create a primary hero button: 'Start Building' text with Space Grotesk, 400 weight, 14px size, Canvas White (#ffffff) text color. Background is Neon Zest (#f43e01), border is Canvas White (#ffffff). Corner radius is 1000px, padding 10px vertical and 16px horizontal.
 2. Design a section with a Warm Mist (#f3f3ee) background: Use a headline 'To deliver different results, you need a different stack.' with Space Grotesk, 46px size, 0.9 lineHeight, 300 weight, Obsidian Slate (#2d2f33) color, and -0.0200em letter spacing. Below it, add a body paragraph with Space Grotesk, 15px size, 1.57 lineHeight, 400 weight, Soft Stone (#69695d) color.
-3. Implement a Testimonial Card: Ash Concrete (#e8e8de) background, 0px border-radius, 0px padding. Inside, use a quote in Space Grotesk, 17px size, 1.57 lineHeight, 400 weight, Obsidian Slate (#2d2f33) color.
+3. Implement a Testimonial Card: Ash Concrete (#e8e8de) background, 12px border-radius, and 20-24px padding. Inside, use a quote in Space Grotesk, 17px size, 1.57 lineHeight, 400 weight, Obsidian Slate (#2d2f33) color.
 4. Generate a technical explanation block: Deep Pewter (#2a2a25) background with Canvas White (#ffffff) as the main text color at 14px (Space Grotesk). Include an inline code snippet using IBM Plex Mono, 12px size, 1.4 lineHeight, 400 weight, Canvas White (#ffffff) color, and 0.1000em letter spacing.
 
 ## Similar Brands
@@ -233,17 +306,17 @@ The page adheres to a max-width contained model (1440px), where content is cente
   /* Layout */
   --page-max-width: 1440px;
   --section-gap: 48-80px;
-  --card-padding: 0px;
+  --card-padding: 20-24px;
   --element-gap: 4-16px;
 
   /* Border Radius */
-  --radius-md: 5px;
-  --radius-lg: 10px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
   --radius-full: 1000px;
 
   /* Named Radii */
-  --radius-misc: 5px;
-  --radius-cards: 0px;
+  --radius-misc: 6px;
+  --radius-cards: 12px;
   --radius-forms: 10px;
   --radius-buttons: 1000px;
 }
@@ -304,8 +377,8 @@ The page adheres to a max-width contained model (1440px), where content is cente
   --spacing-128: 128px;
 
   /* Border Radius */
-  --radius-md: 5px;
-  --radius-lg: 10px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
   --radius-full: 1000px;
 }
 ```
