@@ -25,6 +25,7 @@ def meta_stat(value: str, label: str) -> Any:
 
 def power_panel(initial_value: str = "---") -> Any:
     """Render primary power contents and return the power value label."""
-    power_label = ui.label(initial_value).classes("tr-power-value")
-    ui.label("Watts").classes("tr-power-unit")
+    with ui.element("div").classes("tr-power-readout"):
+        power_label = ui.label(initial_value).classes("tr-power-value")
+        ui.label("Watts").classes("tr-power-unit")
     return power_label

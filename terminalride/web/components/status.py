@@ -37,8 +37,8 @@ def empty_state(
     """Render an honest empty state with an optional action."""
     with ui.element("div").classes("tr-empty") as element:
         with ui.column().classes("gap-1"):
-            ui.label(title).classes("font-bold text-gray-900")
-            ui.label(detail).classes("text-sm text-gray-600")
+            ui.label(title).classes("tr-cell-strong")
+            ui.label(detail).classes("tr-cell-soft")
         if action_label and on_action:
             action_button(
                 action_label,

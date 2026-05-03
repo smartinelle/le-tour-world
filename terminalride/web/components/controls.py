@@ -28,12 +28,29 @@ def action_button(
     return button
 
 
-def mode_button(
-    text: str,
-    on_click: Callable[[], Any],
+def segmented_control(
+    options: list[tuple[str, str, Callable[[], Any]]],
     *,
-    active: bool = False,
-) -> Any:
-    """Render a segmented ride-mode button."""
-    classes = "tr-mode-button active" if active else "tr-mode-button"
-    return ui.button(text, on_click=on_click, color=None).classes(classes)
+    active_key: str,
+) -> dict[str, Any]:
+    """Render a segmented control containing N inline options.
+
+    `options` is a list of (key, label, on_click) tuples. Returns a dict
+    mapping option key → button element so callers can toggle .active.
+    """
+    cols = len(options)
+    buttons: dict[str, Any] = {}
+    with ui.element("div").classes("tr-segmented").style(f"--seg-cols: {cols}"):
+        for key, label, on_click in options:
+            classes = "tr-seg active" if key == active_key else "tr-seg"
+            buttons[key] = ui.button(label, on_click=on_click, color=None).classes(
+                classes
+            )
+    return buttons
+
+
+def hero_button(text: str, on_click: Callable[[], Any]) -> Any:
+    """Render the page's primary call-to-action — taller, fills its grid cell."""
+    return ui.button(text, on_click=on_click, color=None).classes(
+        "tr-btn-primary tr-btn-hero"
+    )
