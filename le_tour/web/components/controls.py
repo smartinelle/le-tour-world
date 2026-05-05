@@ -43,8 +43,10 @@ def segmented_control(
     with ui.element("div").classes("tr-segmented").style(f"--seg-cols: {cols}"):
         for key, label, on_click in options:
             classes = "tr-seg active" if key == active_key else "tr-seg"
-            buttons[key] = ui.button(label, on_click=on_click, color=None).classes(
-                classes
+            buttons[key] = (
+                ui.button(label, on_click=on_click, color=None)
+                .classes(classes)
+                .props("flat unelevated no-caps")
             )
     return buttons
 

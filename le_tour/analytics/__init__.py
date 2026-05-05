@@ -19,9 +19,32 @@ from .metrics import (
     get_hr_zone,
     estimate_max_hr,
 )
+from .activity_graphs import (
+    ActivityGraphData,
+    ActivityGraphPoint,
+    ActivityGraphReference,
+    ActivityGraphSeries,
+    ActivityGraphStat,
+    build_history_distance_graph,
+    build_session_cadence_graph,
+    build_session_hr_graph,
+    build_session_power_graph,
+    build_session_speed_graph,
+    normalize_graph_range,
+)
 
 __all__ = [
+    "ActivityGraphData",
+    "ActivityGraphPoint",
+    "ActivityGraphReference",
+    "ActivityGraphSeries",
+    "ActivityGraphStat",
     "TrainingMetrics",
+    "build_history_distance_graph",
+    "build_session_cadence_graph",
+    "build_session_hr_graph",
+    "build_session_power_graph",
+    "build_session_speed_graph",
     "calculate_normalized_power",
     "calculate_intensity_factor",
     "calculate_tss",
@@ -31,4 +54,5 @@ __all__ = [
     "calculate_hr_zones",
     "get_hr_zone",
     "estimate_max_hr",
+    "normalize_graph_range",
 ]

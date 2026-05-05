@@ -419,13 +419,12 @@ body {
    "raised" white card on a warm-mist track. Used for ride-mode selection. */
 .tr-segmented {
     background: var(--color-warm-mist);
-    border: 1px solid var(--color-steel-gray);
     border-radius: var(--radius-buttons);
     display: inline-grid;
-    gap: 4px;
+    gap: 2px;
     grid-template-columns: repeat(var(--seg-cols, 3), minmax(0, 1fr));
-    height: 48px;
-    padding: 4px;
+    min-height: 48px;
+    padding: 3px;
     width: 100%;
 }
 
@@ -435,13 +434,13 @@ body {
     border-radius: var(--radius-buttons) !important;
     box-shadow: none !important;
     color: var(--color-soft-stone) !important;
-    font-family: var(--font-space-grotesk) !important;
-    font-size: 14px !important;
+    font-family: var(--font-ibm-plex-mono) !important;
+    font-size: var(--text-caption) !important;
     font-weight: var(--font-weight-regular) !important;
-    letter-spacing: 0 !important;
+    letter-spacing: var(--tracking-caption) !important;
     min-height: 0 !important;
     padding: 0 16px !important;
-    text-transform: none !important;
+    text-transform: uppercase !important;
     transition: background 0.16s ease-out, color 0.16s ease-out !important;
 }
 
@@ -451,7 +450,7 @@ body {
 
 .q-btn.tr-seg.active {
     background: var(--color-canvas-white) !important;
-    color: var(--color-obsidian-slate) !important;
+    color: var(--color-neon-zest) !important;
 }
 
 /* Action row: secondary action stays left, primary action owns the right side. */
@@ -534,7 +533,7 @@ body {
     display: grid;
     gap: var(--spacing-16);
     margin-top: var(--spacing-24);
-    min-height: 200px;
+    min-height: 328px;
     padding: 0;
     width: 100%;
 }
@@ -1343,6 +1342,231 @@ body {
     text-transform: uppercase;
 }
 
+/* ── Activity graphs ─────────────────────────────────────────── */
+
+.tr-activity-graph {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-16);
+    padding: var(--spacing-24);
+    width: 100%;
+}
+
+.tr-activity-graph-collapsible {
+    gap: 0;
+    padding: 0;
+}
+
+.tr-activity-graph-header {
+    align-items: flex-start;
+    display: flex;
+    gap: var(--spacing-16);
+    justify-content: space-between;
+}
+
+.tr-activity-graph-summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    gap: var(--spacing-16);
+    justify-content: space-between;
+    list-style: none;
+    padding: var(--spacing-24);
+}
+
+.tr-activity-graph-summary::-webkit-details-marker {
+    display: none;
+}
+
+.tr-activity-graph-summary-icon {
+    color: var(--color-soft-stone);
+    flex: 0 0 auto;
+    transition: color 0.16s ease-out, transform 0.16s ease-out;
+}
+
+.tr-activity-graph-summary:hover .tr-activity-graph-summary-icon {
+    color: var(--color-obsidian-slate);
+}
+
+.tr-activity-graph-collapsible[open] .tr-activity-graph-summary-icon {
+    transform: rotate(180deg);
+}
+
+.tr-activity-graph-collapsible > .tr-activity-graph-viewport,
+.tr-activity-graph-collapsible > .tr-activity-graph-empty {
+    margin-left: var(--spacing-24);
+    margin-right: var(--spacing-24);
+}
+
+.tr-activity-graph-controls {
+    align-items: center;
+    background: var(--color-warm-mist);
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+}
+
+.tr-activity-graph-control {
+    border-radius: var(--radius-full);
+    color: var(--color-soft-stone);
+    font-family: var(--font-ibm-plex-mono);
+    font-size: var(--text-caption);
+    letter-spacing: var(--tracking-caption);
+    line-height: 1;
+    min-width: 42px;
+    padding: 8px 10px;
+    text-align: center;
+    text-decoration: none;
+    text-transform: uppercase;
+}
+
+.tr-activity-graph-control:hover {
+    color: var(--color-obsidian-slate);
+}
+
+.tr-activity-graph-control.active {
+    background: var(--color-canvas-white);
+    color: var(--color-neon-zest);
+}
+
+.tr-activity-graph-viewport {
+    min-height: 260px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.tr-activity-graph-svg {
+    display: block;
+    height: auto;
+    overflow: visible;
+    width: 100%;
+}
+
+.tr-activity-graph-grid line {
+    stroke: var(--color-ash-concrete);
+    stroke-width: 1;
+}
+
+.tr-activity-graph-grid text,
+.tr-activity-graph-axis text,
+.tr-activity-graph-reference text,
+.tr-activity-graph-legend text {
+    fill: var(--color-soft-stone);
+    font-family: var(--font-ibm-plex-mono);
+    font-size: 11px;
+    letter-spacing: var(--tracking-caption);
+}
+
+.tr-activity-graph-axis line {
+    stroke: var(--color-steel-gray);
+    stroke-width: 1.2;
+}
+
+.tr-activity-graph-axis-title {
+    fill: var(--color-faded-quartz) !important;
+    text-transform: uppercase;
+}
+
+.tr-activity-graph-bar.primary {
+    fill: var(--color-neon-zest);
+}
+
+.tr-activity-graph-bar.secondary {
+    fill: var(--color-obsidian-slate);
+}
+
+.tr-activity-graph-line {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.6;
+}
+
+.tr-activity-graph-line.primary,
+.tr-activity-graph-point.primary {
+    stroke: var(--color-neon-zest);
+}
+
+.tr-activity-graph-line.secondary,
+.tr-activity-graph-point.secondary {
+    stroke: var(--color-obsidian-slate);
+}
+
+.tr-activity-graph-line.secondary {
+    opacity: 0.78;
+    stroke-dasharray: 7 7;
+    stroke-width: 1.8;
+}
+
+.tr-activity-graph-point {
+    fill: var(--color-canvas-white);
+    stroke-width: 2.2;
+}
+
+.tr-activity-graph-point.secondary {
+    opacity: 0.78;
+    stroke-width: 1.8;
+}
+
+.tr-activity-graph-reference line {
+    stroke: var(--color-faded-quartz);
+    stroke-dasharray: 6 6;
+    stroke-width: 1.4;
+}
+
+.tr-activity-graph-hit {
+    cursor: crosshair;
+    fill: transparent;
+    pointer-events: all;
+}
+
+.tr-activity-graph-tooltip {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease-out;
+}
+
+.tr-activity-graph-hover:hover .tr-activity-graph-tooltip {
+    opacity: 1;
+}
+
+.tr-activity-graph-tooltip rect {
+    fill: var(--color-obsidian-slate);
+}
+
+.tr-activity-graph-tooltip text {
+    fill: var(--color-canvas-white);
+    font-family: var(--font-ibm-plex-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-caption);
+}
+
+.tr-activity-graph-tooltip text.value {
+    fill: var(--color-neon-zest);
+    font-size: 11px;
+}
+
+.tr-activity-graph-legend .primary {
+    fill: var(--color-neon-zest);
+}
+
+.tr-activity-graph-legend .secondary {
+    fill: var(--color-obsidian-slate);
+}
+
+.tr-activity-graph-empty {
+    align-items: flex-start;
+    background: var(--color-warm-mist);
+    border-radius: var(--radius-cards);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 180px;
+    justify-content: center;
+    padding: var(--spacing-24);
+}
+
 /* ── Helper classes consumed by app.py / components ───────────── */
 
 .tr-cell-strong {
@@ -1613,6 +1837,18 @@ body {
 
     .tr-summary-bar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .tr-activity-graph-header {
+        flex-direction: column;
+    }
+
+    .tr-activity-graph-controls {
+        width: 100%;
+    }
+
+    .tr-activity-graph-control {
+        flex: 1;
     }
 
     .tr-power-panel { min-height: 300px; }

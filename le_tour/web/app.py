@@ -13,6 +13,15 @@ from typing import Optional, List, Dict, Any, Callable
 from starlette.requests import Request
 from nicegui import ui, app
 
+from ..analytics.activity_graphs import (
+    ActivityGraphRange,
+    build_history_distance_graph,
+    build_session_cadence_graph,
+    build_session_hr_graph,
+    build_session_power_graph,
+    build_session_speed_graph,
+    normalize_graph_range,
+)
 from ..domain.ride_controller import RideController, RideMode
 from ..domain.ride_runtime import RideRuntime, RideStopResult
 from ..domain.routes import RideRoute, available_routes, route_by_id
@@ -20,7 +29,8 @@ from ..domain.session_service import get_session_service
 from ..config import UserSettings, get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
 from ..store.export import DataExporter
-from ..store.models import SessionModel, SessionSummary
+from ..store.models import SampleModel, SessionModel, SessionSummary
+from .components.activity_graphs import GraphControl, activity_graph
 from .components.controls import action_button, hero_button, segmented_control
 from .components.devices import device_row
 from .components.layout import (
@@ -473,8 +483,8 @@ class WebUI:
             ui.navigate.to("/settings?tab=devices")
 
         @ui.page("/history")
-        def history_page():
-            self._render_history()
+        def history_page(request: Request):
+            self._render_history(request.query_params.get("range"))
 
         @ui.page("/history/{session_id}")
         def history_detail_page(session_id: str):
@@ -1061,6 +1071,8 @@ class WebUI:
                 saved_label = "Save failed"
             elif result.sample_count == 0:
                 saved_label = "No ride data saved"
+            summary_graph_samples: list[SampleModel] = []
+            summary_graph_ftp_w: int | None = None
 
             with ui.column().classes("tr-panel tr-object-panel p-5 gap-4"):
                 panel_header(
@@ -1078,6 +1090,10 @@ class WebUI:
                             else None
                         )
                         self._render_session_summary_stats(session, summary)
+                        summary_graph_samples = service.get_session_samples(
+                            result.saved_session_id
+                        )
+                        summary_graph_ftp_w = session.user_ftp_w
                     else:
                         self._render_snapshot_summary_stats(snapshot)
                 else:
@@ -1117,6 +1133,13 @@ class WebUI:
                                 ),
                                 variant="secondary",
                             )
+
+            if summary_graph_samples:
+                self._render_session_activity_graphs(
+                    summary_graph_samples,
+                    ftp_w=summary_graph_ftp_w,
+                    compact=True,
+                )
 
     async def _disconnect_trainer(self) -> None:
         """Disconnect the trainer and refresh the page."""
@@ -1184,9 +1207,10 @@ class WebUI:
         )
         dialog.show()
 
-    def _render_history(self) -> None:
+    def _render_history(self, range_value: str | None = None) -> None:
         """Render the session history page."""
         self._render_header("History")
+        graph_range = normalize_graph_range(range_value)
         try:
             sessions = get_session_service().list_sessions(limit=50)
         except Exception as exc:
@@ -1202,6 +1226,11 @@ class WebUI:
                     self._summary_tile(aggregates["distance"], "Distance")
                     self._summary_tile(aggregates["duration"], "Duration")
                     self._summary_tile(aggregates["power"], "Avg Power")
+
+                activity_graph(
+                    build_history_distance_graph(sessions, graph_range),
+                    controls=self._history_range_controls(graph_range),
+                )
 
             with ui.column().classes("tr-panel p-5 gap-3 w-full"):
                 panel_header(
@@ -1256,6 +1285,7 @@ class WebUI:
                 )
                 return
 
+            samples = service.get_session_samples(session.session_id)
             with ui.column().classes("tr-panel tr-object-panel p-5 gap-4"):
                 route_label = self._session_route_label(session)
                 panel_header(
@@ -1281,6 +1311,8 @@ class WebUI:
                             variant="secondary",
                             classes="tr-btn-danger",
                         )
+
+            self._render_session_activity_graphs(samples, ftp_w=session.user_ftp_w)
 
     def _render_session_summary_stats(
         self,
@@ -1362,6 +1394,28 @@ class WebUI:
                 "Last power",
             )
             meta_stat("--", "Training Stress")
+
+    def _render_session_activity_graphs(
+        self,
+        samples: list[SampleModel],
+        *,
+        ftp_w: int | None,
+        compact: bool = False,
+    ) -> None:
+        """Render reusable activity graphs for persisted session samples."""
+        power_graph = build_session_power_graph(samples, ftp_w=ftp_w)
+        activity_graph(power_graph)
+
+        if compact:
+            return
+
+        for graph in (
+            build_session_hr_graph(samples),
+            build_session_cadence_graph(samples),
+            build_session_speed_graph(samples),
+        ):
+            if graph.has_points:
+                activity_graph(graph, collapsible=True)
 
     @staticmethod
     def _session_route_label(session: SessionModel) -> str | None:
@@ -2006,6 +2060,15 @@ class WebUI:
         with ui.element("div").classes("tr-summary-tile"):
             ui.label(value).classes("tr-summary-value")
             ui.label(label).classes("tr-summary-label")
+
+    @staticmethod
+    def _history_range_controls(active: ActivityGraphRange) -> tuple[GraphControl, ...]:
+        """Return range controls for history activity graphs."""
+        return (
+            GraphControl("7D", "/history?range=7d", active == "7d"),
+            GraphControl("30D", "/history?range=30d", active == "30d"),
+            GraphControl("All", "/history?range=all", active == "all"),
+        )
 
     def _aggregate_sessions(self, sessions: list[SessionModel]) -> dict[str, str]:
         """Compute aggregate stats across the loaded session list."""
