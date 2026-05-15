@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, tzinfo
 from typing import Literal, Sequence
 
 from le_tour.store.models import SampleModel, SessionModel
@@ -83,11 +83,26 @@ def normalize_graph_range(value: str | None) -> ActivityGraphRange:
 def build_history_distance_graph(
     sessions: Sequence[SessionModel],
     graph_range: ActivityGraphRange = "30d",
+    *,
+    today: date | None = None,
+    local_tz: tzinfo | None = None,
 ) -> ActivityGraphData:
     """Build a day-bucketed history graph for distance over time."""
+    local_tz = _resolve_local_timezone(local_tz)
+    anchor_day = today or _local_today(local_tz)
     ordered_sessions = sorted(sessions, key=lambda session: session.start_time)
-    filtered_sessions = _filter_sessions_by_range(ordered_sessions, graph_range)
-    buckets = _distance_buckets(filtered_sessions, graph_range)
+    filtered_sessions = _filter_sessions_by_range(
+        ordered_sessions,
+        graph_range,
+        anchor_day=anchor_day,
+        local_tz=local_tz,
+    )
+    buckets = _distance_buckets(
+        filtered_sessions,
+        graph_range,
+        anchor_day=anchor_day,
+        local_tz=local_tz,
+    )
 
     points = tuple(
         ActivityGraphPoint(
@@ -249,33 +264,45 @@ def build_session_speed_graph(samples: Sequence[SampleModel]) -> ActivityGraphDa
 def _filter_sessions_by_range(
     sessions: Sequence[SessionModel],
     graph_range: ActivityGraphRange,
+    *,
+    anchor_day: date,
+    local_tz: tzinfo | None,
 ) -> list[SessionModel]:
     if graph_range == "all" or not sessions:
         return list(sessions)
 
     days = 7 if graph_range == "7d" else 30
-    anchor = max(session.start_time.date() for session in sessions)
-    start_day = anchor - timedelta(days=days - 1)
-    return [session for session in sessions if session.start_time.date() >= start_day]
+    start_day = anchor_day - timedelta(days=days - 1)
+    return [
+        session
+        for session in sessions
+        if start_day <= _session_local_date(session, local_tz) <= anchor_day
+    ]
 
 
 def _distance_buckets(
     sessions: Sequence[SessionModel],
     graph_range: ActivityGraphRange,
+    *,
+    anchor_day: date,
+    local_tz: tzinfo | None,
 ) -> list[tuple[date, float]]:
     if not sessions:
         return []
 
     distances_by_day: defaultdict[date, float] = defaultdict(float)
     for session in sessions:
-        distances_by_day[session.start_time.date()] += session.total_distance_m or 0.0
+        distances_by_day[_session_local_date(session, local_tz)] += (
+            session.total_distance_m or 0.0
+        )
 
     first_day = min(distances_by_day)
-    last_day = max(distances_by_day)
+    last_day = max(max(distances_by_day), anchor_day)
 
     if graph_range in {"7d", "30d"}:
         days = 7 if graph_range == "7d" else 30
-        first_day = last_day - timedelta(days=days - 1)
+        first_day = anchor_day - timedelta(days=days - 1)
+        last_day = anchor_day
 
     bucket_count = (last_day - first_day).days + 1
     return [
@@ -288,15 +315,36 @@ def _distance_buckets(
 
 
 def _format_bucket_label(day: date, graph_range: ActivityGraphRange) -> str:
-    return day.strftime("%d")
+    return day.strftime("%d.%m")
 
 
 def _history_detail(graph_range: ActivityGraphRange) -> str:
     if graph_range == "7d":
-        return "Distance by day for the latest 7 days."
+        return "Distance by day for the last 7 days."
     if graph_range == "30d":
-        return "Distance by day for the latest 30 days."
-    return "Distance by day since your first saved ride."
+        return "Distance by day for the last 30 days."
+    return "Distance by day since your first saved ride through today."
+
+
+def _resolve_local_timezone(local_tz: tzinfo | None) -> tzinfo | None:
+    if local_tz is not None:
+        return local_tz
+    return datetime.now().astimezone().tzinfo
+
+
+def _local_today(local_tz: tzinfo | None) -> date:
+    if local_tz is None:
+        return datetime.now().astimezone().date()
+    return datetime.now(local_tz).date()
+
+
+def _session_local_date(session: SessionModel, local_tz: tzinfo | None) -> date:
+    start_time = session.start_time
+    if start_time.tzinfo is None or start_time.utcoffset() is None:
+        return start_time.date()
+    if local_tz is None:
+        return start_time.astimezone().date()
+    return start_time.astimezone(local_tz).date()
 
 
 def _sample_points(

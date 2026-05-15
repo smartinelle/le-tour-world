@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from le_tour.analytics.activity_graphs import (
     build_history_distance_graph,
@@ -41,27 +41,43 @@ def test_history_distance_graph_buckets_latest_7_days() -> None:
         _session(8, distance_m=3_000.0, start=start),
     ]
 
-    graph = build_history_distance_graph(sessions, "7d")
+    graph = build_history_distance_graph(
+        sessions,
+        "7d",
+        today=date(2026, 1, 9),
+        local_tz=UTC,
+    )
 
     points = graph.series[0].points
     assert len(points) == 7
     assert sum(point.y for point in points) == 15.0
+    assert points[0].label == "03.01"
+    assert points[-1].label == "09.01"
     assert graph.stats[0].value == "15.0 km"
     assert graph.stats[1].value == "2"
 
 
-def test_history_distance_graph_all_uses_available_span() -> None:
-    start = datetime(2026, 1, 1, tzinfo=UTC)
+def test_history_distance_graph_all_uses_available_span_through_today() -> None:
+    start = datetime(2026, 5, 2, tzinfo=UTC)
     sessions = [
         _session(0, distance_m=4_000.0, start=start),
         _session(2, distance_m=6_000.0, start=start),
     ]
 
-    graph = build_history_distance_graph(sessions, "all")
+    graph = build_history_distance_graph(
+        sessions,
+        "all",
+        today=date(2026, 5, 15),
+        local_tz=UTC,
+    )
 
     points = graph.series[0].points
-    assert [point.y for point in points] == [4.0, 0.0, 6.0]
-    assert graph.detail == "Distance by day since your first saved ride."
+    assert len(points) == 14
+    assert [point.y for point in points[:3]] == [4.0, 0.0, 6.0]
+    assert points[0].label == "02.05"
+    assert points[-1].label == "15.05"
+    assert points[-1].y == 0.0
+    assert graph.detail == "Distance by day since your first saved ride through today."
 
 
 def test_session_power_graph_adds_target_series_and_ftp_reference() -> None:
