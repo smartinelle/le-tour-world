@@ -141,6 +141,20 @@ def test_stop_session_stops_fake_source():
     assert snapshot.active is False
 
 
+def test_request_stop_confirmation_stops_fake_source_and_pauses():
+    """Runtime freezes rides before the UI asks to save or delete."""
+    controller = make_controller(trainer_connected=False)
+
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
+        runtime = RideRuntime(controller)
+        runtime.start_session(RideMode.FREE)
+        snapshot = runtime.request_stop_confirmation()
+
+    source.return_value.stop.assert_called_once()
+    assert snapshot.active is True
+    assert snapshot.paused is True
+
+
 def test_stop_session_result_reports_unsaved_empty_rides():
     """Runtime exposes no-sample stop results for UI summary flows."""
     controller = make_controller(trainer_connected=False)
@@ -155,6 +169,23 @@ def test_stop_session_result_reports_unsaved_empty_rides():
     assert result.saved_session_id is None
     assert result.sample_count == 0
     assert result.saved is False
+
+
+def test_discard_session_stops_without_saving():
+    """Runtime can end rides without persisting or showing a summary."""
+    service = MagicMock()
+    controller = RideController(session_service=service)
+
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource"):
+        runtime = RideRuntime(controller)
+        runtime.start_session(RideMode.FREE)
+        result = runtime.discard_session()
+
+    assert result.snapshot.active is False
+    assert result.saved_session_id is None
+    assert result.saved is False
+    service.save_session.assert_not_called()
+    service.save_sample.assert_not_called()
 
 
 def test_runtime_controls_return_snapshots():

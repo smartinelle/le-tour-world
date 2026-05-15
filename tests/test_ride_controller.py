@@ -418,11 +418,20 @@ class TestSampleHandling:
 
         assert controller.metrics.hr_bpm == 145
 
-    def test_paused_does_not_accumulate(self):
-        """Paused session doesn't accumulate data."""
+    def test_paused_freezes_live_metrics(self):
+        """Paused session freezes displayed metrics and accumulated data."""
         controller = RideController()
         controller.start_session(RideMode.FREE)
+        controller.handle_bike_sample(
+            {
+                "ts": time.time(),
+                "power_w": 150,
+                "cadence_rpm": 82,
+                "speed_mps": 7.0,
+            }
+        )
         controller.pause()
+        paused_elapsed_s = controller.metrics.elapsed_s
 
         sample = {
             "ts": time.time(),
@@ -432,9 +441,29 @@ class TestSampleHandling:
         }
         controller.handle_bike_sample(sample)
 
-        # Live metrics update but distance doesn't accumulate
-        assert controller.metrics.power_w == 200
+        assert controller.metrics.power_w == 150
+        assert controller.metrics.elapsed_s == paused_elapsed_s
         assert controller.metrics.distance_m == 0.0
+
+    def test_discard_session_does_not_persist_samples(self):
+        """Discarding stops the ride without saving captured samples."""
+        service = MagicMock()
+        controller = RideController(session_service=service)
+        controller.start_session(RideMode.FREE)
+        controller.handle_bike_sample(
+            {
+                "ts": time.time(),
+                "power_w": 200,
+                "cadence_rpm": 90,
+                "speed_mps": 10.0,
+            }
+        )
+
+        controller.discard_session()
+
+        assert not controller.is_active
+        service.save_session.assert_not_called()
+        service.save_sample.assert_not_called()
 
 
 class TestCallbacks:

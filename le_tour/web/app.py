@@ -31,7 +31,12 @@ from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnect
 from ..store.export import DataExporter
 from ..store.models import SampleModel, SessionModel, SessionSummary
 from .components.activity_graphs import GraphControl, activity_graph
-from .components.controls import action_button, hero_button, segmented_control
+from .components.controls import (
+    ButtonVariant,
+    action_button,
+    hero_button,
+    segmented_control,
+)
 from .components.devices import device_row
 from .components.layout import (
     apply_theme,
@@ -413,7 +418,9 @@ class WebUI:
         self._connection_status_label: Optional[ui.label] = None
         self._connection_dot: Optional[ui.html] = None
         self._state_badge: Optional[ui.html] = None
+        self._ride_controls: Optional[Any] = None
         self._pause_button: Optional[Any] = None
+        self._stop_button: Optional[Any] = None
         self._route_segment_label: Optional[ui.label] = None
         self._route_next_label: Optional[ui.label] = None
         self._route_progress_label: Optional[ui.label] = None
@@ -451,7 +458,7 @@ class WebUI:
         """Return route select options keyed by stable route id."""
         return {route.route_id: route.title for route in available_routes()}
 
-    def _set_last_stop_result(self, result: RideStopResult) -> None:
+    def _set_last_stop_result(self, result: RideStopResult | None) -> None:
         """Store the latest stop result for the current UI context."""
         app._last_stop_result = result
 
@@ -872,16 +879,8 @@ class WebUI:
                     metric_cell(mode.upper(), "Mode")
 
                 # Bottom row: just the two ride controls. No middle banner.
-                with ui.element("div").classes("tr-cockpit-controls"):
-                    self._pause_button = action_button(
-                        "Pause", lambda: self._toggle_pause()
-                    )
-                    ui.label("")  # grid spacer
-                    action_button(
-                        "Stop Ride",
-                        lambda: self._stop_session(),
-                        variant="primary",
-                    )
+                self._ride_controls = ui.element("div").classes("tr-cockpit-controls")
+                self._render_live_ride_controls()
 
         # Start session and update loop
         self._start_session(mode_enum)
@@ -1010,37 +1009,139 @@ class WebUI:
         """Adjust SIM grade."""
         self.runtime.adjust_sim_grade(delta)
 
-    def _toggle_pause(self) -> None:
-        """Toggle session pause."""
-        snapshot = self.runtime.toggle_pause()
-        if self._status_label:
-            self._status_label.set_text(
-                "Paused" if snapshot.paused else "Session active"
-            )
-        if self._pause_button:
-            self._pause_button.set_text("Resume" if snapshot.paused else "Pause")
-        if self._state_badge:
-            badge_class = "demo" if snapshot.paused else "live"
-            badge_text = "Paused" if snapshot.paused else "Active"
-            self._state_badge.set_content(
-                f'<span class="tr-state-badge {badge_class}">{badge_text}</span>'
+    def _ride_action_button(
+        self,
+        text: str,
+        on_click: Callable[[], Any],
+        *,
+        variant: ButtonVariant = "secondary",
+    ) -> Any:
+        """Render a same-sized cockpit action button."""
+        return action_button(
+            text,
+            on_click,
+            variant=variant,
+            min_width="112px",
+        )
+
+    def _render_live_ride_controls(self) -> None:
+        """Render active ride controls."""
+        if self._ride_controls is None:
+            return
+
+        self._ride_controls.clear()
+        self._pause_button = None
+        self._stop_button = None
+        with self._ride_controls:
+            self._pause_button = self._ride_action_button("Pause", self._pause_session)
+            ui.label("")  # grid spacer
+            self._stop_button = self._ride_action_button(
+                "Stop Ride",
+                self._request_stop_session,
+                variant="primary",
             )
 
-    def _stop_session(self) -> None:
-        """Stop the current session."""
-        result = self.runtime.stop_session_result()
-        self._set_last_stop_result(result)
+    def _render_paused_review_controls(self) -> None:
+        """Render resume/save/delete controls after pausing."""
+        if self._ride_controls is None:
+            return
+
+        self._ride_controls.clear()
+        self._pause_button = None
+        self._stop_button = None
+        with self._ride_controls:
+            with ui.row().classes("items-center gap-2").style("flex-wrap: wrap;"):
+                self._pause_button = self._ride_action_button(
+                    "Resume",
+                    self._resume_session,
+                )
+                self._ride_action_button(
+                    "Save",
+                    self._save_current_session,
+                    variant="primary",
+                )
+                self._ride_action_button("Delete", self._discard_current_session)
+            ui.label("")  # grid spacer
+
+    def _render_stop_review_controls(self) -> None:
+        """Render save/delete controls after requesting stop."""
+        if self._ride_controls is None:
+            return
+
+        self._ride_controls.clear()
+        self._pause_button = None
+        self._stop_button = None
+        with self._ride_controls:
+            ui.label("")
+            ui.label("")  # grid spacer
+            with ui.row().classes("items-center gap-2").style("flex-wrap: wrap;"):
+                self._stop_button = self._ride_action_button(
+                    "Save",
+                    self._save_current_session,
+                    variant="primary",
+                )
+                self._ride_action_button("Delete", self._discard_current_session)
+
+    def _set_live_state_badge(self, text: str, *, paused: bool) -> None:
+        """Update the cockpit status badge."""
+        if self._state_badge is None:
+            return
+
+        badge_class = "demo" if paused else "live"
+        self._state_badge.set_content(
+            f'<span class="tr-state-badge {badge_class}">{text}</span>'
+        )
+
+    def _cancel_update_task(self) -> None:
+        """Stop the cockpit update timer if it is running."""
         if self._update_task:
             self._update_task.cancel()
             self._update_task = None
+
+    def _pause_session(self) -> None:
+        """Pause the current session and show end-of-ride choices."""
+        snapshot = self.runtime.pause_session()
+        if self._status_label:
+            self._status_label.set_text("Paused")
+        self._set_live_state_badge("Paused", paused=snapshot.paused)
+        self._render_paused_review_controls()
+
+    def _resume_session(self) -> None:
+        """Resume a paused session."""
+        snapshot = self.runtime.resume_session()
+        if self._status_label:
+            self._status_label.set_text("Session active")
+        self._set_live_state_badge("Active", paused=snapshot.paused)
+        self._render_live_ride_controls()
+
+    def _request_stop_session(self) -> None:
+        """Freeze the current session until the user saves or deletes it."""
+        self.runtime.request_stop_confirmation()
+        if self._status_label:
+            self._status_label.set_text("Stopped")
+        self._set_live_state_badge("Stopped", paused=True)
+        self._cancel_update_task()
+        self._render_stop_review_controls()
+
+    def _save_current_session(self) -> None:
+        """Stop the current session, persist it, and show the summary."""
+        result = self.runtime.stop_session_result()
+        self._set_last_stop_result(result)
+        self._cancel_update_task()
         ui.navigate.to("/summary")
+
+    def _discard_current_session(self) -> None:
+        """Stop the current session without saving and return home."""
+        self.runtime.discard_session()
+        self._set_last_stop_result(None)
+        self._cancel_update_task()
+        ui.navigate.to("/")
 
     def _exit_session(self) -> None:
         """Exit session without saving."""
         if self.controller.is_active:
-            self.runtime.stop_session()
-        if self._update_task:
-            self._update_task.cancel()
+            self.runtime.discard_session()
+        self._cancel_update_task()
         ui.navigate.to("/")
 
     def _render_stop_summary(self) -> None:

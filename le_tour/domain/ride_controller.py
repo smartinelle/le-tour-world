@@ -59,6 +59,8 @@ class RideController:
             sim_grade_pct=config.settings.default_sim_grade_pct,
         )
         self._started_monotonic: Optional[float] = None
+        self._paused_started_monotonic: Optional[float] = None
+        self._total_paused_s: float = 0.0
         self._last_sample_ts: Optional[float] = None
         self._sample_records: list[SampleModel] = []
         self._route_profile: Optional[RouteProfile] = None
@@ -166,6 +168,8 @@ class RideController:
         if mode is RideMode.SIM:
             self._sync_sim_grade_from_route(notify=False)
         self._started_monotonic = time.monotonic()
+        self._paused_started_monotonic = None
+        self._total_paused_s = 0.0
         self._last_sample_ts = None
         self._sample_records = []
         self._last_persistence_error = None
@@ -180,13 +184,22 @@ class RideController:
         Returns:
             The saved session id when samples were captured, otherwise None.
         """
+        return self._finish_session(persist=True)
+
+    def discard_session(self) -> None:
+        """Stop the active session without persisting samples."""
+        self._finish_session(persist=False)
+
+    def _finish_session(self, *, persist: bool) -> Optional[str]:
         if not self.is_active:
             return None
 
+        self._metrics.elapsed_s = self._elapsed_s()
+        self._state.ended_at = datetime.now(UTC)
         session_id = self._state.session_id
         saved_session_id: Optional[str] = None
 
-        if session_id is not None and self._sample_records:
+        if persist and session_id is not None and self._sample_records:
             session = self._build_session_model(session_id)
             try:
                 service = self._session_service or get_session_service()
@@ -200,25 +213,31 @@ class RideController:
 
         self._state.active = False
         self._state.paused = False
-        self._state.ended_at = datetime.now(UTC)
-        self._metrics.elapsed_s = self._elapsed_s()
         self._started_monotonic = None
+        self._paused_started_monotonic = None
+        self._total_paused_s = 0.0
         self._last_sample_ts = None
         self._notify_state()
         return saved_session_id
 
     def pause(self) -> None:
         """Pause the active session."""
-        if not self.is_active:
+        if not self.is_active or self.is_paused:
             return
+        self._metrics.elapsed_s = self._elapsed_s()
         self._state.paused = True
+        self._paused_started_monotonic = time.monotonic()
         self._last_sample_ts = None
         self._notify_state()
+        self._notify_metrics()
 
     def resume(self) -> None:
         """Resume a paused active session."""
-        if not self.is_active:
+        if not self.is_active or not self.is_paused:
             return
+        if self._paused_started_monotonic is not None:
+            self._total_paused_s += time.monotonic() - self._paused_started_monotonic
+        self._paused_started_monotonic = None
         self._state.paused = False
         self._last_sample_ts = None
         self._notify_state()
@@ -280,6 +299,9 @@ class RideController:
 
     def handle_bike_sample(self, sample: BikeSample) -> None:
         """Ingest one trainer sample and update live metrics."""
+        if not self.is_active or self.is_paused:
+            return
+
         sample_ts = float(sample["ts"])
         speed_mps = sample.get("speed_mps")
 
@@ -288,29 +310,31 @@ class RideController:
         self._metrics.cadence_rpm = sample.get("cadence_rpm")
         self._metrics.speed_mps = speed_mps
 
-        if self.is_active and not self.is_paused:
-            self._accumulate_distance(sample_ts, speed_mps)
-            self._sync_sim_grade_from_route()
-            self._record_sample(sample_ts)
-        else:
-            self._last_sample_ts = sample_ts
+        self._accumulate_distance(sample_ts, speed_mps)
+        self._sync_sim_grade_from_route()
+        self._record_sample(sample_ts)
 
         self._notify_metrics()
 
     def handle_hr_sample(self, sample: HrSample) -> None:
         """Ingest one heart-rate sample and update live metrics."""
+        if not self.is_active or self.is_paused:
+            return
+
         sample_ts = float(sample["ts"])
         self._metrics.elapsed_s = self._elapsed_s(sample_ts)
         self._metrics.hr_bpm = sample.get("hr_bpm")
 
-        if self.is_active and not self.is_paused:
-            self._record_sample(sample_ts)
+        self._record_sample(sample_ts)
 
         self._notify_metrics()
 
     def _elapsed_s(self, sample_ts: Optional[float] = None) -> float:
         if self._started_monotonic is not None:
-            return max(0.0, time.monotonic() - self._started_monotonic)
+            now = time.monotonic()
+            if self.is_paused and self._paused_started_monotonic is not None:
+                now = self._paused_started_monotonic
+            return max(0.0, now - self._started_monotonic - self._total_paused_s)
 
         started_at = self._state.started_at
         if started_at is None or sample_ts is None:
@@ -385,7 +409,7 @@ class RideController:
     def _build_session_model(self, session_id: str) -> SessionModel:
         config = get_config()
         start_time = self._state.started_at or datetime.now(UTC)
-        end_time = datetime.now(UTC)
+        end_time = self._state.ended_at or datetime.now(UTC)
         samples = self._sample_records
 
         power_values = [s.power_w for s in samples if s.power_w is not None]

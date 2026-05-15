@@ -120,10 +120,48 @@ class RideRuntime:
             persistence_error=self.controller.last_persistence_error,
         )
 
+    def request_stop_confirmation(self) -> RideSnapshot:
+        """Freeze the ride while the presentation asks how to end it."""
+        self.stop_fake_source()
+        self.controller.pause()
+        return self.controller.snapshot()
+
+    def discard_session(self) -> RideStopResult:
+        """Stop the ride without persisting recorded samples."""
+        session_id = self.controller.state.session_id
+        sample_count = self.controller.recorded_sample_count
+        self.stop_fake_source()
+        self.controller.discard_session()
+        snapshot = self.controller.snapshot()
+        return RideStopResult(
+            snapshot=snapshot,
+            session_id=session_id,
+            saved_session_id=None,
+            sample_count=sample_count,
+            persistence_error=None,
+        )
+
+    def pause_session(self) -> RideSnapshot:
+        """Pause the ride and return the latest snapshot."""
+        self.controller.pause()
+        return self.controller.snapshot()
+
+    def resume_session(self) -> RideSnapshot:
+        """Resume the ride and restart runtime-owned samples when needed."""
+        self.controller.resume()
+        if (
+            self.controller.is_active
+            and not self.controller.trainer.is_connected
+            and not self.using_fake_source
+        ):
+            self.start_fake_source()
+        return self.controller.snapshot()
+
     def toggle_pause(self) -> RideSnapshot:
         """Toggle pause state and return the latest snapshot."""
-        self.controller.toggle_pause()
-        return self.controller.snapshot()
+        if self.controller.is_paused:
+            return self.resume_session()
+        return self.pause_session()
 
     def adjust_erg_target(self, delta_w: int) -> RideSnapshot:
         """Adjust ERG target power and return the latest snapshot."""
