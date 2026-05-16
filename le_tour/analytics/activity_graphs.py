@@ -77,6 +77,8 @@ class ActivityCalendarDay:
 
     day: date
     activity_count: int
+    total_distance_m: float
+    total_duration_s: float
     label: str
     is_future: bool = False
 
@@ -184,11 +186,11 @@ def build_history_activity_calendar(
     current_week_start = anchor_day - timedelta(days=anchor_day.weekday())
     first_day = current_week_start - timedelta(weeks=week_count - 1)
 
-    activities_by_day: defaultdict[date, int] = defaultdict(int)
+    sessions_by_day: defaultdict[date, list[SessionModel]] = defaultdict(list)
     for session in sessions:
         session_day = _session_local_date(session, local_tz)
         if first_day <= session_day <= anchor_day:
-            activities_by_day[session_day] += 1
+            sessions_by_day[session_day].append(session)
 
     calendar_weeks: list[ActivityCalendarWeek] = []
     for week_index in range(week_count):
@@ -197,7 +199,7 @@ def build_history_activity_calendar(
             _activity_calendar_day(
                 week_start + timedelta(days=day_offset),
                 anchor_day=anchor_day,
-                activities_by_day=activities_by_day,
+                sessions_by_day=sessions_by_day,
             )
             for day_offset in range(7)
         )
@@ -396,24 +398,59 @@ def _activity_calendar_day(
     day: date,
     *,
     anchor_day: date,
-    activities_by_day: dict[date, int],
+    sessions_by_day: dict[date, list[SessionModel]],
 ) -> ActivityCalendarDay:
     is_future = day > anchor_day
-    activity_count = 0 if is_future else activities_by_day.get(day, 0)
+    sessions = [] if is_future else sessions_by_day.get(day, [])
+    activity_count = len(sessions)
+    total_distance_m = sum(session.total_distance_m or 0.0 for session in sessions)
+    total_duration_s = sum(session.duration_s or 0.0 for session in sessions)
     return ActivityCalendarDay(
         day=day,
         activity_count=activity_count,
-        label=_activity_calendar_label(day, activity_count, is_future),
+        total_distance_m=total_distance_m,
+        total_duration_s=total_duration_s,
+        label=_activity_calendar_label(
+            day,
+            activity_count,
+            total_distance_m,
+            total_duration_s,
+            is_future,
+        ),
         is_future=is_future,
     )
 
 
-def _activity_calendar_label(day: date, activity_count: int, is_future: bool) -> str:
+def _activity_calendar_label(
+    day: date,
+    activity_count: int,
+    total_distance_m: float,
+    total_duration_s: float,
+    is_future: bool,
+) -> str:
+    date_label = day.strftime("%A, %d %b %Y")
     if is_future:
-        return f"{day:%d %b}: upcoming"
-    if activity_count == 1:
-        return f"{day:%d %b}: 1 activity"
-    return f"{day:%d %b}: {activity_count} activities"
+        return f"{date_label}: upcoming"
+    if activity_count == 0:
+        return f"{date_label}: no rides"
+
+    ride_label = "1 ride" if activity_count == 1 else f"{activity_count} rides"
+    distance_label = _format_activity_distance(total_distance_m)
+    duration_label = _format_activity_duration(total_duration_s)
+    return f"{date_label}: {ride_label} · {distance_label} · {duration_label}"
+
+
+def _format_activity_distance(distance_m: float) -> str:
+    return f"{distance_m / 1000.0:.1f} km"
+
+
+def _format_activity_duration(duration_s: float) -> str:
+    total_seconds = int(duration_s)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes = remainder // 60
+    if hours:
+        return f"{hours} h {minutes:02d} min"
+    return f"{minutes} min"
 
 
 def _resolve_local_timezone(local_tz: tzinfo | None) -> tzinfo | None:

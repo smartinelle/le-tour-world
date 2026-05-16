@@ -114,8 +114,20 @@ def test_history_activity_calendar_marks_any_saved_session_active() -> None:
     days = calendar.weeks[0].days
     assert [day.activity_count for day in days[:4]] == [1, 0, 2, 0]
     assert [day.is_active for day in days[:4]] == [True, False, True, False]
-    assert days[0].label == "11 May: 1 activity"
-    assert days[2].label == "13 May: 2 activities"
+    assert days[0].label == "Monday, 11 May 2026: 1 ride · 0.0 km · 30 min"
+    assert days[2].label == "Wednesday, 13 May 2026: 2 rides · 7.0 km · 1 h 00 min"
+
+
+def test_history_activity_calendar_labels_empty_and_future_days() -> None:
+    calendar = build_history_activity_calendar(
+        [],
+        weeks=1,
+        today=date(2026, 5, 14),
+        local_tz=UTC,
+    )
+
+    assert calendar.weeks[0].days[0].label == "Monday, 11 May 2026: no rides"
+    assert calendar.weeks[0].days[-1].label == "Sunday, 17 May 2026: upcoming"
 
 
 def test_session_power_graph_adds_target_series_and_ftp_reference() -> None:
