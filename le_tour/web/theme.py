@@ -453,6 +453,23 @@ body {
     color: var(--color-neon-zest) !important;
 }
 
+.q-btn.tr-seg.active:hover {
+    background: var(--color-canvas-white) !important;
+    color: var(--color-neon-zest) !important;
+}
+
+.q-btn.tr-seg .q-focus-helper,
+.q-btn.tr-seg .q-focus-helper::before,
+.q-btn.tr-seg .q-focus-helper::after {
+    background: transparent !important;
+    opacity: 0 !important;
+}
+
+.q-btn.tr-seg .q-ripple,
+.q-btn.tr-seg .q-ripple__inner {
+    display: none !important;
+}
+
 /* Action row: secondary action stays left, primary action owns the right side. */
 .tr-action-row {
     align-items: stretch;
@@ -474,6 +491,58 @@ body {
 .tr-home-grid > .tr-panel {
     display: flex;
     flex-direction: column;
+}
+
+.tr-home-activity-panel {
+    gap: var(--spacing-24);
+    grid-column: 1 / -1;
+    overflow: hidden;
+}
+
+.tr-home-activity-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: var(--spacing-8);
+    scrollbar-width: thin;
+}
+
+.tr-home-activity-scroll:focus-visible {
+    outline: 1px solid var(--color-obsidian-slate);
+    outline-offset: 4px;
+}
+
+.tr-home-activity-grid {
+    --activity-cell-min: 10px;
+    --activity-gap: 6px;
+
+    display: grid;
+    gap: var(--activity-gap);
+    grid-template-columns: repeat(
+        var(--activity-weeks),
+        minmax(var(--activity-cell-min), 1fr)
+    );
+    min-width: var(--activity-min-width);
+    width: 100%;
+}
+
+.tr-home-activity-week {
+    display: grid;
+    gap: var(--activity-gap);
+    grid-template-rows: repeat(7, auto);
+    min-width: var(--activity-cell-min);
+}
+
+.tr-home-activity-cell {
+    aspect-ratio: 1;
+    background: var(--color-warm-mist);
+    border: 0;
+    border-radius: 2px;
+    display: block;
+    width: 100%;
+}
+
+.tr-home-activity-cell.active {
+    background: var(--color-neon-zest);
 }
 
 @media (max-width: 1279px) {

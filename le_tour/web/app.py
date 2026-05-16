@@ -15,6 +15,7 @@ from nicegui import ui, app
 
 from ..analytics.activity_graphs import (
     ActivityGraphRange,
+    build_history_activity_calendar,
     build_history_distance_graph,
     build_session_cadence_graph,
     build_session_hr_graph,
@@ -30,7 +31,7 @@ from ..config import UserSettings, get_config
 from ..devices.base import DeviceNotFoundError, ConnectionError as DeviceConnectionError
 from ..store.export import DataExporter
 from ..store.models import SampleModel, SessionModel, SessionSummary
-from .components.activity_graphs import GraphControl, activity_graph
+from .components.activity_graphs import GraphControl, activity_calendar, activity_graph
 from .components.controls import (
     ButtonVariant,
     action_button,
@@ -639,19 +640,21 @@ class WebUI:
                             meta_stat(f"{route.max_grade_pct:.1f}", "Max grade %")
                             meta_stat(str(len(route.segments)), "Segments")
 
-        def render_recent_rides() -> None:
+        def load_home_sessions() -> list[SessionModel]:
             try:
-                sessions = get_session_service().list_sessions(limit=6)
+                return get_session_service().list_sessions(limit=10_000)
             except Exception as exc:
-                logger.warning("Failed to load recent rides: %s", exc)
-                sessions = []
+                logger.warning("Failed to load home sessions: %s", exc)
+                return []
 
+        def render_recent_rides(sessions: list[SessionModel]) -> None:
+            recent_sessions = sessions[:6]
             panel_header(
                 "Recent rides",
                 "Latest sessions on this device.",
-                action=("View all →", "/history") if sessions else None,
+                action=("View all →", "/history") if recent_sessions else None,
             )
-            if not sessions:
+            if not recent_sessions:
                 empty_state(
                     "No rides yet",
                     "Your completed rides will appear here.",
@@ -661,14 +664,18 @@ class WebUI:
                 )
                 return
             with ui.element("div").classes("tr-sessions tr-sessions-compact w-full"):
-                for session in sessions:
+                for session in recent_sessions:
                     self._render_session_row(session, compact=True)
+
+        def render_activity(sessions: list[SessionModel]) -> None:
+            activity_calendar(build_history_activity_calendar(sessions))
 
         connected = self.controller.trainer.is_connected
         # Status display lives in the header now; keep these handles around so
         # auto-connect can still patch text without crashing on missing nodes.
         self._connection_dot = None
         self._connection_status_label = None
+        home_sessions = load_home_sessions()
 
         with page_container():
             with ui.element("div").classes("tr-home-grid"):
@@ -702,7 +709,9 @@ class WebUI:
                         hero_button("Start Ride", start_selected)
 
                 with ui.column().classes("tr-panel p-6 gap-4"):
-                    render_recent_rides()
+                    render_recent_rides(home_sessions)
+
+                render_activity(home_sessions)
 
         # Auto-connect if not already connected (like CLI does on startup)
         # Use a NiceGUI timer so UI updates run with a valid page slot.

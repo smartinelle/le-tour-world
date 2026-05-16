@@ -171,6 +171,61 @@ def test_theme_button_uses_pill_radius():
     assert "var(--radius-buttons)" in block.group(0)
 
 
+def test_theme_segmented_control_suppresses_quasar_overlays():
+    """Segmented controls should not flash Quasar hover/ripple colors."""
+    focus_block = re.search(
+        r"\.q-btn\.tr-seg \.q-focus-helper,[^{]*\{[^}]+\}",
+        WEB_STYLES,
+    )
+    assert focus_block is not None
+    assert "background: transparent !important" in focus_block.group(0)
+    assert "opacity: 0 !important" in focus_block.group(0)
+
+    ripple_block = re.search(r"\.q-btn\.tr-seg \.q-ripple,[^{]*\{[^}]+\}", WEB_STYLES)
+    assert ripple_block is not None
+    assert "display: none !important" in ripple_block.group(0)
+
+    active_hover_block = re.search(
+        r"\.q-btn\.tr-seg\.active:hover\s*\{[^}]+\}", WEB_STYLES
+    )
+    assert active_hover_block is not None
+    assert (
+        "background: var(--color-canvas-white) !important"
+        in active_hover_block.group(0)
+    )
+    assert "color: var(--color-neon-zest) !important" in active_hover_block.group(0)
+
+
+def test_theme_home_activity_calendar_matches_card_spec():
+    """Home activity uses one card, fixed week columns, and binary cell colors."""
+    panel_block = re.search(r"\.tr-home-activity-panel\s*\{[^}]+\}", WEB_STYLES)
+    assert panel_block is not None
+    assert "grid-column: 1 / -1" in panel_block.group(0)
+
+    scroll_block = re.search(r"\.tr-home-activity-scroll\s*\{[^}]+\}", WEB_STYLES)
+    assert scroll_block is not None
+    assert "overflow-x: auto" in scroll_block.group(0)
+
+    grid_block = re.search(r"\.tr-home-activity-grid\s*\{[^}]+\}", WEB_STYLES)
+    assert grid_block is not None
+    assert "minmax(var(--activity-cell-min), 1fr)" in grid_block.group(0)
+    assert "min-width: var(--activity-min-width)" in grid_block.group(0)
+    assert "width: 100%" in grid_block.group(0)
+
+    empty_cell_block = re.search(r"\.tr-home-activity-cell\s*\{[^}]+\}", WEB_STYLES)
+    assert empty_cell_block is not None
+    assert "aspect-ratio: 1" in empty_cell_block.group(0)
+    assert "background: var(--color-warm-mist)" in empty_cell_block.group(0)
+    assert "border: 0" in empty_cell_block.group(0)
+
+    active_cell_block = re.search(
+        r"\.tr-home-activity-cell\.active\s*\{[^}]+\}",
+        WEB_STYLES,
+    )
+    assert active_cell_block is not None
+    assert "background: var(--color-neon-zest)" in active_cell_block.group(0)
+
+
 def test_theme_panels_use_card_radius():
     """Per Groq spec, panels must use --radius-cards (0px)."""
     block = re.search(r"\.tr-panel,[^{]*\{[^}]+\}", WEB_STYLES)

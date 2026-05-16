@@ -11,6 +11,8 @@ from typing import Sequence
 from nicegui import ui
 
 from le_tour.analytics.activity_graphs import (
+    ActivityCalendarData,
+    ActivityCalendarWeek,
     ActivityGraphData,
     ActivityGraphPoint,
     ActivityGraphSeries,
@@ -54,6 +56,13 @@ def activity_graph(
         _render_graph_body(graph, controls=())
 
 
+def activity_calendar(calendar: ActivityCalendarData) -> None:
+    """Render the home-page activity calendar panel."""
+    with ui.element("section").classes("tr-panel tr-home-activity-panel p-6"):
+        ui.label(calendar.title).classes("tr-panel-title")
+        ui.html(_render_activity_calendar_html(calendar), sanitize=False)
+
+
 def _render_graph_header(
     graph: ActivityGraphData,
     controls: Sequence[GraphControl],
@@ -90,6 +99,37 @@ def _render_graph_body(
         return
 
     ui.html(_render_svg(graph), sanitize=False)
+
+
+def _render_activity_calendar_html(calendar: ActivityCalendarData) -> str:
+    week_count = max(1, len(calendar.weeks))
+    min_cell_px = 10
+    gap_px = 6
+    min_width_px = week_count * min_cell_px + (week_count - 1) * gap_px
+    chunks = [
+        '<div class="tr-home-activity-scroll" tabindex="0" '
+        'aria-label="52 week activity calendar">',
+        '<div class="tr-home-activity-grid" '
+        f'style="--activity-weeks: {week_count}; '
+        f'--activity-min-width: {min_width_px}px">',
+    ]
+    for week in calendar.weeks:
+        chunks.append(_render_activity_week(week))
+    chunks.append("</div></div>")
+    return "".join(chunks)
+
+
+def _render_activity_week(week: ActivityCalendarWeek) -> str:
+    chunks = ['<div class="tr-home-activity-week">']
+    for day in week.days:
+        state = "active" if day.is_active else "empty"
+        label = escape(day.label)
+        chunks.append(
+            f'<span class="tr-home-activity-cell {state}" '
+            f'title="{label}" aria-label="{label}"></span>'
+        )
+    chunks.append("</div>")
+    return "".join(chunks)
 
 
 def _render_svg(graph: ActivityGraphData) -> str:

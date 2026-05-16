@@ -71,6 +71,36 @@ class ActivityGraphData:
         return any(series.points for series in self.series)
 
 
+@dataclass(frozen=True)
+class ActivityCalendarDay:
+    """One day in a year-style activity calendar."""
+
+    day: date
+    activity_count: int
+    label: str
+    is_future: bool = False
+
+    @property
+    def is_active(self) -> bool:
+        """Return true when at least one activity happened on this day."""
+        return self.activity_count > 0 and not self.is_future
+
+
+@dataclass(frozen=True)
+class ActivityCalendarWeek:
+    """One Monday-starting week in the activity calendar."""
+
+    days: tuple[ActivityCalendarDay, ...]
+
+
+@dataclass(frozen=True)
+class ActivityCalendarData:
+    """Presentation-ready 52-week activity calendar data."""
+
+    title: str
+    weeks: tuple[ActivityCalendarWeek, ...]
+
+
 def normalize_graph_range(value: str | None) -> ActivityGraphRange:
     """Normalize user-facing range input for history graphs."""
     if value == "7d":
@@ -138,6 +168,42 @@ def build_history_distance_graph(
         empty_title="No rides in this range",
         empty_detail="Try another range or complete a ride.",
     )
+
+
+def build_history_activity_calendar(
+    sessions: Sequence[SessionModel],
+    *,
+    weeks: int = 52,
+    today: date | None = None,
+    local_tz: tzinfo | None = None,
+) -> ActivityCalendarData:
+    """Build a 7-row, week-column activity calendar from saved rides."""
+    local_tz = _resolve_local_timezone(local_tz)
+    anchor_day = today or _local_today(local_tz)
+    week_count = max(1, weeks)
+    current_week_start = anchor_day - timedelta(days=anchor_day.weekday())
+    first_day = current_week_start - timedelta(weeks=week_count - 1)
+
+    activities_by_day: defaultdict[date, int] = defaultdict(int)
+    for session in sessions:
+        session_day = _session_local_date(session, local_tz)
+        if first_day <= session_day <= anchor_day:
+            activities_by_day[session_day] += 1
+
+    calendar_weeks: list[ActivityCalendarWeek] = []
+    for week_index in range(week_count):
+        week_start = first_day + timedelta(weeks=week_index)
+        days = tuple(
+            _activity_calendar_day(
+                week_start + timedelta(days=day_offset),
+                anchor_day=anchor_day,
+                activities_by_day=activities_by_day,
+            )
+            for day_offset in range(7)
+        )
+        calendar_weeks.append(ActivityCalendarWeek(days=days))
+
+    return ActivityCalendarData(title="Activity", weeks=tuple(calendar_weeks))
 
 
 def build_session_power_graph(
@@ -324,6 +390,30 @@ def _history_detail(graph_range: ActivityGraphRange) -> str:
     if graph_range == "30d":
         return "Distance by day for the last 30 days."
     return "Distance by day since your first saved ride through today."
+
+
+def _activity_calendar_day(
+    day: date,
+    *,
+    anchor_day: date,
+    activities_by_day: dict[date, int],
+) -> ActivityCalendarDay:
+    is_future = day > anchor_day
+    activity_count = 0 if is_future else activities_by_day.get(day, 0)
+    return ActivityCalendarDay(
+        day=day,
+        activity_count=activity_count,
+        label=_activity_calendar_label(day, activity_count, is_future),
+        is_future=is_future,
+    )
+
+
+def _activity_calendar_label(day: date, activity_count: int, is_future: bool) -> str:
+    if is_future:
+        return f"{day:%d %b}: upcoming"
+    if activity_count == 1:
+        return f"{day:%d %b}: 1 activity"
+    return f"{day:%d %b}: {activity_count} activities"
 
 
 def _resolve_local_timezone(local_tz: tzinfo | None) -> tzinfo | None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 
 from le_tour.analytics.activity_graphs import (
+    build_history_activity_calendar,
     build_history_distance_graph,
     build_session_power_graph,
     normalize_graph_range,
@@ -78,6 +79,43 @@ def test_history_distance_graph_all_uses_available_span_through_today() -> None:
     assert points[-1].label == "15.05"
     assert points[-1].y == 0.0
     assert graph.detail == "Distance by day since your first saved ride through today."
+
+
+def test_history_activity_calendar_defaults_to_52_full_weeks() -> None:
+    calendar = build_history_activity_calendar(
+        [],
+        today=date(2026, 5, 16),
+        local_tz=UTC,
+    )
+
+    assert calendar.title == "Activity"
+    assert len(calendar.weeks) == 52
+    assert all(len(week.days) == 7 for week in calendar.weeks)
+    assert calendar.weeks[0].days[0].day == date(2025, 5, 19)
+    assert calendar.weeks[-1].days[-1].day == date(2026, 5, 17)
+    assert calendar.weeks[-1].days[-1].is_future is True
+
+
+def test_history_activity_calendar_marks_any_saved_session_active() -> None:
+    start = datetime(2026, 5, 11, tzinfo=UTC)
+    sessions = [
+        _session(0, distance_m=0.0, start=start),
+        _session(2, distance_m=3_000.0, start=start),
+        _session(2, distance_m=4_000.0, start=start),
+    ]
+
+    calendar = build_history_activity_calendar(
+        sessions,
+        weeks=1,
+        today=date(2026, 5, 14),
+        local_tz=UTC,
+    )
+
+    days = calendar.weeks[0].days
+    assert [day.activity_count for day in days[:4]] == [1, 0, 2, 0]
+    assert [day.is_active for day in days[:4]] == [True, False, True, False]
+    assert days[0].label == "11 May: 1 activity"
+    assert days[2].label == "13 May: 2 activities"
 
 
 def test_session_power_graph_adds_target_series_and_ftp_reference() -> None:
