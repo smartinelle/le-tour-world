@@ -474,6 +474,10 @@ def attach_ride3d_routes(
     async def ride_motion_script() -> FileResponse:
         return FileResponse(STATIC_DIR / "ride_motion.js", media_type="text/javascript")
 
+    @web_app.get("/static/live_snake.js")
+    async def live_snake_script() -> FileResponse:
+        return FileResponse(STATIC_DIR / "live_snake.js", media_type="text/javascript")
+
     @web_app.get("/api/ride/routes")
     async def ride_routes() -> list[dict[str, object]]:
         return [

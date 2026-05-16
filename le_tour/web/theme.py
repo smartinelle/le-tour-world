@@ -782,6 +782,98 @@ body {
     text-align: center;
 }
 
+.tr-power-panel.tr-snake-panel {
+    overflow: hidden;
+    padding: clamp(12px, 2vw, var(--spacing-32));
+    position: relative;
+}
+
+.tr-snake-canvas {
+    aspect-ratio: 21 / 11;
+    max-height: 704px;
+    max-width: 1344px;
+    position: relative;
+}
+
+.tr-snake-svg {
+    display: block;
+    height: 100%;
+    overflow: visible;
+    width: 100%;
+}
+
+.tr-snake-watts-island {
+    align-items: center;
+    background: var(--color-canvas-white);
+    display: flex;
+    flex-direction: column;
+    height: 45.4545%;
+    justify-content: center;
+    left: 33.3333%;
+    pointer-events: none;
+    position: absolute;
+    top: 27.2727%;
+    width: 33.3333%;
+    z-index: 2;
+}
+
+.tr-snake-readout {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    opacity: 1;
+    transition: opacity 0.22s ease-out;
+}
+
+.tr-snake-power-value {
+    color: var(--color-neon-zest);
+    font-family: var(--font-space-grotesk);
+    font-size: clamp(68px, 13vw, 200px);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-medium);
+    letter-spacing: 0;
+    line-height: 0.9;
+}
+
+.tr-snake-loader {
+    align-items: center;
+    display: flex;
+    gap: 0;
+    height: 45.4545%;
+    justify-content: center;
+    left: 33.3333%;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 27.2727%;
+    transition: opacity 0.32s ease-out;
+    width: 33.3333%;
+    z-index: 3;
+}
+
+.tr-snake-loader span {
+    background: var(--color-neon-zest);
+    border-radius: var(--radius-full);
+    display: block;
+    height: clamp(22px, 4.6vw, 64px);
+    margin-left: clamp(-18px, -2.25vw, -10px);
+    opacity: 0.12;
+    width: clamp(22px, 4.6vw, 64px);
+}
+
+.tr-snake-loader span:first-child {
+    margin-left: 0;
+}
+
+.tr-snake-canvas.is-warming .tr-snake-loader {
+    opacity: 1;
+}
+
+.tr-snake-canvas.is-warming .tr-snake-readout {
+    opacity: 0;
+}
+
 /* Tight value+unit pair inside the power panel. */
 .tr-power-readout {
     align-items: center;

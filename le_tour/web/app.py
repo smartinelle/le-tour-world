@@ -45,6 +45,7 @@ from .components.layout import (
     render_app_header,
     render_page_title,
 )
+from .components.live_snake import live_snake_panel, load_live_snake_script
 from .components.metrics import meta_stat, metric_cell, power_panel
 from .components.status import empty_state, status_tile
 from .ride3d import attach_ride3d_routes
@@ -795,6 +796,7 @@ class WebUI:
     def _render_session(self, mode: str, route_id: str | None = None) -> None:
         """Render the full-screen session cockpit."""
         apply_theme()
+        self._power_label = None
 
         mode_enum = {
             "free": RideMode.FREE,
@@ -826,9 +828,10 @@ class WebUI:
                     ui.label("")  # grid spacer for the centre column
                     self._time_label = ui.label("00:00").classes("tr-cockpit-clock")
 
-                # Hero card — power readout dominates, target controls inline.
-                with ui.element("div").classes("tr-power-panel"):
-                    self._power_label = power_panel()
+                # Hero card — calibrated snake paints ride history around the
+                # protected watts island from the design handoff.
+                with ui.element("div").classes("tr-power-panel tr-snake-panel"):
+                    live_snake_panel(get_config().settings.ftp_w or 200)
                     if mode == "erg":
                         with ui.element("div").classes("tr-cockpit-target-row"):
                             action_button(
@@ -870,6 +873,7 @@ class WebUI:
                                 self._route_progress_label = ui.label(
                                     f"0.00 / {route.distance_m / 1000:.2f} km"
                                 ).classes("tr-cockpit-route-meta")
+                load_live_snake_script()
 
                 with ui.element("div").classes("tr-metric-rail"):
                     self._cadence_label = metric_cell("--", "Cadence RPM")
