@@ -1,6 +1,8 @@
 # Generative World Modeling — Repo Map & Experiment Plan
 
-Status: working plan (2026-07-08). Companion to [architecture.md](architecture.md),
+Status: deferred (2026-07-08) — sequenced after [core-ride-plan.md](core-ride-plan.md),
+which builds the non-AI foundation first (world-fixed renderer, one flagship map,
+dashboard, ride feel). Companion to [architecture.md](architecture.md),
 which describes the target architecture (LLM → compact DSL → procedural compiler →
 instanced Three.js scene). This document records where the repo actually stands
 against that vision and the ordered experiments to close the gap.
