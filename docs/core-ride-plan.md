@@ -62,6 +62,30 @@ what the generative architecture ([architecture.md](architecture.md)) assumes.
 - Exit criteria: both bundled routes ridable on the new renderer, geometry
   constructed once (only actors and HUD update per frame), 60 FPS.
 
+**Status: done (2026-07-08).** Implementation notes where reality diverged
+from the sketch above:
+
+- The centerline is a dense arc-length-indexed polyline (4 m spacing) with
+  grade/turn-rate smoothed over 30 m transition windows, not a
+  `CatmullRomCurve3` — distance → pose lookups must stay exact for trainer
+  sync, and a parametric spline would need arc-length reparameterization for
+  no visual gain at this sample density.
+- Loop closure (`route_path.js`): residual net turn is removed, and the
+  compiler may bend in one extra full turn in either direction — curling
+  routes that were never authored as loops into one — before redistributing
+  the remaining position/elevation drift along the path. A route authored to
+  close picks zero extra turns naturally, so the flagship map (M2) still
+  wants a closure check at authoring time.
+- Modules are `route_path.js` (path compiler), `world_builder.js` (static
+  world, merged vertex-colored meshes), `ride3d.js` (entry: camera, actors,
+  HUD). The HUD split waits for M4 when the HUD actually grows.
+- Surface and scenery colors are baked per-vertex into the static road,
+  shoulder, and ground-corridor ribbons; only sky/fog/distant-terrain swap
+  with the rider's current scenery.
+- three.js is vendored at `le_tour/web/static/vendor/three.module.js` — a
+  local-first app should not need a CDN at runtime to render its ride
+  surface.
+
 ### M2 — One good map: terrain and scenery
 
 - **Terrain:** seeded-noise heightfield chunks along the route corridor,

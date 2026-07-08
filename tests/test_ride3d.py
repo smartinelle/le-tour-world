@@ -1,4 +1,4 @@
-"""Tests for the Three.js ride prototype page."""
+"""Tests for the Three.js ride surface (world-fixed renderer)."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -18,6 +18,8 @@ from le_tour.web.ride3d import (
 RIDE3D_JS = Path("le_tour/web/static/ride3d.js").read_text()
 RIDE_CLIENT_JS = Path("le_tour/web/static/ride_client.js").read_text()
 RIDE_MOTION_JS = Path("le_tour/web/static/ride_motion.js").read_text()
+ROUTE_PATH_JS = Path("le_tour/web/static/route_path.js").read_text()
+WORLD_BUILDER_JS = Path("le_tour/web/static/world_builder.js").read_text()
 WEB_APP_PY = Path("le_tour/web/app.py").read_text()
 
 
@@ -61,6 +63,23 @@ def test_ride3d_routes_endpoint_lists_bundled_routes():
     assert payload[0]["segment_count"] == 5
 
 
+def test_ride3d_serves_renderer_modules():
+    """The world-fixed renderer modules are served as static assets."""
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: None)  # type: ignore[arg-type]
+    client = TestClient(app)
+
+    for name in (
+        "route_path.js",
+        "world_builder.js",
+        "ride3d.js",
+        "vendor/three.module.js",
+    ):
+        response = client.get(f"/static/{name}")
+        assert response.status_code == 200, name
+        assert "javascript" in response.headers["content-type"], name
+
+
 def test_ride3d_start_endpoint_prepares_hardware_session():
     """3D start uses the same runtime hardware preparation as other UIs."""
     runtime = MagicMock()
@@ -88,14 +107,16 @@ def test_ride3d_start_endpoint_prepares_hardware_session():
 
 
 def test_ride3d_page_consumes_snapshot_stream():
-    """3D prototype is a browser-only snapshot stream consumer."""
-    assert '<script type="module" src="/static/ride3d.js"></script>' in RIDE3D_HTML
+    """3D surface is a browser-only snapshot stream consumer."""
+    assert '<script type="module" src="/static/ride3d.js?v=' in RIDE3D_HTML
     assert 'import { RideApiClient } from "/static/ride_client.js?v=' in RIDE3D_JS
-    assert 'import { RideMotionModel } from "/static/ride_motion.js"' in RIDE3D_JS
+    assert 'import { RideMotionModel } from "/static/ride_motion.js?v=' in RIDE3D_JS
     assert "new EventSource(this.snapshotUrl)" in RIDE_CLIENT_JS
     assert '"/api/ride/snapshots"' in RIDE_CLIENT_JS
     assert "export class RideMotionModel" in RIDE_MOTION_JS
-    assert "https://esm.sh/three" in RIDE3D_JS
+    # three.js is vendored so the local-first ride surface works offline.
+    assert 'import * as THREE from "/static/vendor/three.module.js"' in RIDE3D_JS
+    assert 'import * as THREE from "/static/vendor/three.module.js"' in WORLD_BUILDER_JS
     assert "speed_mps" in RIDE3D_JS
     assert "canvas" in RIDE3D_HTML
     assert "fetch(" not in RIDE3D_JS
@@ -103,7 +124,7 @@ def test_ride3d_page_consumes_snapshot_stream():
 
 
 def test_ride3d_page_has_session_controls():
-    """3D prototype can start and stop local ride sessions."""
+    """3D surface can start and stop local ride sessions."""
     assert 'data-start-mode="free"' in RIDE3D_HTML
     assert 'data-start-mode="erg"' in RIDE3D_HTML
     assert 'data-start-mode="sim"' in RIDE3D_HTML
@@ -182,21 +203,18 @@ def test_ride3d_motion_model_owns_scene_motion():
     """3D scene reads render-friendly motion state, not raw snapshots."""
     assert "motion.updateFromSnapshot(snapshot)" in RIDE3D_JS
     assert "const sceneState = motion.advance(dt, now)" in RIDE3D_JS
-    assert "sceneState.roadOffset" in RIDE3D_JS
     assert "sceneState.cameraBob" in RIDE3D_JS
-    assert "sceneState.cameraPitch" in RIDE3D_JS
+    assert "sceneState.cameraRoll" in RIDE3D_JS
     assert "targetSpeedMps" in RIDE_MOTION_JS
     assert "cameraPitch" in RIDE_MOTION_JS
 
 
-def test_ride3d_uses_grade_aware_render_state():
-    """SIM grade changes visibly affect the scene through motion state."""
-    assert "const roadGroup = new THREE.Group()" in RIDE3D_JS
-    assert "roadGroup.add(road)" in RIDE3D_JS
-    assert "roadGroup.rotation.x = sceneState.roadPitch" in RIDE3D_JS
-    assert "hills.position.y = sceneState.horizonLift" in RIDE3D_JS
-    assert "roadPitch" in RIDE_MOTION_JS
-    assert "horizonLift" in RIDE_MOTION_JS
+def test_ride3d_motion_model_tracks_continuous_render_distance():
+    """The camera needs a continuous distance between 4 Hz snapshots."""
+    assert "renderDistanceM" in RIDE_MOTION_JS
+    assert "this.renderDistanceM += this.speedMps * boundedDt" in RIDE_MOTION_JS
+    assert "distanceErrorM" in RIDE_MOTION_JS
+    assert "sceneState.renderDistanceM" in RIDE3D_JS
 
 
 def test_ride3d_motion_model_defines_distance_route_segments():
@@ -215,59 +233,127 @@ def test_ride3d_motion_model_defines_distance_route_segments():
     assert "routeGradePct" in RIDE_MOTION_JS
     assert "nextSegmentName" in RIDE_MOTION_JS
     assert "nextSegmentGradePct" in RIDE_MOTION_JS
-    assert "segmentGateAlpha" in RIDE_MOTION_JS
     assert "scenery" in RIDE_MOTION_JS
 
 
-def test_ride3d_hud_and_scene_use_route_segment_state():
-    """Route segment state feeds HUD text and scene variation."""
-    assert "const route = await rideClient.getRoute(routeId)" in RIDE3D_JS
-    assert "routeSegments: route.segments" in RIDE3D_JS
-    assert "sceneState.routeSegmentName" in RIDE3D_JS
-    assert "sceneState.gradePct.toFixed(1)" in RIDE3D_JS
-    assert "sceneState.routeSegmentProgress" in RIDE3D_JS
-    assert "hills.rotation.y = sceneState.routeSegmentProgress" in RIDE3D_JS
+def test_route_path_compiles_world_fixed_centerline():
+    """Routes compile once into an arc-length-indexed world-fixed centerline."""
+    assert "export function buildRoutePath(route)" in ROUTE_PATH_JS
+    assert "SAMPLE_SPACING_M" in ROUTE_PATH_JS
+    assert "TRANSITION_WINDOW_M" in ROUTE_PATH_JS
+    assert "poseAt" in ROUTE_PATH_JS
+    assert "segmentBoundaries" in ROUTE_PATH_JS
+    assert 'import { buildRoutePath } from "/static/route_path.js?v=' in RIDE3D_JS
+    assert "activePath = buildRoutePath(route)" in RIDE3D_JS
 
 
-def test_ride3d_uses_route_geometry_for_road_shape():
-    """Route geometry affects road width, yaw, camera look, and curve signage."""
-    assert "turnDeg" in RIDE_MOTION_JS
-    assert "roadWidthM" in RIDE_MOTION_JS
-    assert "headingDeg" in RIDE_MOTION_JS
-    assert "curveStrength" in RIDE_MOTION_JS
-    assert "function buildRoutePath(route)" in RIDE3D_JS
-    assert "function visibleRouteSamples(routePath, distanceM)" in RIDE3D_JS
-    assert "function ribbonGeometry(samples" in RIDE3D_JS
-    assert "activeRoutePath = buildRoutePath(route)" in RIDE3D_JS
-    assert "replaceGeometry(" in RIDE3D_JS
-    assert "camera.lookAt(sceneState.cameraLookX" in RIDE3D_JS
+def test_route_path_closes_the_loop():
+    """Rides wrap modulo route length, so the compiled path must close."""
+    assert "headingResidualRad" in ROUTE_PATH_JS
+    assert "turnCorrectionRadPerM" in ROUTE_PATH_JS
+    assert "elevationDriftM" in ROUTE_PATH_JS
+    assert "closure" in ROUTE_PATH_JS
+    # Drift correction bends tangents, so headings are recomputed from
+    # corrected positions and unwrapped for interpolation.
+    assert "wrapToPi" in ROUTE_PATH_JS
+    assert "Math.atan2" in ROUTE_PATH_JS
+
+
+def test_world_is_built_once_not_per_frame():
+    """World geometry is compiled at route load; frames only move the camera."""
+    assert "export function buildWorld(path)" in WORLD_BUILDER_JS
+    assert (
+        'import { applyScenery, buildWorld } from "/static/world_builder.js?v='
+        in RIDE3D_JS
+    )
+    assert "world = buildWorld(activePath)" in RIDE3D_JS
+    assert "scene.add(world.group)" in RIDE3D_JS
+    assert "world.dispose()" in RIDE3D_JS
+    # The treadmill-era per-frame geometry churn must stay gone.
+    assert "replaceGeometry" not in RIDE3D_JS
+    assert "visibleRouteSamples" not in RIDE3D_JS
+    assert "updateRoadGeometry" not in RIDE3D_JS
+
+
+def test_world_builder_builds_static_road_from_path():
+    """Road, shoulders, and ground ride the compiled centerline."""
+    assert "function ribbonGeometry(" in WORLD_BUILDER_JS
+    assert "function buildRoadSurfaces(path, group)" in WORLD_BUILDER_JS
+    assert "computeVertexNormals" in WORLD_BUILDER_JS
+    assert "GROUND_HALF_WIDTH_M" in WORLD_BUILDER_JS
+
+
+def test_world_builder_bakes_surface_and_scenery_colors():
+    """Surface and scenery are painted per-vertex along the world, not swapped
+    globally as the rider crosses segments."""
+    assert "export const surfaceColors" in WORLD_BUILDER_JS
+    assert "export const sceneryPalettes" in WORLD_BUILDER_JS
+    assert "vertexColors: true" in WORLD_BUILDER_JS
+    assert "blendedPaletteColor" in WORLD_BUILDER_JS
+    assert "applySurface" not in RIDE3D_JS
+
+
+def test_world_builder_merges_static_runs_into_few_meshes():
+    """Dashes, posts, chevrons, and props are merged for a small draw-call
+    budget until M2 introduces instancing."""
+    assert "function mergeGeometries(geometries)" in WORLD_BUILDER_JS
+    assert "function buildLaneDashes(path, group)" in WORLD_BUILDER_JS
+    assert "function buildRailPosts(path, group)" in WORLD_BUILDER_JS
+    assert "function buildCurveChevrons(path, group)" in WORLD_BUILDER_JS
+    assert "function buildProps(path, group)" in WORLD_BUILDER_JS
+    assert "matrixAutoUpdate = false" in WORLD_BUILDER_JS
+
+
+def test_world_builder_places_scenery_props_along_route():
+    """Roadside props are placed deterministically by segment scenery."""
+    assert "propBuilders" in WORLD_BUILDER_JS
+    assert "propSpacingM" in WORLD_BUILDER_JS
+    assert "createTreeProp" in WORLD_BUILDER_JS
+    assert "createVillageProp" in WORLD_BUILDER_JS
+    assert "createRockProp" in WORLD_BUILDER_JS
+    assert "createFieldProp" in WORLD_BUILDER_JS
+    assert "pseudoRandom" in WORLD_BUILDER_JS
+
+
+def test_world_builder_renders_river_ribbons_for_river_segments():
+    """River scenery gets static water ribbons alongside the route."""
+    assert "function buildRiverRibbons(path, group)" in WORLD_BUILDER_JS
+    assert 'scenery === "river"' in WORLD_BUILDER_JS
+    assert "waterMaterial" in WORLD_BUILDER_JS
+
+
+def test_world_builder_renders_segment_gates_at_boundaries():
+    """Segment boundaries get static gates colored by the next grade."""
+    assert "function buildSegmentGates(path, group)" in WORLD_BUILDER_JS
+    assert "gradePct >= 0" in WORLD_BUILDER_JS
+    assert "gateUphillMaterial" in WORLD_BUILDER_JS
+    assert "gateDownhillMaterial" in WORLD_BUILDER_JS
+
+
+def test_ride3d_scenery_palette_tracks_rider_position():
+    """Sky, fog, and distant terrain follow the rider's current scenery."""
+    assert "export function applyScenery(renderer, scene, scenery)" in WORLD_BUILDER_JS
+    assert "renderer.setClearColor(palette.sky, 1)" in WORLD_BUILDER_JS
+    assert "scene.fog.color.setHex(palette.sky)" in WORLD_BUILDER_JS
+    assert "applyScenery(renderer, scene, sceneState.scenery)" in RIDE3D_JS
+
+
+def test_ride3d_camera_follows_route_path():
+    """The camera moves through a fixed world along the compiled path."""
+    assert "function updateCamera(sceneState)" in RIDE3D_JS
+    assert "activePath.poseAt(sceneState.renderDistanceM)" in RIDE3D_JS
+    assert "poseAt(sceneState.renderDistanceM + LOOK_AHEAD_M)" in RIDE3D_JS
+    assert "camera.lookAt(ahead.x" in RIDE3D_JS
     assert "camera.rotation.z += sceneState.cameraRoll" in RIDE3D_JS
 
 
-def test_ride3d_generates_live_road_ribbon_from_route_path():
-    """The visible road mesh is rebuilt from sampled route centerline data."""
-    assert "sampleRoutePath(routePath, distanceM)" in RIDE3D_JS
-    assert "ribbonGeometry(samples, (widthM) => -widthM / 2" in RIDE3D_JS
-    assert "updateLaneMarkers(samples)" in RIDE3D_JS
-    assert "sample.roadWidthM / 2 + 2.3" in RIDE3D_JS
-    assert "roadGroup.rotation.y = 0" in RIDE3D_JS
-
-
-def test_ride3d_renders_curve_chevrons_from_route_geometry():
-    """Curve metadata produces a visible route cue without BLE coupling."""
-    assert "const curveChevronGroup = new THREE.Group()" in RIDE3D_JS
-    assert "function updateCurveChevrons(sceneState)" in RIDE3D_JS
-    assert "sceneState.routeCurveStrength" in RIDE3D_JS
-    assert "chevronMaterial.opacity" in RIDE3D_JS
-    assert "updateCurveChevrons(sceneState)" in RIDE3D_JS
-
-
-def test_ride3d_renders_pacer_riders_from_motion_state():
-    """A small rider pack gives the route a Zwift-like sense of scale."""
+def test_ride3d_renders_pacer_riders_on_route_path():
+    """The pacer pack rides the same world-fixed path as the camera."""
     assert "const pacerGroup = new THREE.Group()" in RIDE3D_JS
     assert "new THREE.CapsuleGeometry" in RIDE3D_JS
     assert "function updatePacerRiders(sceneState, now)" in RIDE3D_JS
     assert "pacerGroup.visible = sceneState.active" in RIDE3D_JS
+    assert "activePath.poseAt(pacerDistanceM)" in RIDE3D_JS
     assert "updatePacerRiders(sceneState, now)" in RIDE3D_JS
 
 
@@ -279,44 +365,6 @@ def test_ride3d_renders_player_cockpit_from_motion_state():
     assert "cockpitGroup.visible = sceneState.active" in RIDE3D_JS
     assert "frontWheel.rotation.x" in RIDE3D_JS
     assert "updateCockpit(sceneState, now)" in RIDE3D_JS
-
-
-def test_ride3d_renders_scenery_props_from_route_samples():
-    """Roadside objects use the same route samples as the road ribbon."""
-    assert "const roadsidePropGroup = new THREE.Group()" in RIDE3D_JS
-    assert 'scenery: String(segment.scenery || "fields")' in RIDE3D_JS
-    assert "scenery: sample.scenery" in RIDE3D_JS
-    assert "function activePropVariant(scenery)" in RIDE3D_JS
-    assert "function updateRoadsideProps(sceneState, samples)" in RIDE3D_JS
-    assert "activePropVariant(sample.scenery || sceneState.scenery)" in RIDE3D_JS
-    assert "sample.roadWidthM / 2 + 3.5" in RIDE3D_JS
-    assert "updateRoadsideProps(sceneState, roadSamples)" in RIDE3D_JS
-
-
-def test_ride3d_renders_river_ribbon_for_river_segments():
-    """River scenery gets a lightweight water ribbon alongside the route."""
-    assert "const riverRibbon = new THREE.Mesh(" in RIDE3D_JS
-    assert "propMaterials.water" in RIDE3D_JS
-    assert 'samples.some((sample) => sample.scenery === "river")' in RIDE3D_JS
-    assert "near.roadWidthM / 2 + 5.8" in RIDE3D_JS
-
-
-def test_ride3d_scenery_palette_tracks_route_segment():
-    """Segment scenery updates the lightweight world palette."""
-    assert "const sceneryPalettes" in RIDE3D_JS
-    assert "function applyScenery(scenery)" in RIDE3D_JS
-    assert "applyScenery(sceneState.scenery)" in RIDE3D_JS
-    assert "renderer.setClearColor(palette.sky, 1)" in RIDE3D_JS
-    assert "groundMaterial.color.setHex(palette.ground)" in RIDE3D_JS
-    assert "hillMaterial.color.setHex(palette.hills)" in RIDE3D_JS
-
-
-def test_ride3d_surface_palette_tracks_route_segment():
-    """Segment surface updates the lightweight road material."""
-    assert "const surfaceColors" in RIDE3D_JS
-    assert "function applySurface(surface)" in RIDE3D_JS
-    assert "applySurface(sceneState.routeSurface)" in RIDE3D_JS
-    assert "roadMaterial.color.setHex" in RIDE3D_JS
 
 
 def test_ride3d_builds_route_profile_hud_from_motion_state():
@@ -339,17 +387,6 @@ def test_ride3d_builds_elevation_profile_from_route_spec():
     assert 'document.createElementNS(ns, "polyline")' in RIDE3D_JS
     assert "elevationProfile.update(sceneState, snapshot.active)" in RIDE3D_JS
     assert "elevationProfile = createElevationProfile(hud.routeHud, route)" in RIDE3D_JS
-
-
-def test_ride3d_renders_segment_gate_from_route_state():
-    """Upcoming segment state drives a lightweight route gate."""
-    assert "const segmentGate = new THREE.Group()" in RIDE3D_JS
-    assert "function updateSegmentGate(sceneState, samples)" in RIDE3D_JS
-    assert "sceneState.segmentGateAlpha" in RIDE3D_JS
-    assert "sceneState.nextSegmentGradePct >= 0" in RIDE3D_JS
-    assert "sceneState.routeSegmentRemainingM / 5.2" in RIDE3D_JS
-    assert "segmentGate.position.set(sample.x, sample.y, sample.z)" in RIDE3D_JS
-    assert "updateSegmentGate(sceneState, roadSamples)" in RIDE3D_JS
 
 
 def test_parse_ride_mode():

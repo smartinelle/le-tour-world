@@ -428,7 +428,7 @@ RIDE3D_HTML = """<!doctype html>
 
   <a class="back" href="/">Home</a>
 
-  <script type="module" src="/static/ride3d.js"></script>
+  <script type="module" src="/static/ride3d.js?v=world-fixed"></script>
 </body>
 </html>
 """
@@ -473,6 +473,22 @@ def attach_ride3d_routes(
     @web_app.get("/static/ride_motion.js")
     async def ride_motion_script() -> FileResponse:
         return FileResponse(STATIC_DIR / "ride_motion.js", media_type="text/javascript")
+
+    @web_app.get("/static/vendor/three.module.js")
+    async def three_module_script() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "vendor" / "three.module.js", media_type="text/javascript"
+        )
+
+    @web_app.get("/static/route_path.js")
+    async def route_path_script() -> FileResponse:
+        return FileResponse(STATIC_DIR / "route_path.js", media_type="text/javascript")
+
+    @web_app.get("/static/world_builder.js")
+    async def world_builder_script() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "world_builder.js", media_type="text/javascript"
+        )
 
     @web_app.get("/static/live_snake.js")
     async def live_snake_script() -> FileResponse:

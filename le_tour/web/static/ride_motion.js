@@ -43,6 +43,7 @@ export class RideMotionModel {
     this.targetSpeedMps = 0;
     this.speedMps = 0;
     this.distanceM = 0;
+    this.renderDistanceM = 0;
     this.gradePct = 0;
     this.routeGradePct = 0;
     this.routeSegmentName = "Route segment";
@@ -174,6 +175,17 @@ export class RideMotionModel {
       this.speedMps = 0;
     }
 
+    // Continuous route distance for the world-fixed camera: integrate the
+    // smoothed speed between snapshots and gently converge on the authoritative
+    // snapshot distance, snapping only across resets and large gaps.
+    this.renderDistanceM += this.speedMps * boundedDt;
+    const distanceErrorM = this.distanceM - this.renderDistanceM;
+    if (Math.abs(distanceErrorM) > 25) {
+      this.renderDistanceM = this.distanceM;
+    } else {
+      this.renderDistanceM += distanceErrorM * (1 - Math.exp(-1.5 * boundedDt));
+    }
+
     this.roadOffset =
       (this.roadOffset + this.speedMps * boundedDt) % this.dashSpacing;
     this.roadPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
@@ -199,6 +211,7 @@ export class RideMotionModel {
       speedMps: this.speedMps,
       targetSpeedMps: this.targetSpeedMps,
       distanceM: this.distanceM,
+      renderDistanceM: this.renderDistanceM,
       gradePct: this.gradePct,
       routeGradePct: this.routeGradePct,
       routeSegmentName: this.routeSegmentName,
