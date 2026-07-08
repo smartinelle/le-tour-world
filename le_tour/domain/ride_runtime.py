@@ -45,6 +45,7 @@ class RideRuntime:
         if route_profile is not None:
             self.controller.set_route_profile(route_profile)
         self._fake_source: Optional[FakeTrainerSampleSource] = None
+        self._virtual_power_w: Optional[float] = None
         self._trainer_samples_attached = False
         self._hr_samples_attached = False
 
@@ -173,6 +174,23 @@ class RideRuntime:
         self.controller.adjust_sim_grade(delta_pct)
         return self.controller.snapshot()
 
+    @property
+    def virtual_power_w(self) -> Optional[float]:
+        """Rider-controlled virtual trainer power, or None in auto mode."""
+        return self._virtual_power_w
+
+    def set_virtual_power(self, power_w: Optional[float]) -> RideSnapshot:
+        """Pin the no-hardware source's power to a live rider-set value.
+
+        The virtual trainer for feel testing: exact watts in, world response
+        out — no hardware in the loop. None returns to the auto demo power.
+        Ignored while a real trainer drives the session.
+        """
+        self._virtual_power_w = power_w
+        if self._fake_source is not None:
+            self._virtual_power_w = self._fake_source.set_manual_power(power_w)
+        return self.controller.snapshot()
+
     def start_fake_source(self) -> None:
         """Start no-hardware development samples for the active session."""
         if not self.controller.is_active or self.controller.trainer.is_connected:
@@ -194,6 +212,8 @@ class RideRuntime:
             snapshot_provider=self.controller.snapshot,
             interval_s=1.0,
         )
+        if self._virtual_power_w is not None:
+            self._fake_source.set_manual_power(self._virtual_power_w)
         self._fake_source.start()
         logger.info("Started fake trainer sample source")
 

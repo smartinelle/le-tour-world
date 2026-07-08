@@ -6,6 +6,7 @@ export class RideApiClient {
     pauseUrl = "/api/ride/toggle-pause",
     ergTargetUrl = "/api/ride/erg-target",
     simGradeUrl = "/api/ride/sim-grade",
+    virtualPowerUrl = "/api/ride/virtual-power",
     routesUrl = "/api/ride/routes",
     routeUrl = "/api/ride/route",
     devicesStatusUrl = "/api/devices/status",
@@ -17,6 +18,7 @@ export class RideApiClient {
     this.pauseUrl = pauseUrl;
     this.ergTargetUrl = ergTargetUrl;
     this.simGradeUrl = simGradeUrl;
+    this.virtualPowerUrl = virtualPowerUrl;
     this.routesUrl = routesUrl;
     this.routeUrl = routeUrl;
     this.devicesStatusUrl = devicesStatusUrl;
@@ -52,6 +54,10 @@ export class RideApiClient {
 
   adjustSimGrade(delta) {
     return this.postJson(this.simGradeUrl, { delta });
+  }
+
+  setVirtualPower(watts) {
+    return this.postJson(this.virtualPowerUrl, { watts });
   }
 
   async getRoutes() {

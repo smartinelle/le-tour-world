@@ -332,31 +332,116 @@ class TestSimControl:
         assert controller.metrics.sim_grade_pct == 0.4
 
     def test_route_profile_updates_sim_grade_from_distance(self):
-        """Route profile updates SIM grade as distance crosses segments."""
+        """Route profile updates SIM grade as physics distance crosses segments."""
         controller = RideController()
         controller.set_route_profile(default_demo_route())
         controller.start_session(RideMode.SIM)
         start = time.time()
 
+        # Ride hard at 1 Hz until physics distance crosses the 420 m Valley
+        # Rollers / Pine Rise boundary (300 W flat sustains ~11.5 m/s).
+        for second in range(75):
+            controller.handle_bike_sample(
+                {
+                    "ts": start + second,
+                    "power_w": 300,
+                    "cadence_rpm": 90,
+                    "speed_mps": 10.0,
+                }
+            )
+
+        assert controller.metrics.distance_m > 420.0
+        assert controller.metrics.sim_grade_pct == 3.2
+
+
+class TestPhysicsSpeedAuthority:
+    """With a route attached, the virtual world computes speed from power."""
+
+    def _sample(self, ts: float, power_w: int = 200) -> dict[str, object]:
+        return {
+            "ts": ts,
+            "power_w": power_w,
+            "cadence_rpm": 90,
+            "speed_mps": 99.0,  # implausible trainer speed: must be ignored
+        }
+
+    def test_route_ride_uses_physics_speed_not_trainer_speed(self):
+        """Speed comes from rider dynamics; trainer speed stays diagnostic."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+        controller.start_session(RideMode.SIM)
+        start = time.time()
+
+        for second in range(30):
+            controller.handle_bike_sample(self._sample(start + second))
+
+        assert controller.metrics.speed_source == "physics"
+        assert controller.metrics.trainer_speed_mps == 99.0
+        assert controller.metrics.speed_mps is not None
+        # 200 W on the flat warmup sustains ~9-10 m/s, nowhere near 99.
+        assert 5.0 < controller.metrics.speed_mps < 15.0
+
+    def test_route_ride_accumulates_physics_distance(self):
+        """Distance integrates the physics speed, not the trainer speed."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+        controller.start_session(RideMode.SIM)
+        start = time.time()
+
+        for second in range(10):
+            controller.handle_bike_sample(self._sample(start + second))
+
+        # 9 seconds of riding from a standstill at 200 W: well under the
+        # 891 m the bogus 99 m/s trainer speed would have produced.
+        assert 0.0 < controller.metrics.distance_m < 100.0
+
+    def test_speed_ramps_with_inertia_not_instantly(self):
+        """Speed builds over seconds from a standing start."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+        controller.start_session(RideMode.FREE)
+        start = time.time()
+
+        speeds: list[float] = []
+        for second in range(12):
+            controller.handle_bike_sample(self._sample(start + second))
+            speeds.append(float(controller.metrics.speed_mps or 0.0))
+
+        assert speeds[1] < speeds[5] < speeds[-1]
+        assert speeds[1] < 5.0  # still accelerating early on
+
+    def test_no_route_keeps_trainer_speed_authority(self):
+        """Without a world, the trainer's reported speed is used directly."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+
         controller.handle_bike_sample(
             {
-                "ts": start,
-                "power_w": 160,
-                "cadence_rpm": 80,
-                "speed_mps": 10.0,
-            }
-        )
-        controller.handle_bike_sample(
-            {
-                "ts": start + 43.0,
-                "power_w": 170,
-                "cadence_rpm": 82,
-                "speed_mps": 10.0,
+                "ts": time.time(),
+                "power_w": 200,
+                "cadence_rpm": 90,
+                "speed_mps": 8.5,
             }
         )
 
-        assert controller.metrics.distance_m == 430.0
-        assert controller.metrics.sim_grade_pct == 3.2
+        assert controller.metrics.speed_source == "trainer"
+        assert controller.metrics.speed_mps == 8.5
+        assert controller.metrics.trainer_speed_mps == 8.5
+
+    def test_snapshot_exposes_speed_source_and_trainer_speed(self):
+        """Clients can observe both speeds for calibration benches."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+        controller.start_session(RideMode.SIM)
+        start = time.time()
+        controller.handle_bike_sample(self._sample(start))
+        controller.handle_bike_sample(self._sample(start + 1))
+
+        snapshot = controller.snapshot().to_dict()
+
+        assert snapshot["speed_source"] == "physics"
+        assert snapshot["trainer_speed_mps"] == 99.0
+        assert snapshot["speed_mps"] != 99.0
 
 
 class TestSampleHandling:

@@ -106,6 +106,49 @@ def test_ride3d_start_endpoint_prepares_hardware_session():
     runtime.prepare_hardware_session.assert_awaited_once_with(RideMode.ERG)
 
 
+def test_ride3d_virtual_power_endpoint_sets_rider_watts():
+    """The virtual trainer endpoint forwards live rider-set watts."""
+    runtime = MagicMock()
+    runtime.set_virtual_power.return_value = RideSnapshot(
+        session_state="active", active=True
+    )
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    response = TestClient(app).post("/api/ride/virtual-power", json={"watts": 250})
+
+    assert response.status_code == 200
+    runtime.set_virtual_power.assert_called_once_with(250.0)
+
+
+def test_ride3d_virtual_power_endpoint_accepts_auto_mode():
+    """A null wattage returns the virtual trainer to auto demo power."""
+    runtime = MagicMock()
+    runtime.set_virtual_power.return_value = RideSnapshot(session_state="inactive")
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    response = TestClient(app).post("/api/ride/virtual-power", json={"watts": None})
+
+    assert response.status_code == 200
+    runtime.set_virtual_power.assert_called_once_with(None)
+
+
+def test_ride3d_page_has_virtual_trainer_controls():
+    """Ride feel is testable without hardware: live watts from the browser."""
+    assert 'id="virtual-trainer"' in RIDE3D_HTML
+    assert 'id="virtual-power-slider"' in RIDE3D_HTML
+    assert 'id="virtual-power-auto"' in RIDE3D_HTML
+    assert 'data-virtual-power="300"' in RIDE3D_HTML
+    assert "sendVirtualPower" in RIDE3D_JS
+    assert "updateVirtualTrainerPanel(snapshot)" in RIDE3D_JS
+    assert "rideClient.setVirtualPower" in RIDE3D_JS
+    assert '"/api/ride/virtual-power"' in RIDE_CLIENT_JS
+    assert "setVirtualPower(watts)" in RIDE_CLIENT_JS
+    # Panel only appears while riding the demo source, never with hardware.
+    assert "!snapshot.active || snapshot.trainer_connected" in RIDE3D_JS
+
+
 def test_ride3d_page_consumes_snapshot_stream():
     """3D surface is a browser-only snapshot stream consumer."""
     assert '<script type="module" src="/static/ride3d.js?v=' in RIDE3D_HTML
@@ -121,6 +164,9 @@ def test_ride3d_page_consumes_snapshot_stream():
     assert "canvas" in RIDE3D_HTML
     assert "fetch(" not in RIDE3D_JS
     assert "EventSource(" not in RIDE3D_JS
+    # The CSS fallback yields to the canvas once WebGL actually renders.
+    assert "scene-fallback" in RIDE3D_HTML
+    assert 'document.querySelector(".scene-fallback")' in RIDE3D_JS
 
 
 def test_ride3d_page_has_session_controls():

@@ -60,9 +60,13 @@ example script. In-ride speed is whatever the trainer reports as wheel speed
 - Descent speed is whatever the trainer coasts to; the world's -8% grade
   produces no 60 km/h reward.
 
-**Decision needed:** make app-computed speed authoritative (trainer supplies
-power; we integrate speed/distance from the physics model), which is how the
-major platforms work. The trainer-reported speed stays as a diagnostic.
+**Decision (2026-07-08): app-computed speed is authoritative — implemented.**
+Whenever a route is attached, `RideController` computes speed and distance
+from measured power via `RiderDynamics` (rider mass/CdA/Crr from config, true
+route grade); the trainer supplies power and receives resistance. The
+trainer's own wheel speed is kept in metrics/snapshots as
+`trainer_speed_mps` (with `speed_source`) so calibration benches can compare
+the two. Rides without a route keep trainer-speed authority.
 
 **F2 — The solver is steady-state only; there is no inertia model.**
 `solve_speed(power, grade)` returns equilibrium speed. At 200 W, crossing
@@ -78,6 +82,13 @@ architecture doc's Cardano treatment solves the same steady-state equation
 and has the same gap — inertia is what makes both feel right). Solver cost is
 3.8 µs/solve **[measured]**, so rate is a non-issue. `MAX_SPEED = 20 m/s`
 (72 km/h) also needs revisiting once descents are real.
+
+**Implemented (2026-07-08):** `RiderDynamics` in `le_tour/modes/sim.py`
+integrates dv/dt at 0.1 s substeps between samples (BLE gaps clamped at 3 s,
+speed cap raised to 30 m/s), cross-validated in tests against
+`solve_speed` equilibria within 2%. A **virtual trainer** panel on `/ride3d`
+(live watt slider + presets driving `/api/ride/virtual-power`) provides exact
+step inputs, so B2-style feel checks run in the browser with no hardware.
 
 **F3 — Resistance is sent as steps.** Grade goes to the trainer as
 piecewise-constant per segment, written when the value changes at sample
@@ -265,9 +276,11 @@ stay comparable over time.
 
 ## 3. What to instrument next (feeds M2–M6)
 
-1. **Decide speed authority** (F1) and add the inertia integrator (F2) —
-   physics decision before the flagship map tunes feel. Small, isolated:
-   controller + `sim.py`, golden tests extend `test_sim_physics.py`.
+1. ~~**Decide speed authority** (F1) and add the inertia integrator (F2)~~ —
+   **done (2026-07-08)**: app-computed speed authoritative with routes,
+   `RiderDynamics` integrator, virtual trainer panel for no-hardware feel
+   testing. Remaining from this cluster: grade *ramping* to the trainer (F3,
+   still M3) and a KICKR ride to compare `speed_mps` vs `trainer_speed_mps`.
 2. **Timestamp ladder** through sample → snapshot → browser (B3) — a day of
    plumbing, permanent observability.
 3. **`?debug` frame-pacing overlay** (B4) and a reference-hardware baseline

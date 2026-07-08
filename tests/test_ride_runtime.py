@@ -228,3 +228,32 @@ def test_fake_source_ignores_fake_hr_when_hr_hardware_connected():
     kwargs = source.call_args.kwargs
     kwargs["hr_handler"]({"ts": 1.0, "hr_bpm": 155})
     assert controller.metrics.hr_bpm is None
+
+
+def test_set_virtual_power_reaches_running_fake_source():
+    """Live rider-set watts are forwarded to the running virtual trainer."""
+    controller = RideController()
+    runtime = RideRuntime(controller)
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
+        source.return_value.is_running = True
+        source.return_value.set_manual_power.return_value = 250.0
+        runtime.start_session(RideMode.FREE)
+
+        snapshot = runtime.set_virtual_power(250)
+
+        source.return_value.set_manual_power.assert_called_once_with(250)
+        assert runtime.virtual_power_w == 250.0
+        assert snapshot.active is True
+
+
+def test_virtual_power_set_before_start_applies_on_fake_source_creation():
+    """Virtual power chosen before the ride starts sticks to the new source."""
+    controller = RideController()
+    runtime = RideRuntime(controller)
+    runtime.set_virtual_power(180)
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
+        source.return_value.is_running = True
+
+        runtime.start_session(RideMode.FREE)
+
+        source.return_value.set_manual_power.assert_called_once_with(180)

@@ -27,6 +27,12 @@ class RideMetrics:
     power_w: Optional[int] = None
     cadence_rpm: Optional[int] = None
     speed_mps: Optional[float] = None
+    # Raw wheel speed reported by the trainer. Diagnostic only: when a route
+    # is attached, `speed_mps` is app-computed from power and terrain (the
+    # virtual world is the authority), and this keeps the trainer's own view
+    # observable for calibration benches.
+    trainer_speed_mps: Optional[float] = None
+    speed_source: str = "trainer"
     distance_m: float = 0.0
     hr_bpm: Optional[int] = None
     erg_target_w: int = 150
@@ -39,6 +45,8 @@ class RideMetrics:
             "power_w": self.power_w,
             "cadence_rpm": self.cadence_rpm,
             "speed_mps": self.speed_mps,
+            "trainer_speed_mps": self.trainer_speed_mps,
+            "speed_source": self.speed_source,
             "distance_m": self.distance_m,
             "hr_bpm": self.hr_bpm,
             "erg_target_w": self.erg_target_w,
@@ -76,6 +84,8 @@ class RideSnapshot:
     power_w: Optional[int] = None
     cadence_rpm: Optional[int] = None
     speed_mps: Optional[float] = None
+    trainer_speed_mps: Optional[float] = None
+    speed_source: str = "trainer"
     distance_m: float = 0.0
     hr_bpm: Optional[int] = None
     erg_target_w: int = 150
@@ -97,6 +107,8 @@ class RideSnapshot:
             "power_w": self.power_w,
             "cadence_rpm": self.cadence_rpm,
             "speed_mps": self.speed_mps,
+            "trainer_speed_mps": self.trainer_speed_mps,
+            "speed_source": self.speed_source,
             "distance_m": self.distance_m,
             "hr_bpm": self.hr_bpm,
             "erg_target_w": self.erg_target_w,

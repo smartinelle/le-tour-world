@@ -1,4 +1,4 @@
-"""SIM mode physics solver for power-to-speed calculation."""
+"""SIM mode physics: power-to-speed solver and virtual rider dynamics."""
 
 import math
 from dataclasses import dataclass
@@ -147,3 +147,77 @@ class SimPhysics:
                 high = mid
 
         return (low + high) / 2
+
+
+@dataclass(frozen=True)
+class DynamicsStep:
+    """Result of advancing the virtual rider by one sample interval."""
+
+    speed_mps: float
+    distance_m: float
+
+
+class RiderDynamics:
+    """Integrate virtual rider speed from measured power with inertia.
+
+    `SimPhysics.solve_speed` answers "what speed does this power sustain?" —
+    the steady state. Riding feel lives in the transient: crossing onto a
+    climb sheds speed over seconds as kinetic energy drains, not instantly.
+    This integrates dv/dt = (F_propulsion - F_gravity - F_rolling - F_aero)/m
+    between trainer samples, so app-computed speed (the virtual-world
+    authority) responds to terrain the way a bike does.
+    """
+
+    GRAVITY = SimPhysics.GRAVITY
+    DRIVETRAIN_LOSS = SimPhysics.DRIVETRAIN_LOSS
+    MAX_SPEED = 30.0  # m/s; descent terminal velocities exceed the solver's 20
+    MAX_STEP_S = 3.0  # clamp BLE gaps so one late sample cannot teleport
+    SUBSTEP_S = 0.1
+    # Below this speed, propulsive force is computed at this speed so P/v is
+    # bounded; caps standing-start force at a realistic pedal push.
+    MIN_PROPULSION_SPEED = 0.5
+
+    def __init__(self, config: SimConfig):
+        self.config = config
+        self.speed_mps = 0.0
+
+    def reset(self, speed_mps: float = 0.0) -> None:
+        """Reset rider speed (session start, resume from pause)."""
+        self.speed_mps = max(0.0, min(self.MAX_SPEED, speed_mps))
+
+    def step(self, power_w: float, grade_pct: float, dt_s: float) -> DynamicsStep:
+        """Advance the rider by one sample interval.
+
+        Args:
+            power_w: Rider power for the interval (W); 0 while coasting.
+            grade_pct: Road grade over the interval (positive = uphill).
+            dt_s: Time since the previous sample.
+
+        Returns:
+            New speed and the distance covered during the interval.
+        """
+        available_power = max(0.0, float(power_w) - self.DRIVETRAIN_LOSS)
+        grade_rad = math.atan(float(grade_pct) / 100.0)
+        weight_n = self.config.mass_kg * self.GRAVITY
+        f_gravity = weight_n * math.sin(grade_rad)
+        f_rolling = weight_n * self.config.crr * math.cos(grade_rad)
+
+        remaining_s = max(0.0, min(float(dt_s), self.MAX_STEP_S))
+        distance_m = 0.0
+        speed = self.speed_mps
+        while remaining_s > 0.0:
+            substep_s = min(self.SUBSTEP_S, remaining_s)
+            remaining_s -= substep_s
+
+            f_propulsion = available_power / max(speed, self.MIN_PROPULSION_SPEED)
+            f_aero = 0.5 * self.config.rho_kg_m3 * self.config.cda_m2 * speed**2
+            # Rolling resistance opposes motion; it cannot push a stopped
+            # rider backwards.
+            f_resist = f_gravity + f_aero + (f_rolling if speed > 0.0 else 0.0)
+            acceleration = (f_propulsion - f_resist) / self.config.mass_kg
+
+            speed = max(0.0, min(self.MAX_SPEED, speed + acceleration * substep_s))
+            distance_m += speed * substep_s
+
+        self.speed_mps = speed
+        return DynamicsStep(speed_mps=speed, distance_m=distance_m)

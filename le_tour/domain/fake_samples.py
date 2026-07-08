@@ -41,6 +41,25 @@ class FakeTrainerSampleSource:
         self._cadence_rpm = 82.0
         self._speed_mps = 7.0
         self._hr_bpm = 112.0
+        self._manual_power_w: Optional[float] = None
+
+    @property
+    def manual_power_w(self) -> Optional[float]:
+        """Rider-controlled power override, or None in auto demo mode."""
+        return self._manual_power_w
+
+    def set_manual_power(self, power_w: Optional[float]) -> Optional[float]:
+        """Pin emitted power to a live rider-controlled value.
+
+        This turns the fake source into a virtual trainer: exact, immediate
+        power steps for testing ride feel without hardware. Pass None to
+        return to the wandering auto demo power.
+        """
+        if power_w is None:
+            self._manual_power_w = None
+        else:
+            self._manual_power_w = max(0.0, min(1500.0, float(power_w)))
+        return self._manual_power_w
 
     @property
     def is_running(self) -> bool:
@@ -81,6 +100,9 @@ class FakeTrainerSampleSource:
 
     def next_bike_sample(self, snapshot: RideSnapshot, ts: float) -> BikeSample:
         """Return the next deterministic-ish bike sample."""
+        if self._manual_power_w is not None:
+            return self._manual_bike_sample(ts)
+
         elapsed_s = max(0.0, ts - (self._started_at_s or ts))
         wave = math.sin(elapsed_s / 18.0)
         noise = self._random.uniform(-1.0, 1.0)
@@ -109,6 +131,25 @@ class FakeTrainerSampleSource:
             "ts": ts,
             "power_w": max(0, int(round(self._power_w))),
             "cadence_rpm": max(0, int(round(self._cadence_rpm))),
+            "speed_mps": max(0.0, min(16.0, self._speed_mps)),
+        }
+
+    def _manual_bike_sample(self, ts: float) -> BikeSample:
+        """Exact rider-controlled power: deterministic step inputs for feel
+        testing — no wave, no noise."""
+        power_w = float(self._manual_power_w or 0.0)
+        # Track internal state so switching back to auto resumes smoothly.
+        self._power_w = power_w
+        self._cadence_rpm = (
+            0.0 if power_w <= 0 else min(130.0, max(60.0, 60.0 + power_w / 8.0))
+        )
+        desired_speed = 0.0 if power_w <= 0 else 3.2 + power_w / 38.0
+        self._speed_mps += (desired_speed - self._speed_mps) * 0.18
+
+        return {
+            "ts": ts,
+            "power_w": int(round(power_w)),
+            "cadence_rpm": int(round(self._cadence_rpm)),
             "speed_mps": max(0.0, min(16.0, self._speed_mps)),
         }
 

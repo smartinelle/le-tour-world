@@ -18,6 +18,7 @@ from uuid import uuid4
 from le_tour.analytics import calculate_training_metrics
 from le_tour.config import get_config
 from le_tour.devices.base import BikeSample, HrSample
+from le_tour.modes.sim import RiderDynamics, SimConfig
 from le_tour.store.models import SampleModel, SessionModel, TrainingMode
 
 from .hr_service import HrService
@@ -64,6 +65,7 @@ class RideController:
         self._last_sample_ts: Optional[float] = None
         self._sample_records: list[SampleModel] = []
         self._route_profile: Optional[RouteProfile] = None
+        self._dynamics = self._build_dynamics()
         self._last_persistence_error: Optional[str] = None
 
         self.on_metrics_update: Optional[Callable[[RideMetrics], None]] = None
@@ -122,6 +124,8 @@ class RideController:
             power_w=self._metrics.power_w,
             cadence_rpm=self._metrics.cadence_rpm,
             speed_mps=self._metrics.speed_mps,
+            trainer_speed_mps=self._metrics.trainer_speed_mps,
+            speed_source=self._metrics.speed_source,
             distance_m=self._metrics.distance_m,
             hr_bpm=self._metrics.hr_bpm,
             erg_target_w=self._metrics.erg_target_w,
@@ -167,6 +171,7 @@ class RideController:
         )
         if mode is RideMode.SIM:
             self._sync_sim_grade_from_route(notify=False)
+        self._dynamics = self._build_dynamics()
         self._started_monotonic = time.monotonic()
         self._paused_started_monotonic = None
         self._total_paused_s = 0.0
@@ -240,6 +245,8 @@ class RideController:
         self._paused_started_monotonic = None
         self._state.paused = False
         self._last_sample_ts = None
+        # The rider restarts from a standstill after a pause.
+        self._dynamics.reset()
         self._notify_state()
 
     def toggle_pause(self) -> bool:
@@ -298,19 +305,44 @@ class RideController:
         self._sync_sim_grade_from_route()
 
     def handle_bike_sample(self, sample: BikeSample) -> None:
-        """Ingest one trainer sample and update live metrics."""
+        """Ingest one trainer sample and update live metrics.
+
+        With a route attached, the virtual world is the speed authority:
+        speed and distance come from rider dynamics (measured power + route
+        grade + rider profile), so terrain, mass, and aerodynamics behave the
+        same on every trainer. The trainer's own wheel speed is kept as a
+        diagnostic. Without a route there is no world, and the trainer's
+        reported speed is used directly.
+        """
         if not self.is_active or self.is_paused:
             return
 
         sample_ts = float(sample["ts"])
-        speed_mps = sample.get("speed_mps")
+        trainer_speed_mps = sample.get("speed_mps")
 
         self._metrics.elapsed_s = self._elapsed_s(sample_ts)
         self._metrics.power_w = sample.get("power_w")
         self._metrics.cadence_rpm = sample.get("cadence_rpm")
-        self._metrics.speed_mps = speed_mps
+        self._metrics.trainer_speed_mps = trainer_speed_mps
 
-        self._accumulate_distance(sample_ts, speed_mps)
+        dt_s = self._sample_dt(sample_ts)
+        if self._route_profile is not None:
+            # Physics uses the true route grade; the resistance clamp below
+            # only limits what is asked of the trainer hardware.
+            step = self._dynamics.step(
+                power_w=float(self._metrics.power_w or 0),
+                grade_pct=self._route_profile.grade_at(self._metrics.distance_m),
+                dt_s=dt_s,
+            )
+            self._metrics.speed_mps = step.speed_mps
+            self._metrics.distance_m += step.distance_m
+            self._metrics.speed_source = "physics"
+        else:
+            self._metrics.speed_mps = trainer_speed_mps
+            if trainer_speed_mps is not None:
+                self._metrics.distance_m += max(0.0, trainer_speed_mps) * dt_s
+            self._metrics.speed_source = "trainer"
+
         self._sync_sim_grade_from_route()
         self._record_sample(sample_ts)
 
@@ -342,22 +374,25 @@ class RideController:
 
         return max(0.0, sample_ts - started_at.timestamp())
 
-    def _accumulate_distance(
-        self,
-        sample_ts: float,
-        speed_mps: Optional[float],
-    ) -> None:
+    def _sample_dt(self, sample_ts: float) -> float:
         if self._last_sample_ts is None:
             self._last_sample_ts = sample_ts
-            return
+            return 0.0
 
         dt_s = max(0.0, sample_ts - self._last_sample_ts)
         self._last_sample_ts = sample_ts
+        return dt_s
 
-        if speed_mps is None:
-            return
-
-        self._metrics.distance_m += max(0.0, speed_mps) * dt_s
+    @staticmethod
+    def _build_dynamics() -> RiderDynamics:
+        config = get_config()
+        return RiderDynamics(
+            SimConfig(
+                mass_kg=config.user_mass_kg,
+                cda_m2=config.settings.cda_m2,
+                crr=config.settings.crr,
+            )
+        )
 
     def _sync_sim_grade_from_route(self, notify: bool = True) -> None:
         if (

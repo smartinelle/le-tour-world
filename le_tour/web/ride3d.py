@@ -284,6 +284,19 @@ RIDE3D_HTML = """<!doctype html>
       width: 100%;
     }
 
+    .virtual-trainer {
+      border-top: 1px solid rgba(17, 24, 39, 0.1);
+      margin-top: 12px;
+      padding-top: 4px;
+    }
+
+    .virtual-trainer input[type="range"] {
+      accent-color: var(--accent);
+      display: block;
+      margin: 4px 0 8px;
+      width: 100%;
+    }
+
     .device-panel {
       border-top: 1px solid rgba(17, 24, 39, 0.1);
       margin-top: 14px;
@@ -397,6 +410,17 @@ RIDE3D_HTML = """<!doctype html>
       <button class="action" data-sim-delta="-0.5">-0.5%</button>
       <span id="sim-grade" class="control-value">Grade --</span>
       <button class="action" data-sim-delta="0.5">+0.5%</button>
+    </div>
+    <div id="virtual-trainer" class="virtual-trainer" hidden>
+      <span class="route-select-label">Virtual trainer · <span id="virtual-power-value">Auto</span></span>
+      <input id="virtual-power-slider" type="range" min="0" max="600" step="5" value="150" aria-label="Virtual trainer power">
+      <div class="actions">
+        <button class="action" data-virtual-power="0">0W</button>
+        <button class="action" data-virtual-power="150">150W</button>
+        <button class="action" data-virtual-power="300">300W</button>
+        <button class="action" data-virtual-power="500">500W</button>
+        <button id="virtual-power-auto" class="action">Auto</button>
+      </div>
     </div>
     <span id="device-status">No trainer · demo source · No HR · demo source</span>
     <div id="route-hud"></div>
@@ -549,6 +573,14 @@ def attach_ride3d_routes(
         body = await request.json()
         delta = parse_delta(body.get("delta"), "SIM grade")
         return runtime_provider().adjust_sim_grade(delta).to_dict()
+
+    @web_app.post("/api/ride/virtual-power")
+    async def set_virtual_power(request: Request) -> dict[str, object]:
+        body = await request.json()
+        watts = body.get("watts")
+        if watts is not None:
+            watts = parse_delta(watts, "virtual power")
+        return runtime_provider().set_virtual_power(watts).to_dict()
 
 
 __all__ = ["RIDE3D_HTML", "attach_ride3d_routes", "parse_delta", "parse_ride_mode"]

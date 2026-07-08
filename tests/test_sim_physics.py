@@ -1,7 +1,7 @@
 """Tests for SIM mode physics solver."""
 
 import math
-from le_tour.modes.sim import SimPhysics, SimConfig
+from le_tour.modes.sim import RiderDynamics, SimConfig, SimPhysics
 
 
 class TestSimPhysics:
@@ -147,3 +147,91 @@ class TestSimPhysics:
         available_power = power - 5.0  # Subtract drivetrain loss
         power_error = abs(total_calculated - available_power)
         assert power_error < 5.0, f"Power balance error {power_error:.2f}W too large"
+
+
+class TestRiderDynamics:
+    """Inertia-based virtual rider integration (the app-side speed authority)."""
+
+    def _dynamics(self) -> RiderDynamics:
+        return RiderDynamics(SimConfig())
+
+    def _ride(self, dynamics, power_w, grade_pct, seconds):
+        speeds = []
+        for _ in range(seconds):
+            step = dynamics.step(power_w=power_w, grade_pct=grade_pct, dt_s=1.0)
+            speeds.append(step.speed_mps)
+        return speeds
+
+    def test_converges_to_steady_state_solver(self):
+        """Dynamics settle onto the same equilibrium the solver computes."""
+        physics = SimPhysics(SimConfig())
+        dynamics = self._dynamics()
+
+        for power, grade in [(150, 0.0), (250, 0.0), (200, 5.6), (120, -3.0)]:
+            dynamics.reset()
+            speeds = self._ride(dynamics, power, grade, seconds=120)
+            expected = physics.solve_speed(power_w=power, grade_pct=grade)
+            assert abs(speeds[-1] - expected) < max(
+                0.02 * expected, 0.05
+            ), f"P={power} grade={grade}: {speeds[-1]:.2f} vs solver {expected:.2f}"
+
+    def test_standing_start_builds_speed_gradually(self):
+        """No teleport to cruising speed from a standstill."""
+        speeds = self._ride(self._dynamics(), power_w=200, grade_pct=0.0, seconds=20)
+
+        assert speeds[0] < 4.0
+        assert speeds[0] < speeds[4] < speeds[19]
+
+    def test_grade_step_sheds_speed_over_seconds(self):
+        """Hitting a climb decays speed smoothly instead of stepping it."""
+        dynamics = self._dynamics()
+        self._ride(dynamics, power_w=200, grade_pct=0.0, seconds=90)
+        flat_speed = dynamics.speed_mps
+
+        climb_speeds = self._ride(dynamics, power_w=200, grade_pct=5.6, seconds=30)
+
+        # First second sheds only a fraction of the total speed loss.
+        assert flat_speed - climb_speeds[0] < 0.35 * (flat_speed - climb_speeds[-1])
+        # And the decay is monotonic toward the climb equilibrium.
+        assert all(a >= b for a, b in zip(climb_speeds, climb_speeds[1:]))
+
+    def test_zero_power_uphill_stops_and_stays_stopped(self):
+        """A stopped rider does not creep up a climb."""
+        dynamics = self._dynamics()
+        speeds = self._ride(dynamics, power_w=0, grade_pct=8.0, seconds=30)
+
+        assert speeds[-1] == 0.0
+
+    def test_coasting_downhill_accelerates_toward_terminal_velocity(self):
+        """Gravity is a propulsive force on descents."""
+        dynamics = self._dynamics()
+        speeds = self._ride(dynamics, power_w=0, grade_pct=-8.0, seconds=180)
+
+        assert speeds[0] > 0.0
+        assert speeds[-1] > 14.0
+        assert speeds[-1] <= RiderDynamics.MAX_SPEED
+        # Terminal: acceleration has flattened out.
+        assert speeds[-1] - speeds[-10] < 0.05
+
+    def test_sample_gaps_are_clamped(self):
+        """One late BLE sample cannot teleport the rider."""
+        dynamics = self._dynamics()
+        self._ride(dynamics, power_w=200, grade_pct=0.0, seconds=30)
+
+        step = dynamics.step(power_w=200, grade_pct=0.0, dt_s=60.0)
+
+        assert step.distance_m <= dynamics.speed_mps * RiderDynamics.MAX_STEP_S + 1.0
+
+    def test_distance_integrates_speed(self):
+        """Reported distance matches the speed trace."""
+        dynamics = self._dynamics()
+        total = 0.0
+        speeds = []
+        for _ in range(60):
+            step = dynamics.step(power_w=250, grade_pct=0.0, dt_s=1.0)
+            total += step.distance_m
+            speeds.append(step.speed_mps)
+
+        # Distance must sit between lower/upper Riemann sums of the trace.
+        assert total > 0.0
+        assert total <= sum(speeds) + 1.0

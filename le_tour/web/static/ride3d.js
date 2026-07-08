@@ -119,6 +119,10 @@ const hud = {
   deviceResults: document.querySelector("#device-results"),
   routeHud: document.querySelector("#route-hud"),
   routeSelect: document.querySelector("#route-select"),
+  virtualTrainer: document.querySelector("#virtual-trainer"),
+  virtualPowerValue: document.querySelector("#virtual-power-value"),
+  virtualPowerSlider: document.querySelector("#virtual-power-slider"),
+  virtualPowerAuto: document.querySelector("#virtual-power-auto"),
 };
 
 const rideClient = new RideApiClient();
@@ -127,6 +131,8 @@ let routeProfile = { update() {} };
 let elevationProfile = { update() {} };
 let selectedRouteId = null;
 let deviceState = { trainer: null, hr: null };
+let virtualPowerW = null;
+let virtualPowerBusy = false;
 
 function createRouteProfile(parent) {
   const profile = document.createElement("div");
@@ -332,6 +338,30 @@ function formatValue(value, fallback = "--") {
   return value === null || value === undefined ? fallback : String(value);
 }
 
+// Virtual trainer: rider-controlled watts drive the demo source live, so
+// ride feel is testable end to end without hardware. Trailing-send keeps a
+// dragged slider from queueing stale values.
+async function sendVirtualPower(watts) {
+  virtualPowerW = watts;
+  hud.virtualPowerValue.textContent =
+    watts === null ? "Auto" : `${Math.round(watts)}W`;
+  if (virtualPowerBusy) return;
+  virtualPowerBusy = true;
+  try {
+    let sent;
+    do {
+      sent = virtualPowerW;
+      await rideClient.setVirtualPower(sent);
+    } while (virtualPowerW !== sent);
+  } finally {
+    virtualPowerBusy = false;
+  }
+}
+
+function updateVirtualTrainerPanel(snapshot) {
+  hud.virtualTrainer.hidden = !snapshot.active || snapshot.trainer_connected;
+}
+
 function deviceNameForStatus(type, status) {
   if (status?.connected) {
     return status.name || (type === "trainer" ? "Trainer live" : "HR live");
@@ -476,6 +506,7 @@ function updateHud(snapshot) {
   });
   routeProfile.update(sceneState, snapshot.active);
   elevationProfile.update(sceneState, snapshot.active);
+  updateVirtualTrainerPanel(snapshot);
 
   hud.startPanel.hidden = Boolean(snapshot.active);
   hud.activeControls.hidden = !snapshot.active;
@@ -535,6 +566,24 @@ function attachControls() {
     await loadRoute(hud.routeSelect.value);
   });
 
+  hud.virtualPowerSlider.addEventListener("input", () => {
+    sendVirtualPower(Number(hud.virtualPowerSlider.value));
+  });
+
+  document.querySelectorAll("[data-virtual-power]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const watts = Number(button.dataset.virtualPower);
+      hud.virtualPowerSlider.value = String(watts);
+      sendVirtualPower(watts);
+      button.blur();
+    });
+  });
+
+  hud.virtualPowerAuto.addEventListener("click", () => {
+    sendVirtualPower(null);
+    hud.virtualPowerAuto.blur();
+  });
+
   hud.trainerDeviceAction.addEventListener("click", async () => {
     await handleDeviceAction("trainer", hud.trainerDeviceAction);
     hud.trainerDeviceAction.blur();
@@ -564,10 +613,19 @@ function resize() {
 }
 
 let last = performance.now();
+let fallbackHidden = false;
 
 function frame(now) {
   const dt = Math.min(0.06, (now - last) / 1000);
   last = now;
+
+  if (!fallbackHidden) {
+    // The CSS fallback covers the canvas until WebGL provably renders; hide
+    // it on the first frame so the world shows through (it stays visible if
+    // module loading or renderer setup failed before reaching this loop).
+    document.querySelector(".scene-fallback")?.setAttribute("hidden", "");
+    fallbackHidden = true;
+  }
 
   const sceneState = motion.advance(dt, now);
   if (activePath) {
