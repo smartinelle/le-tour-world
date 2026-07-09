@@ -58,6 +58,13 @@ Open:
 http://127.0.0.1:8080
 ```
 
+If another local service already uses port 8080 (SearXNG, Jenkins, and other
+tools often do), run on a different one:
+
+```bash
+LE_TOUR_PORT=8180 uv run python run_web.py
+```
+
 The app stores local config and ride data under:
 
 ```text
