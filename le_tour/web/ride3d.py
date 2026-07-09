@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -481,10 +483,24 @@ def attach_ride3d_routes(
     runtime_provider: Callable[[], RideRuntime],
 ) -> None:
     """Attach the Three.js prototype route."""
+    server_started_at = datetime.now(UTC)
 
     @web_app.get("/ride3d")
     async def ride3d() -> HTMLResponse:
         return HTMLResponse(RIDE3D_HTML)
+
+    @web_app.get("/api/health")
+    async def health() -> dict[str, object]:
+        # Answers "which server process is this tab actually talking to?" —
+        # zombie instances from interrupted restarts are otherwise invisible.
+        snapshot = runtime_provider().controller.snapshot()
+        return {
+            "status": "ok",
+            "pid": os.getpid(),
+            "started_at": server_started_at.isoformat(),
+            "session_state": snapshot.session_state,
+            "distance_m": snapshot.distance_m,
+        }
 
     @web_app.get("/static/ride3d.js")
     async def ride3d_script() -> FileResponse:

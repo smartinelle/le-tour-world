@@ -543,13 +543,23 @@ function updateHud(snapshot) {
   }%`;
 }
 
+// Session controls must never fail silently: a dead or restarted server
+// otherwise leaves the rider clicking buttons that do nothing.
+async function runRideAction(label, action) {
+  try {
+    updateHud(await action());
+  } catch (error) {
+    hud.state.textContent = `${label} failed: ${error.message || error}`;
+  }
+}
+
 function attachControls() {
   document.querySelectorAll("[data-start-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {
-        updateHud(
-          await rideClient.startRide(button.dataset.startMode, selectedRouteId),
+        await runRideAction("Start", () =>
+          rideClient.startRide(button.dataset.startMode, selectedRouteId),
         );
       } finally {
         button.disabled = false;
@@ -559,26 +569,30 @@ function attachControls() {
 
   const stopButton = document.querySelector("#stop-ride");
   stopButton.addEventListener("click", async () => {
-    updateHud(await rideClient.stopRide());
+    await runRideAction("Stop", () => rideClient.stopRide());
     stopButton.blur();
   });
 
   const pauseButton = document.querySelector("#pause-ride");
   pauseButton.addEventListener("click", async () => {
-    updateHud(await rideClient.togglePause());
+    await runRideAction("Pause", () => rideClient.togglePause());
     pauseButton.blur();
   });
 
   document.querySelectorAll("[data-erg-delta]").forEach((button) => {
     button.addEventListener("click", async () => {
-      updateHud(await rideClient.adjustErgTarget(button.dataset.ergDelta));
+      await runRideAction("ERG target", () =>
+        rideClient.adjustErgTarget(button.dataset.ergDelta),
+      );
       button.blur();
     });
   });
 
   document.querySelectorAll("[data-sim-delta]").forEach((button) => {
     button.addEventListener("click", async () => {
-      updateHud(await rideClient.adjustSimGrade(button.dataset.simDelta));
+      await runRideAction("SIM grade", () =>
+        rideClient.adjustSimGrade(button.dataset.simDelta),
+      );
       button.blur();
     });
   });

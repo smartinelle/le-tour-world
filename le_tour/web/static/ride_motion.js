@@ -27,11 +27,14 @@ export class RideMotionModel {
     dashSpacing = 7.8,
     maxDt = 0.06,
     speedResponse = 7.5,
+    staleSnapshotMs = 3000,
     routeSegments = [],
   } = {}) {
     this.dashSpacing = dashSpacing;
     this.maxDt = maxDt;
     this.speedResponse = speedResponse;
+    this.staleSnapshotMs = staleSnapshotMs;
+    this.lastSnapshotAtMs = null;
     this.routeSegments = normalizeSegments(routeSegments);
     this.routeLengthM = this.routeSegments.reduce(
       (total, segment) => total + segment.lengthM,
@@ -72,6 +75,8 @@ export class RideMotionModel {
   }
 
   updateFromSnapshot(snapshot) {
+    this.lastSnapshotAtMs =
+      typeof performance !== "undefined" ? performance.now() : 0;
     this.active = Boolean(snapshot.active);
     this.paused = Boolean(snapshot.paused);
     this.mode = snapshot.mode || null;
@@ -168,6 +173,17 @@ export class RideMotionModel {
 
   advance(dt, nowMs) {
     const boundedDt = clamp(numeric(dt), 0, this.maxDt);
+
+    // A dead server must not leave the world riding forever: without fresh
+    // snapshots the last known speed would be integrated indefinitely, so
+    // coast to a stop when the stream goes stale.
+    if (
+      this.lastSnapshotAtMs !== null &&
+      numeric(nowMs) - this.lastSnapshotAtMs > this.staleSnapshotMs
+    ) {
+      this.targetSpeedMps = 0;
+    }
+
     const response = 1 - Math.exp(-this.speedResponse * boundedDt);
     this.speedMps += (this.targetSpeedMps - this.speedMps) * response;
 

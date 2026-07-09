@@ -106,6 +106,40 @@ def test_ride3d_start_endpoint_prepares_hardware_session():
     runtime.prepare_hardware_session.assert_awaited_once_with(RideMode.ERG)
 
 
+def test_health_endpoint_identifies_server_process():
+    """Clients can tell which server process (and session) they talk to."""
+    runtime = MagicMock()
+    runtime.controller.snapshot.return_value = RideSnapshot(
+        session_state="active", active=True, distance_m=1234.5
+    )
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    response = TestClient(app).get("/api/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["pid"] > 0
+    assert payload["session_state"] == "active"
+    assert payload["distance_m"] == 1234.5
+
+
+def test_motion_model_coasts_to_stop_when_stream_goes_stale():
+    """A dead server must not leave the browser world riding forever."""
+    assert "staleSnapshotMs" in RIDE_MOTION_JS
+    assert "lastSnapshotAtMs" in RIDE_MOTION_JS
+    assert "this.targetSpeedMps = 0" in RIDE_MOTION_JS
+
+
+def test_ride3d_surfaces_failed_session_controls():
+    """Start/stop failures show in the HUD instead of failing silently."""
+    assert "async function runRideAction(label, action)" in RIDE3D_JS
+    assert "failed: ${error.message || error}" in RIDE3D_JS
+    assert 'runRideAction("Start"' in RIDE3D_JS
+    assert 'runRideAction("Stop"' in RIDE3D_JS
+
+
 def test_ride3d_virtual_power_endpoint_sets_rider_watts():
     """The virtual trainer endpoint forwards live rider-set watts."""
     runtime = MagicMock()

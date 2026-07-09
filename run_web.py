@@ -31,6 +31,7 @@ if __name__ == "__main__":
         )
         raise SystemExit(1)
 
-    print("Starting le-tour Web UI...")
+    print(f"Starting le-tour Web UI (pid {os.getpid()})...")
     print(f"Open http://{host}:{port} in your browser")
+    print(f"Stop with Ctrl+C, or: kill {os.getpid()}")
     run_web_ui(host=host, port=port)
