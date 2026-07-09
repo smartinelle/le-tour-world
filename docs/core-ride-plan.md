@@ -122,6 +122,15 @@ from the sketch above:
 - Exit criteria: a real ride on the flagship map with the KICKR CORE —
   resistance transitions feel gradual, no visual pops or camera jumps.
 
+**Status: partially done (2026-07-09).** Done ahead of schedule: physics
+speed authority with an inertia integrator (`RiderDynamics`, pulled forward
+from the assessment's F1/F2), grade ramping via `RideRoute.smoothed_grade_at`
+(same 30 m window as the renderer; feeds both the trainer and the physics),
+and pacers riding the compiled path (landed with M1). A virtual trainer
+panel on `/ride3d` (live watt slider, `/api/ride/virtual-power`) enables
+no-hardware feel testing. Remaining: camera tuning pass and the KICKR
+verification ride.
+
 ### M4 — In-ride dashboard (HUD)
 
 Keep the metric-card language that exists; make the HUD answer every in-ride

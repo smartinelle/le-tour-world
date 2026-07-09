@@ -2,9 +2,11 @@
 //
 // Everything here is built ONCE per route load from the compiled route path.
 // The per-frame loop only moves the camera and a handful of actors; no
-// geometry is rebuilt while riding. Long static runs (dashes, posts, props,
-// chevrons) are baked into a few merged vertex-colored meshes so the whole
-// world stays within a small draw-call budget until M2 introduces instancing.
+// geometry is rebuilt while riding. The ground is a corridor terrain grid:
+// seeded value-noise blended into the road elevation with a cubic falloff
+// (architecture.md's deformation, precomputed instead of chunk-streamed).
+// Props ride InstancedMesh - one draw call per template part - and sample
+// the same terrain height function, so nothing floats or sinks.
 
 import * as THREE from "/static/vendor/three.module.js";
 
@@ -22,6 +24,25 @@ export const surfaceColors = {
   dirt: 0x72543e,
 };
 
+// Terrain character per scenery: noise amplitude and how hard the ground
+// falls away laterally (the ridge crest drops on both sides).
+const terrainProfiles = {
+  fields: { amplitudeM: 4.0, lateralDropPerM: 0.02 },
+  forest: { amplitudeM: 9.0, lateralDropPerM: 0.05 },
+  village: { amplitudeM: 3.0, lateralDropPerM: 0.01 },
+  ridge: { amplitudeM: 6.0, lateralDropPerM: 0.3 },
+  river: { amplitudeM: 2.5, lateralDropPerM: 0.04 },
+};
+
+// Fog per scenery: forests close in, the ridge opens up.
+const fogProfiles = {
+  fields: { nearM: 90, farM: 520 },
+  forest: { nearM: 45, farM: 300 },
+  village: { nearM: 80, farM: 450 },
+  ridge: { nearM: 120, farM: 760 },
+  river: { nearM: 70, farM: 420 },
+};
+
 const propColors = {
   trunk: 0x5b3b24,
   foliage: 0x1f6b3b,
@@ -34,13 +55,26 @@ const propColors = {
 const DASH_SPACING_M = 7.8;
 const POST_SPACING_M = 8.5;
 const CHEVRON_SPACING_M = 30;
-const PROP_CHUNK_M = 400;
-const GROUND_HALF_WIDTH_M = 80;
+const TERRAIN_ROW_SPACING_M = 8;
+const GROUND_HALF_WIDTH_M = 160;
+const TERRAIN_LATERAL_OFFSETS_M = [
+  -160, -120, -90, -65, -45, -30, -18, -8, 0, 8, 18, 30, 45, 65, 90, 120, 160,
+];
+const ROAD_FLAT_HALF_WIDTH_M = 8; // road + shoulders stay untouched
+const TERRAIN_BLEND_END_M = 40; // full terrain beyond this lateral distance
 const COLOR_BLEND_SAMPLES = 5;
+const PARAM_BLEND_ROWS = 25; // ~200 m of terrain-character crossfade
 
 // Shared materials that applyScenery retunes as the rider crosses scenery.
 const baseGroundMaterial = new THREE.MeshLambertMaterial({ color: 0x8fae76 });
-const hillMaterial = new THREE.MeshLambertMaterial({ color: 0x6f8b61 });
+const skydomeMaterial = new THREE.MeshBasicMaterial({
+  color: 0xd9edf7,
+  side: THREE.BackSide,
+  vertexColors: true,
+  depthWrite: false,
+  depthTest: false,
+  fog: false,
+});
 const vertexColorMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 const dashMaterial = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
 const waterMaterial = new THREE.MeshLambertMaterial({
@@ -57,16 +91,71 @@ let activeScenery = null;
 export function applyScenery(renderer, scene, scenery) {
   if (scenery === activeScenery) return;
   const palette = sceneryPalettes[scenery] || sceneryPalettes.fields;
+  const fog = fogProfiles[scenery] || fogProfiles.fields;
   activeScenery = scenery;
   renderer.setClearColor(palette.sky, 1);
   scene.fog.color.setHex(palette.sky);
+  scene.fog.near = fog.nearM;
+  scene.fog.far = fog.farM;
   baseGroundMaterial.color.setHex(palette.ground);
-  hillMaterial.color.setHex(palette.hills);
+  skydomeMaterial.color.setHex(palette.sky);
 }
 
-function pseudoRandom(seed) {
+// Camera-anchored background dome: rendered first with depth disabled, so
+// radius is irrelevant and it never clips. Vertex colors bake a zenith fade
+// that the palette sky color multiplies.
+export function createSkydome() {
+  const geometry = new THREE.SphereGeometry(10, 24, 12);
+  const positions = geometry.getAttribute("position");
+  const colors = new Float32Array(positions.count * 3);
+  for (let index = 0; index < positions.count; index += 1) {
+    const up = positions.getY(index) / 10;
+    const brightness = 1.04 - Math.max(0, up) * 0.28;
+    colors[index * 3] = brightness;
+    colors[index * 3 + 1] = brightness;
+    colors[index * 3 + 2] = Math.min(1.08, brightness + 0.03);
+  }
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const dome = new THREE.Mesh(geometry, skydomeMaterial);
+  dome.renderOrder = -1;
+  dome.frustumCulled = false;
+  return dome;
+}
+
+export function pseudoRandom(seed) {
   const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
   return value - Math.floor(value);
+}
+
+// Deterministic 2D value noise (3 octaves) for terrain relief.
+function latticeHash(ix, iz) {
+  const value = Math.sin(ix * 157.31 + iz * 311.7 + 41.3) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function smoothstep(t) {
+  return t * t * (3 - 2 * t);
+}
+
+function valueNoise(x, z) {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = smoothstep(x - ix);
+  const fz = smoothstep(z - iz);
+  const a = latticeHash(ix, iz);
+  const b = latticeHash(ix + 1, iz);
+  const c = latticeHash(ix, iz + 1);
+  const d = latticeHash(ix + 1, iz + 1);
+  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+}
+
+function terrainNoise(x, z) {
+  // Normalized to roughly [-1, 1].
+  return (
+    (valueNoise(x / 210, z / 210) - 0.5) * 1.4 +
+    (valueNoise(x / 62 + 17.3, z / 62 + 9.1) - 0.5) * 0.6 +
+    (valueNoise(x / 21 + 31.7, z / 21 + 53.9) - 0.5) * 0.22
+  );
 }
 
 // Merge already-transformed, vertex-colored geometries into one buffer.
@@ -180,86 +269,118 @@ function blendedPaletteColor(samples, index, pick) {
   return color.getHex();
 }
 
-function createTreeProp() {
-  const prop = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.7, 7));
-  trunk.userData.colorHex = propColors.trunk;
-  const crown = new THREE.Mesh(new THREE.ConeGeometry(0.52, 1.25, 7));
-  crown.userData.colorHex = propColors.foliage;
-  trunk.position.y = 0.35;
-  crown.position.y = 1.18;
-  prop.add(trunk, crown);
-  return prop;
-}
+// ---------------------------------------------------------------------------
+// Terrain: a corridor grid around the path. Height = road elevation blended
+// into noise relief with a cubic falloff by lateral distance, plus a
+// per-scenery lateral drop (crossfaded along the path so segment boundaries
+// never produce cliffs).
 
-function createVillageProp() {
-  const prop = new THREE.Group();
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.62, 0.8));
-  wall.userData.colorHex = propColors.wall;
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.72, 0.42, 4));
-  roof.userData.colorHex = propColors.roof;
-  wall.position.y = 0.31;
-  roof.position.y = 0.83;
-  roof.rotation.y = Math.PI / 4;
-  prop.add(wall, roof);
-  return prop;
-}
-
-function createRockProp() {
-  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42, 0));
-  rock.userData.colorHex = propColors.rock;
-  rock.position.y = 0.38;
-  rock.scale.set(1.25, 0.72, 0.9);
-  const prop = new THREE.Group();
-  prop.add(rock);
-  return prop;
-}
-
-function createFieldProp() {
-  const bale = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.56, 14));
-  bale.userData.colorHex = propColors.field;
-  bale.position.y = 0.34;
-  bale.rotation.z = Math.PI / 2;
-  const prop = new THREE.Group();
-  prop.add(bale);
-  return prop;
-}
-
-const propBuilders = {
-  fields: createFieldProp,
-  forest: createTreeProp,
-  village: createVillageProp,
-  ridge: createRockProp,
-  river: createTreeProp,
-};
-
-const propSpacingM = {
-  fields: 40,
-  forest: 18,
-  village: 30,
-  ridge: 35,
-  river: 30,
-};
-
-function bakePropAt(prop, pose, side, offsetM, scale) {
-  const rightX = Math.cos(pose.headingRad);
-  const rightZ = Math.sin(pose.headingRad);
-  prop.position.set(
-    pose.x + rightX * side * offsetM,
-    pose.y,
-    pose.z + rightZ * side * offsetM,
+function buildTerrainModel(path) {
+  const rowStride = Math.max(
+    1,
+    Math.round(TERRAIN_ROW_SPACING_M / path.spacingM),
   );
-  prop.rotation.y = -pose.headingRad + side * 0.18;
-  prop.scale.setScalar(scale);
-  prop.updateMatrixWorld(true);
-  const baked = [];
-  prop.traverse((node) => {
-    if (node.isMesh) {
-      baked.push(bakeGeometry(node.geometry, node.matrixWorld, node.userData.colorHex));
-      node.geometry.dispose();
-    }
+  const rows = [];
+  for (let index = 0; index < path.samples.length; index += rowStride) {
+    const sample = path.samples[index];
+    const profile = terrainProfiles[sample.scenery] || terrainProfiles.fields;
+    rows.push({
+      sample,
+      amplitudeM: profile.amplitudeM,
+      lateralDropPerM: profile.lateralDropPerM,
+      groundColor: null,
+      colorIndex: index,
+    });
+  }
+
+  // Crossfade terrain character along the route.
+  const smoothField = (pick) => {
+    const raw = rows.map(pick);
+    return raw.map((_, index) => {
+      let total = 0;
+      for (let tap = -PARAM_BLEND_ROWS; tap <= PARAM_BLEND_ROWS; tap += 1) {
+        total += raw[(index + tap + raw.length * 4) % raw.length];
+      }
+      return total / (PARAM_BLEND_ROWS * 2 + 1);
+    });
+  };
+  const amplitudes = smoothField((row) => row.amplitudeM);
+  const drops = smoothField((row) => row.lateralDropPerM);
+  rows.forEach((row, index) => {
+    row.amplitudeM = amplitudes[index];
+    row.lateralDropPerM = drops[index];
   });
-  return baked;
+
+  const heightAt = (rowIndex, offsetM) => {
+    const row = rows[Math.max(0, Math.min(rows.length - 1, rowIndex))];
+    const sample = row.sample;
+    const rightX = Math.cos(sample.headingRad);
+    const rightZ = Math.sin(sample.headingRad);
+    const x = sample.x + rightX * offsetM;
+    const z = sample.z + rightZ * offsetM;
+    const lateral = Math.abs(offsetM);
+    const blend =
+      lateral <= ROAD_FLAT_HALF_WIDTH_M
+        ? 0
+        : smoothstep(
+            Math.min(
+              1,
+              (lateral - ROAD_FLAT_HALF_WIDTH_M) /
+                (TERRAIN_BLEND_END_M - ROAD_FLAT_HALF_WIDTH_M),
+            ),
+          );
+    const relief =
+      terrainNoise(x, z) * row.amplitudeM -
+      Math.max(0, lateral - ROAD_FLAT_HALF_WIDTH_M) * row.lateralDropPerM;
+    return { x, z, y: sample.y - 0.08 + relief * blend };
+  };
+
+  return { rows, heightAt };
+}
+
+function buildTerrainMesh(path, terrain, group) {
+  const rows = terrain.rows;
+  const cols = TERRAIN_LATERAL_OFFSETS_M;
+  const positions = new Float32Array(rows.length * cols.length * 3);
+  const colors = new Float32Array(rows.length * cols.length * 3);
+  const indices = [];
+  const color = new THREE.Color();
+
+  rows.forEach((row, rowIndex) => {
+    color.setHex(
+      blendedPaletteColor(path.samples, row.colorIndex, (palette) => palette.ground),
+    );
+    cols.forEach((offsetM, colIndex) => {
+      const point = terrain.heightAt(rowIndex, offsetM);
+      const vertex = rowIndex * cols.length + colIndex;
+      positions[vertex * 3] = point.x;
+      positions[vertex * 3 + 1] = point.y;
+      positions[vertex * 3 + 2] = point.z;
+      // Subtle deterministic tone variation keeps large fields from banding.
+      const jitter = 0.9 + 0.2 * valueNoise(point.x / 33 + 7, point.z / 33 + 3);
+      colors[vertex * 3] = Math.min(1, color.r * jitter);
+      colors[vertex * 3 + 1] = Math.min(1, color.g * jitter);
+      colors[vertex * 3 + 2] = Math.min(1, color.b * jitter);
+    });
+  });
+
+  for (let rowIndex = 0; rowIndex < rows.length - 1; rowIndex += 1) {
+    for (let colIndex = 0; colIndex < cols.length - 1; colIndex += 1) {
+      const a = rowIndex * cols.length + colIndex;
+      const b = a + 1;
+      const c = a + cols.length;
+      const d = c + 1;
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const terrainMesh = new THREE.Mesh(geometry, vertexColorMaterial);
+  group.add(terrainMesh);
 }
 
 function buildRoadSurfaces(path, group) {
@@ -289,18 +410,6 @@ function buildRoadSurfaces(path, group) {
     );
     group.add(shoulder);
   });
-
-  const corridor = new THREE.Mesh(
-    ribbonGeometry(
-      samples,
-      () => -GROUND_HALF_WIDTH_M,
-      () => GROUND_HALF_WIDTH_M,
-      -0.06,
-      (index) => blendedPaletteColor(samples, index, (palette) => palette.ground),
-    ),
-    vertexColorMaterial,
-  );
-  group.add(corridor);
 }
 
 function buildLaneDashes(path, group) {
@@ -421,28 +530,157 @@ function buildSegmentGates(path, group) {
   });
 }
 
-function buildProps(path, group) {
-  const chunks = new Map();
+// ---------------------------------------------------------------------------
+// Props: template parts instanced once per placement. Each part type is one
+// InstancedMesh (one draw call), and every placement samples the terrain
+// height so props sit on the ground the terrain mesh actually shows.
+
+function createTreeProp() {
+  return [
+    {
+      part: "trunk",
+      geometry: () => new THREE.CylinderGeometry(0.08, 0.12, 0.7, 7),
+      local: { y: 0.35 },
+    },
+    {
+      part: "foliage",
+      geometry: () => new THREE.ConeGeometry(0.52, 1.25, 7),
+      local: { y: 1.18 },
+    },
+  ];
+}
+
+function createVillageProp() {
+  return [
+    {
+      part: "wall",
+      geometry: () => new THREE.BoxGeometry(0.9, 0.62, 0.8),
+      local: { y: 0.31 },
+    },
+    {
+      part: "roof",
+      geometry: () => new THREE.ConeGeometry(0.72, 0.42, 4),
+      local: { y: 0.83, rotationY: Math.PI / 4 },
+    },
+  ];
+}
+
+function createRockProp() {
+  return [
+    {
+      part: "rock",
+      geometry: () => new THREE.DodecahedronGeometry(0.42, 0),
+      local: { y: 0.38, scaleX: 1.25, scaleY: 0.72, scaleZ: 0.9 },
+    },
+  ];
+}
+
+function createFieldProp() {
+  return [
+    {
+      part: "field",
+      geometry: () => new THREE.CylinderGeometry(0.34, 0.34, 0.56, 14),
+      local: { y: 0.34, rotationZ: Math.PI / 2 },
+    },
+  ];
+}
+
+const propBuilders = {
+  fields: createFieldProp,
+  forest: createTreeProp,
+  village: createVillageProp,
+  ridge: createRockProp,
+  river: createTreeProp,
+};
+
+const propSpacingM = {
+  fields: 42,
+  forest: 15,
+  village: 26,
+  ridge: 30,
+  river: 24,
+};
+
+// A second, sparser band farther from the road gives the world depth.
+const FAR_PROP_SPACING_MULTIPLIER = 2.4;
+
+function localMatrix(local, wholeScale) {
+  bakePosition.set(0, (local.y || 0) * wholeScale, 0);
+  bakeEuler.set(0, local.rotationY || 0, local.rotationZ || 0, "ZYX");
+  bakeQuaternion.setFromEuler(bakeEuler);
+  bakeScale.set(
+    (local.scaleX || 1) * wholeScale,
+    (local.scaleY || 1) * wholeScale,
+    (local.scaleZ || 1) * wholeScale,
+  );
+  return new THREE.Matrix4().compose(bakePosition, bakeQuaternion, bakeScale);
+}
+
+function buildProps(path, terrain, group) {
+  const partMatrices = new Map(); // part name -> Matrix4[]
+  const partGeometries = new Map();
+  const placementDummy = new THREE.Object3D();
+
+  const place = (distanceM, side, offsetM, seed) => {
+    const rowIndex = Math.round(distanceM / TERRAIN_ROW_SPACING_M);
+    const row =
+      terrain.rows[Math.max(0, Math.min(terrain.rows.length - 1, rowIndex))];
+    const scenery = row.sample.scenery;
+    const parts = (propBuilders[scenery] || createFieldProp)();
+    const ground = terrain.heightAt(rowIndex, side * offsetM);
+    const scale = 0.8 + pseudoRandom(seed + 57) * 0.5;
+
+    placementDummy.position.set(ground.x, Math.max(ground.y, row.sample.y - 12), ground.z);
+    placementDummy.rotation.set(
+      0,
+      -row.sample.headingRad + side * 0.18 + pseudoRandom(seed) * 0.8,
+      0,
+    );
+    placementDummy.scale.setScalar(1);
+    placementDummy.updateMatrix();
+
+    parts.forEach((spec) => {
+      if (!partGeometries.has(spec.part)) {
+        partGeometries.set(spec.part, spec.geometry());
+        partMatrices.set(spec.part, []);
+      }
+      const matrix = placementDummy.matrix.clone().multiply(
+        localMatrix(spec.local, scale),
+      );
+      partMatrices.get(spec.part).push(matrix);
+    });
+  };
+
   let distanceM = 0;
-  let placementIndex = 0;
+  let index = 0;
   while (distanceM < path.lengthM) {
     const pose = path.poseAt(distanceM);
-    const builder = propBuilders[pose.scenery] || createFieldProp;
-    const side = placementIndex % 2 === 0 ? -1 : 1;
-    const jitter = pseudoRandom(placementIndex);
-    const offsetM = pose.roadWidthM / 2 + 3.5 + jitter * 3.4;
-    const scale = 0.72 + pseudoRandom(placementIndex + 57) * 0.4;
-    const baked = bakePropAt(builder(), pose, side, offsetM, scale);
-    const chunkKey = Math.floor(distanceM / PROP_CHUNK_M);
-    if (!chunks.has(chunkKey)) chunks.set(chunkKey, []);
-    chunks.get(chunkKey).push(...baked);
-    distanceM += propSpacingM[pose.scenery] || 35;
-    placementIndex += 1;
+    const spacing = propSpacingM[pose.scenery] || 35;
+    const side = index % 2 === 0 ? -1 : 1;
+    const nearOffset = pose.roadWidthM / 2 + 4 + pseudoRandom(index) * 5;
+    place(distanceM, side, nearOffset, index);
+    if (pseudoRandom(index + 991) > 0.35) {
+      const farOffset = 48 + pseudoRandom(index + 13) * 85;
+      place(distanceM + spacing * 0.4, -side, farOffset, index + 7919);
+    }
+    distanceM += spacing;
+    index += 1;
   }
-  chunks.forEach((baked) => {
-    const chunk = new THREE.Mesh(mergeGeometries(baked), vertexColorMaterial);
-    chunk.matrixAutoUpdate = false;
-    group.add(chunk);
+
+  partMatrices.forEach((matrices, part) => {
+    const instanced = new THREE.InstancedMesh(
+      partGeometries.get(part),
+      new THREE.MeshLambertMaterial({ color: propColors[part] }),
+      matrices.length,
+    );
+    matrices.forEach((matrix, matrixIndex) => {
+      instanced.setMatrixAt(matrixIndex, matrix);
+    });
+    instanced.instanceMatrix.needsUpdate = true;
+    // One bounding sphere cannot represent instances spread over kilometers.
+    instanced.frustumCulled = false;
+    instanced.matrixAutoUpdate = false;
+    group.add(instanced);
   });
 }
 
@@ -475,53 +713,34 @@ function buildRiverRibbons(path, group) {
   });
 }
 
-function buildBasePlaneAndHills(path, group) {
+function buildBasePlane(path, group) {
   const bounds = new THREE.Box3();
   path.samples.forEach((sample) => {
     bounds.expandByPoint(new THREE.Vector3(sample.x, sample.y, sample.z));
   });
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
-
   const base = new THREE.Mesh(
-    new THREE.PlaneGeometry(size.x + 1600, size.z + 1600),
+    new THREE.PlaneGeometry(size.x + 2400, size.z + 2400),
     baseGroundMaterial,
   );
   base.rotation.x = -Math.PI / 2;
-  base.position.set(center.x, bounds.min.y - 0.35, center.z);
+  base.position.set(center.x, bounds.min.y - 55, center.z);
   group.add(base);
-
-  const hillCount = 14;
-  const radiusX = size.x / 2 + 130;
-  const radiusZ = size.z / 2 + 130;
-  for (let index = 0; index < hillCount; index += 1) {
-    const angle = (index / hillCount) * Math.PI * 2;
-    const hill = new THREE.Mesh(
-      new THREE.ConeGeometry(26 + pseudoRandom(index) * 22, 14 + pseudoRandom(index + 9) * 16, 5),
-      hillMaterial,
-    );
-    hill.position.set(
-      center.x + Math.cos(angle) * radiusX,
-      bounds.min.y - 0.3,
-      center.z + Math.sin(angle) * radiusZ,
-    );
-    hill.rotation.y = index * 0.37;
-    hill.matrixAutoUpdate = false;
-    hill.updateMatrix();
-    group.add(hill);
-  }
 }
 
 export function buildWorld(path) {
   const group = new THREE.Group();
+  const terrain = buildTerrainModel(path);
+  buildTerrainMesh(path, terrain, group);
   buildRoadSurfaces(path, group);
   buildLaneDashes(path, group);
   buildRailPosts(path, group);
   buildCurveChevrons(path, group);
   buildSegmentGates(path, group);
-  buildProps(path, group);
+  buildProps(path, terrain, group);
   buildRiverRibbons(path, group);
-  buildBasePlaneAndHills(path, group);
+  buildBasePlane(path, group);
 
   return {
     group,

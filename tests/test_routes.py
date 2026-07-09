@@ -42,6 +42,7 @@ def test_default_demo_route_serializes_segments():
 def test_default_demo_route_is_loaded_from_bundled_spec():
     """Default route comes from the external route spec package asset."""
     assert available_route_specs() == (
+        "col_du_rivelet.json",
         "demo_rolling_route.json",
         "forest_climb_loop.json",
     )
@@ -57,6 +58,7 @@ def test_bundled_routes_can_be_selected_by_route_id():
     routes = available_routes()
 
     assert [route.route_id for route in routes] == [
+        "col_du_rivelet",
         "demo_rolling_route",
         "forest_climb_loop",
     ]
@@ -258,3 +260,28 @@ def test_smoothed_grade_wraps_across_the_lap_seam():
     assert -0.6 < near_end < 0.4
     just_after_start = route.smoothed_grade_at(1)
     assert -0.6 < just_after_start < 0.4
+
+
+def test_flagship_map_closes_and_climbs():
+    """Col du Rivelet is the quality-bar map: a real col that closes as a loop."""
+    route = route_by_id("col_du_rivelet")
+
+    assert 15_000 < route.distance_m < 20_000
+    assert route.elevation_gain_m > 200
+    assert route.max_grade_pct == 8.0
+    assert route.difficulty == "Hard"
+    # Loop closure at authoring time: turns sum to one full circle and the
+    # elevation profile returns home (small residuals are redistributed by
+    # the renderer's path compiler).
+    assert sum(segment.turn_deg for segment in route.segments) == 360
+    net_elevation_m = sum(
+        segment.length_m * segment.grade_pct / 100 for segment in route.segments
+    )
+    assert abs(net_elevation_m) < 10
+    assert {segment.scenery for segment in route.segments} == {
+        "fields",
+        "village",
+        "river",
+        "forest",
+        "ridge",
+    }

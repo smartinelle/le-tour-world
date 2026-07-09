@@ -57,10 +57,11 @@ def test_ride3d_routes_endpoint_lists_bundled_routes():
     assert response.status_code == 200
     payload = response.json()
     assert [route["id"] for route in payload] == [
+        "col_du_rivelet",
         "demo_rolling_route",
         "forest_climb_loop",
     ]
-    assert payload[0]["segment_count"] == 5
+    assert payload[0]["segment_count"] == 18
 
 
 def test_ride3d_serves_renderer_modules():
@@ -343,8 +344,8 @@ def test_world_is_built_once_not_per_frame():
     """World geometry is compiled at route load; frames only move the camera."""
     assert "export function buildWorld(path)" in WORLD_BUILDER_JS
     assert (
-        'import { applyScenery, buildWorld } from "/static/world_builder.js?v='
-        in RIDE3D_JS
+        "import { applyScenery, buildWorld, createSkydome } from "
+        '"/static/world_builder.js?v=' in RIDE3D_JS
     )
     assert "world = buildWorld(activePath)" in RIDE3D_JS
     assert "scene.add(world.group)" in RIDE3D_JS
@@ -374,14 +375,38 @@ def test_world_builder_bakes_surface_and_scenery_colors():
 
 
 def test_world_builder_merges_static_runs_into_few_meshes():
-    """Dashes, posts, chevrons, and props are merged for a small draw-call
-    budget until M2 introduces instancing."""
+    """Dashes, posts, and chevrons are merged; props ride InstancedMesh -
+    the whole world stays within a small draw-call budget."""
     assert "function mergeGeometries(geometries)" in WORLD_BUILDER_JS
     assert "function buildLaneDashes(path, group)" in WORLD_BUILDER_JS
     assert "function buildRailPosts(path, group)" in WORLD_BUILDER_JS
     assert "function buildCurveChevrons(path, group)" in WORLD_BUILDER_JS
-    assert "function buildProps(path, group)" in WORLD_BUILDER_JS
+    assert "function buildProps(path, terrain, group)" in WORLD_BUILDER_JS
+    assert "new THREE.InstancedMesh(" in WORLD_BUILDER_JS
+    assert "setMatrixAt" in WORLD_BUILDER_JS
     assert "matrixAutoUpdate = false" in WORLD_BUILDER_JS
+
+
+def test_world_builder_builds_terrain_deformed_to_the_road():
+    """Corridor terrain: seeded noise blended into road elevation with a
+    cubic falloff, per-scenery character, crossfaded along the route."""
+    assert "function buildTerrainModel(path)" in WORLD_BUILDER_JS
+    assert "function buildTerrainMesh(path, terrain, group)" in WORLD_BUILDER_JS
+    assert "function terrainNoise(x, z)" in WORLD_BUILDER_JS
+    assert "smoothstep" in WORLD_BUILDER_JS
+    assert "terrainProfiles" in WORLD_BUILDER_JS
+    assert "ROAD_FLAT_HALF_WIDTH_M" in WORLD_BUILDER_JS
+    assert "TERRAIN_BLEND_END_M" in WORLD_BUILDER_JS
+    # Props sample the same height function as the terrain mesh.
+    assert "terrain.heightAt(rowIndex, side * offsetM)" in WORLD_BUILDER_JS
+
+
+def test_world_builder_provides_atmosphere():
+    """Camera-anchored skydome and per-scenery fog depth."""
+    assert "export function createSkydome()" in WORLD_BUILDER_JS
+    assert "fogProfiles" in WORLD_BUILDER_JS
+    assert "scene.fog.near = fog.nearM" in WORLD_BUILDER_JS
+    assert "camera.add(createSkydome())" in RIDE3D_JS
 
 
 def test_world_builder_places_scenery_props_along_route():

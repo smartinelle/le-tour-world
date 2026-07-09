@@ -15,7 +15,10 @@ installers yet; you run it from source with `uv`.
 - Free Ride, ERG, and SIM modes.
 - Local ride history with session samples.
 - CSV export.
-- Experimental Three.js ride surface at `/ride3d`.
+- Three.js ride surface at `/ride3d`: a world-fixed 3D map with terrain,
+  physics-computed speed (rider mass/CdA/Crr + route grade), and a virtual
+  trainer panel for riding without hardware. Flagship route: Col du Rivelet,
+  a 17.2 km loop with 260 m of climbing.
 
 Tested hardware so far:
 

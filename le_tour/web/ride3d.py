@@ -454,7 +454,7 @@ RIDE3D_HTML = """<!doctype html>
 
   <a class="back" href="/">Home</a>
 
-  <script type="module" src="/static/ride3d.js?v=world-fixed"></script>
+  <script type="module" src="/static/ride3d.js?v=m2"></script>
 </body>
 </html>
 """

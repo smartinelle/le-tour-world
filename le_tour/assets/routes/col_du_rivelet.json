@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "id": "col_du_rivelet",
+  "title": "Col du Rivelet",
+  "description": "The flagship loop: meadow warmup through a river village, a switchback forest climb to an exposed ridge crest, then a fast larch descent home along the river flats.",
+  "segments": [
+    {
+      "name": "Depart Meadows",
+      "length_m": 1200,
+      "grade_pct": 0.3,
+      "turn_deg": 108,
+      "road_width_m": 9,
+      "kind": "warmup",
+      "surface": "asphalt",
+      "scenery": "fields"
+    },
+    {
+      "name": "Poplar Lane",
+      "length_m": 900,
+      "grade_pct": 0.8,
+      "turn_deg": 15,
+      "road_width_m": 8.6,
+      "kind": "rolling",
+      "surface": "asphalt",
+      "scenery": "fields"
+    },
+    {
+      "name": "Rivelet Village",
+      "length_m": 700,
+      "grade_pct": 1.2,
+      "turn_deg": 37,
+      "road_width_m": 6.8,
+      "kind": "rolling",
+      "surface": "asphalt",
+      "scenery": "village"
+    },
+    {
+      "name": "Old Bridge",
+      "length_m": 400,
+      "grade_pct": -0.8,
+      "turn_deg": -5,
+      "road_width_m": 6.4,
+      "kind": "rolling",
+      "surface": "asphalt",
+      "scenery": "river"
+    },
+    {
+      "name": "Forest Gate",
+      "length_m": 1100,
+      "grade_pct": 3,
+      "turn_deg": -45,
+      "road_width_m": 7.2,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Switchback One",
+      "length_m": 600,
+      "grade_pct": 7.5,
+      "turn_deg": 110,
+      "road_width_m": 5.6,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Cross Traverse",
+      "length_m": 500,
+      "grade_pct": 5.5,
+      "turn_deg": -50,
+      "road_width_m": 5.8,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Switchback Two",
+      "length_m": 600,
+      "grade_pct": 8,
+      "turn_deg": -110,
+      "road_width_m": 5.6,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "High Forest",
+      "length_m": 900,
+      "grade_pct": 5.5,
+      "turn_deg": 10,
+      "road_width_m": 6.2,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Ridge Shoulder",
+      "length_m": 1000,
+      "grade_pct": 3,
+      "turn_deg": 45,
+      "road_width_m": 6.6,
+      "kind": "climb",
+      "surface": "asphalt",
+      "scenery": "ridge"
+    },
+    {
+      "name": "Crete du Rivelet",
+      "length_m": 1300,
+      "grade_pct": 0.5,
+      "turn_deg": 60,
+      "road_width_m": 6.8,
+      "kind": "rolling",
+      "surface": "asphalt",
+      "scenery": "ridge"
+    },
+    {
+      "name": "Summit Kite",
+      "length_m": 400,
+      "grade_pct": -1.5,
+      "turn_deg": 90,
+      "road_width_m": 6.6,
+      "kind": "descent",
+      "surface": "asphalt",
+      "scenery": "ridge"
+    },
+    {
+      "name": "Gravel Balcony",
+      "length_m": 900,
+      "grade_pct": -3.5,
+      "turn_deg": 40,
+      "road_width_m": 6,
+      "kind": "descent",
+      "surface": "gravel",
+      "scenery": "ridge"
+    },
+    {
+      "name": "Larch Descent",
+      "length_m": 1700,
+      "grade_pct": -7,
+      "turn_deg": -45,
+      "road_width_m": 7,
+      "kind": "descent",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Valley Door",
+      "length_m": 1100,
+      "grade_pct": -6,
+      "turn_deg": 25,
+      "road_width_m": 7.6,
+      "kind": "descent",
+      "surface": "asphalt",
+      "scenery": "forest"
+    },
+    {
+      "name": "Mill Return",
+      "length_m": 1100,
+      "grade_pct": -2,
+      "turn_deg": 57,
+      "road_width_m": 8.2,
+      "kind": "recovery",
+      "surface": "asphalt",
+      "scenery": "village"
+    },
+    {
+      "name": "River Flats",
+      "length_m": 1600,
+      "grade_pct": -0.6,
+      "turn_deg": -40,
+      "road_width_m": 9.2,
+      "kind": "recovery",
+      "surface": "gravel",
+      "scenery": "river"
+    },
+    {
+      "name": "Home Meadows",
+      "length_m": 1200,
+      "grade_pct": 0.2,
+      "turn_deg": 58,
+      "road_width_m": 9,
+      "kind": "recovery",
+      "surface": "asphalt",
+      "scenery": "fields"
+    }
+  ]
+}

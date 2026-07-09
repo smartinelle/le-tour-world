@@ -1,8 +1,8 @@
 import * as THREE from "/static/vendor/three.module.js";
 import { RideApiClient } from "/static/ride_client.js?v=device-pairing";
-import { RideMotionModel } from "/static/ride_motion.js?v=world-fixed";
-import { buildRoutePath } from "/static/route_path.js?v=world-fixed";
-import { applyScenery, buildWorld } from "/static/world_builder.js?v=world-fixed";
+import { RideMotionModel } from "/static/ride_motion.js?v=m2";
+import { buildRoutePath } from "/static/route_path.js?v=m2";
+import { applyScenery, buildWorld, createSkydome } from "/static/world_builder.js?v=m2";
 
 const CAMERA_HEIGHT_M = 3.6;
 const LOOK_AHEAD_M = 22;
@@ -17,9 +17,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setClearColor(0xd9edf7, 1);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xd9edf7, 80, 460);
+scene.fog = new THREE.Fog(0xd9edf7, 90, 520);
 
-const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 560);
+const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 900);
 camera.position.set(0, CAMERA_HEIGHT_M, 7.6);
 camera.lookAt(0, 0.35, -22);
 scene.add(camera);
@@ -27,9 +27,12 @@ scene.add(camera);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x5d6b4f, 2.4);
 scene.add(hemi);
 
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+const sun = new THREE.DirectionalLight(0xfff3de, 2.2);
 sun.position.set(-10, 18, 8);
 scene.add(sun);
+
+// Background dome rides with the camera; depth-free so it never clips.
+camera.add(createSkydome());
 
 // The world (road, ground, props, gates) is compiled once per route load by
 // world_builder; the frame loop only moves the camera and the actors below.
