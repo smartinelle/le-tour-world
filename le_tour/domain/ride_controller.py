@@ -327,11 +327,14 @@ class RideController:
 
         dt_s = self._sample_dt(sample_ts)
         if self._route_profile is not None:
-            # Physics uses the true route grade; the resistance clamp below
-            # only limits what is asked of the trainer hardware.
+            # Physics uses the transition-smoothed route grade (unclamped);
+            # the resistance clamp below only limits what is asked of the
+            # trainer hardware.
             step = self._dynamics.step(
                 power_w=float(self._metrics.power_w or 0),
-                grade_pct=self._route_profile.grade_at(self._metrics.distance_m),
+                grade_pct=self._route_profile.smoothed_grade_at(
+                    self._metrics.distance_m
+                ),
                 dt_s=dt_s,
             )
             self._metrics.speed_mps = step.speed_mps
@@ -402,8 +405,14 @@ class RideController:
         ):
             return
 
-        grade = self._clamp_sim_grade(
-            self._route_profile.grade_at(self._metrics.distance_m)
+        # Smoothed so segment boundaries ramp resistance over the transition
+        # window instead of jolting the trainer; rounded so near-identical
+        # values do not chatter BLE writes every sample.
+        grade = round(
+            self._clamp_sim_grade(
+                self._route_profile.smoothed_grade_at(self._metrics.distance_m)
+            ),
+            1,
         )
         if grade == self._metrics.sim_grade_pct:
             return

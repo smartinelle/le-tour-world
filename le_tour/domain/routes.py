@@ -179,9 +179,31 @@ class RideRoute:
             curve_strength=0.0,
         )
 
+    # Mirrors the renderer's path compiler (route_path.js): grade blends over
+    # this window so segment joins ramp instead of stepping. Resistance and
+    # physics use the same smoothing so what you feel matches what you see.
+    GRADE_SMOOTHING_WINDOW_M = 30.0
+    GRADE_SMOOTHING_TAPS = 9
+
     def grade_at(self, distance_m: float) -> float:
         """Return the grade at a route-relative distance."""
         return self.segment_at(distance_m).grade_pct
+
+    def smoothed_grade_at(self, distance_m: float) -> float:
+        """Return the grade averaged over the smoothing window.
+
+        Segments carry constant grades, so the raw profile steps at
+        boundaries; a stepped grade sent to the trainer feels like a jolt.
+        The window average matches the visually smoothed road, and wraps
+        across the lap seam like every other distance lookup.
+        """
+        taps = self.GRADE_SMOOTHING_TAPS
+        window_m = self.GRADE_SMOOTHING_WINDOW_M
+        total = 0.0
+        for tap in range(taps):
+            offset_m = (tap / (taps - 1) - 0.5) * window_m
+            total += self.grade_at(distance_m + offset_m)
+        return total / taps
 
     def upcoming(self, distance_m: float, horizon_m: float) -> list[RoutePoint]:
         """Return coarse upcoming route points for a distance horizon."""
@@ -228,6 +250,10 @@ class RouteProfile(Protocol):
 
     def grade_at(self, distance_m: float) -> float:
         """Return current grade."""
+        ...
+
+    def smoothed_grade_at(self, distance_m: float) -> float:
+        """Return the grade blended across segment transitions."""
         ...
 
     def upcoming(self, distance_m: float, horizon_m: float) -> list[RoutePoint]:

@@ -94,7 +94,7 @@ async def test_prepare_hardware_session_configures_sim_control_from_route():
     await runtime.prepare_hardware_session(RideMode.SIM)
 
     controller.trainer.request_control.assert_awaited_once()
-    controller.trainer.set_simulation.assert_awaited_once_with(0.4)
+    controller.trainer.set_simulation.assert_awaited_once_with(0.0)
 
 
 @pytest.mark.asyncio
@@ -214,7 +214,8 @@ def test_runtime_can_attach_route_profile():
         runtime.set_route_profile(default_demo_route())
         snapshot = runtime.start_session(RideMode.SIM)
 
-    assert snapshot.sim_grade_pct == 0.4
+    # Seam-blended smoothed grade at the start line.
+    assert snapshot.sim_grade_pct == 0.0
 
 
 def test_fake_source_ignores_fake_hr_when_hr_hardware_connected():

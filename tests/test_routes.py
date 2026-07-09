@@ -226,3 +226,35 @@ def test_default_demo_route_returns_upcoming_points():
     assert points[0].segment_name == "Valley Rollers"
     assert points[0].segment_kind == "warmup"
     assert any(point.segment_name == "Pine Rise" for point in points)
+
+
+def test_smoothed_grade_matches_segment_grade_away_from_boundaries():
+    """Deep inside a segment the smoothed grade is the segment grade."""
+    route = default_demo_route()
+
+    assert route.smoothed_grade_at(200) == pytest.approx(0.4)
+    assert route.smoothed_grade_at(600) == pytest.approx(3.2)
+
+
+def test_smoothed_grade_ramps_across_segment_boundaries():
+    """Boundaries blend between grades instead of stepping."""
+    route = default_demo_route()
+
+    # Valley Rollers (0.4%) ends at 420 m, Pine Rise (3.2%) begins.
+    at_boundary = route.smoothed_grade_at(420)
+    assert 0.4 < at_boundary < 3.2
+    # Approaching from both sides moves monotonically through the blend.
+    before = route.smoothed_grade_at(410)
+    after = route.smoothed_grade_at(430)
+    assert 0.4 <= before < at_boundary < after <= 3.2
+
+
+def test_smoothed_grade_wraps_across_the_lap_seam():
+    """The last segment blends into the first across the wrap."""
+    route = default_demo_route()
+
+    # River Run (-0.6%) wraps into Valley Rollers (0.4%).
+    near_end = route.smoothed_grade_at(route.distance_m - 1)
+    assert -0.6 < near_end < 0.4
+    just_after_start = route.smoothed_grade_at(1)
+    assert -0.6 < just_after_start < 0.4

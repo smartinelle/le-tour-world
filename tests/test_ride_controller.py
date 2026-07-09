@@ -329,7 +329,9 @@ class TestSimControl:
 
         controller.start_session(RideMode.SIM)
 
-        assert controller.metrics.sim_grade_pct == 0.4
+        # Distance 0 sits on the lap seam, so the smoothed grade blends the
+        # last segment (-0.6%) into the first (0.4%).
+        assert controller.metrics.sim_grade_pct == 0.0
 
     def test_route_profile_updates_sim_grade_from_distance(self):
         """Route profile updates SIM grade as physics distance crosses segments."""
@@ -352,6 +354,35 @@ class TestSimControl:
 
         assert controller.metrics.distance_m > 420.0
         assert controller.metrics.sim_grade_pct == 3.2
+
+    def test_sim_grade_ramps_across_segment_boundaries(self):
+        """Resistance transitions in steps bounded by the smoothing window,
+        never as one jolt from segment grade to segment grade."""
+        controller = RideController()
+        controller.set_route_profile(default_demo_route())
+        controller.start_session(RideMode.SIM)
+        start = time.time()
+
+        grades: list[float] = []
+        for second in range(120):
+            controller.handle_bike_sample(
+                {
+                    "ts": start + second,
+                    "power_w": 300,
+                    "cadence_rpm": 90,
+                    "speed_mps": 10.0,
+                }
+            )
+            grades.append(controller.metrics.sim_grade_pct)
+
+        # The ride crossed segment boundaries up to the -2.1% -> 5.6% step
+        # (7.7 grade points raw). Ramped, no sample may jump more than the
+        # window allows (step size x speed/window ~= 0.4 x step) - assert
+        # well under half the raw step, with intermediate values present.
+        assert max(grades) == 3.2
+        deltas = [abs(b - a) for a, b in zip(grades, grades[1:])]
+        assert max(deltas) < 3.5
+        assert any(0.4 < grade < 3.2 for grade in grades)
 
 
 class TestPhysicsSpeedAuthority:
