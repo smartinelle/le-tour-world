@@ -294,14 +294,35 @@ function createElevationProfile(parent, route) {
 }
 
 function updateCamera(sceneState) {
-  const pose = activePath.poseAt(sceneState.renderDistanceM);
-  const ahead = activePath.poseAt(sceneState.renderDistanceM + LOOK_AHEAD_M);
+  // Self-heal from any non-finite distance (bad snapshot field, math bug):
+  // fall back to the server's distance rather than freezing off-road.
+  let distanceM = sceneState.renderDistanceM;
+  if (!Number.isFinite(distanceM)) {
+    distanceM = Number.isFinite(sceneState.distanceM) ? sceneState.distanceM : 0;
+    motion.renderDistanceM = distanceM;
+  }
+  const pose = activePath.poseAt(distanceM);
+  const ahead = activePath.poseAt(distanceM + LOOK_AHEAD_M);
+  if (!Number.isFinite(pose.x + pose.y + pose.z)) return;
+
   camera.position.set(
     pose.x,
     pose.y + CAMERA_HEIGHT_M + sceneState.cameraBob,
     pose.z,
   );
-  camera.lookAt(ahead.x, ahead.y + 0.9, ahead.z);
+  // Guard against a degenerate look target (coincident poses would give
+  // lookAt an arbitrary direction); aim along the road heading instead.
+  const aheadDx = ahead.x - pose.x;
+  const aheadDz = ahead.z - pose.z;
+  if (aheadDx * aheadDx + aheadDz * aheadDz < 1.0) {
+    camera.lookAt(
+      pose.x + Math.sin(pose.headingRad) * LOOK_AHEAD_M,
+      pose.y + 0.9,
+      pose.z - Math.cos(pose.headingRad) * LOOK_AHEAD_M,
+    );
+  } else {
+    camera.lookAt(ahead.x, ahead.y + 0.9, ahead.z);
+  }
   camera.rotation.z += sceneState.cameraRoll;
 }
 
@@ -614,28 +635,60 @@ function resize() {
 
 let last = performance.now();
 let fallbackHidden = false;
+let frameErrorCount = 0;
 
 function frame(now) {
+  // Schedule first: one bad frame must never silently end the animation
+  // while the DOM HUD keeps updating from the snapshot stream.
+  requestAnimationFrame(frame);
+
   const dt = Math.min(0.06, (now - last) / 1000);
   last = now;
 
-  if (!fallbackHidden) {
-    // The CSS fallback covers the canvas until WebGL provably renders; hide
-    // it on the first frame so the world shows through (it stays visible if
-    // module loading or renderer setup failed before reaching this loop).
-    document.querySelector(".scene-fallback")?.setAttribute("hidden", "");
-    fallbackHidden = true;
-  }
+  try {
+    if (!fallbackHidden) {
+      // The CSS fallback covers the canvas until WebGL provably renders;
+      // hide it on the first frame so the world shows through (it stays
+      // visible if module loading or renderer setup failed earlier).
+      document.querySelector(".scene-fallback")?.setAttribute("hidden", "");
+      fallbackHidden = true;
+    }
 
-  const sceneState = motion.advance(dt, now);
-  if (activePath) {
-    updateCamera(sceneState);
-    updatePacerRiders(sceneState, now);
+    const sceneState = motion.advance(dt, now);
+    if (activePath) {
+      updateCamera(sceneState);
+      updatePacerRiders(sceneState, now);
+    }
+    updateCockpit(sceneState, now);
+    applyScenery(renderer, scene, sceneState.scenery);
+    renderer.render(scene, camera);
+
+    // Live diagnostics for bug reports and headless benches (see
+    // docs/technical-assessment.md B4/B5).
+    window.__rideDebug = {
+      frameAt: now,
+      renderDistanceM: sceneState.renderDistanceM,
+      serverDistanceM: sceneState.distanceM,
+      speedMps: sceneState.speedMps,
+      camera: {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      },
+      pathLengthM: activePath ? activePath.lengthM : null,
+      frameErrorCount,
+    };
+  } catch (error) {
+    frameErrorCount += 1;
+    if (frameErrorCount <= 3) {
+      console.error("ride3d frame error", error);
+    }
+    window.__rideDebug = {
+      ...(window.__rideDebug || {}),
+      frameErrorCount,
+      lastFrameError: String((error && error.stack) || error),
+    };
   }
-  updateCockpit(sceneState, now);
-  applyScenery(renderer, scene, sceneState.scenery);
-  renderer.render(scene, camera);
-  requestAnimationFrame(frame);
 }
 
 window.addEventListener("resize", resize);

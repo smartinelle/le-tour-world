@@ -387,10 +387,24 @@ def test_ride3d_scenery_palette_tracks_rider_position():
 def test_ride3d_camera_follows_route_path():
     """The camera moves through a fixed world along the compiled path."""
     assert "function updateCamera(sceneState)" in RIDE3D_JS
-    assert "activePath.poseAt(sceneState.renderDistanceM)" in RIDE3D_JS
-    assert "poseAt(sceneState.renderDistanceM + LOOK_AHEAD_M)" in RIDE3D_JS
+    assert "activePath.poseAt(distanceM)" in RIDE3D_JS
+    assert "activePath.poseAt(distanceM + LOOK_AHEAD_M)" in RIDE3D_JS
     assert "camera.lookAt(ahead.x" in RIDE3D_JS
     assert "camera.rotation.z += sceneState.cameraRoll" in RIDE3D_JS
+
+
+def test_ride3d_render_loop_is_self_healing():
+    """One bad frame must not kill the animation or strand the camera."""
+    # Next frame is scheduled before the frame body can throw.
+    assert RIDE3D_JS.index("requestAnimationFrame(frame);") < RIDE3D_JS.index(
+        "const sceneState = motion.advance(dt, now)"
+    )
+    assert "catch (error)" in RIDE3D_JS
+    assert "frameErrorCount" in RIDE3D_JS
+    assert "__rideDebug" in RIDE3D_JS
+    # Camera recovers from non-finite distances and degenerate look targets.
+    assert "Number.isFinite(distanceM)" in RIDE3D_JS
+    assert "pose.headingRad" in RIDE3D_JS
 
 
 def test_ride3d_renders_pacer_riders_on_route_path():
