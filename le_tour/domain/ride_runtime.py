@@ -45,7 +45,9 @@ class RideRuntime:
         if route_profile is not None:
             self.controller.set_route_profile(route_profile)
         self._fake_source: Optional[FakeTrainerSampleSource] = None
-        self._virtual_power_w: Optional[float] = None
+        self._virtual_effort: Optional[tuple[str, Optional[float], Optional[float]]] = (
+            None
+        )
         self._trainer_samples_attached = False
         self._hr_samples_attached = False
 
@@ -176,19 +178,33 @@ class RideRuntime:
 
     @property
     def virtual_power_w(self) -> Optional[float]:
-        """Rider-controlled virtual trainer power, or None in auto mode."""
-        return self._virtual_power_w
+        """Rider-controlled hold wattage, or None outside hold mode."""
+        if self._virtual_effort is None or self._virtual_effort[0] != "hold":
+            return None
+        return self._virtual_effort[1]
 
     def set_virtual_power(self, power_w: Optional[float]) -> RideSnapshot:
-        """Pin the no-hardware source's power to a live rider-set value.
+        """Back-compat wrapper: hold a wattage, or None for auto."""
+        if power_w is None:
+            return self.set_virtual_effort("auto")
+        return self.set_virtual_effort("hold", power_w=power_w)
 
-        The virtual trainer for feel testing: exact watts in, world response
-        out — no hardware in the loop. None returns to the auto demo power.
-        Ignored while a real trainer drives the session.
+    def set_virtual_effort(
+        self,
+        action: str,
+        power_w: Optional[float] = None,
+        duration_s: Optional[float] = None,
+    ) -> RideSnapshot:
+        """Steer the virtual rider driving the no-hardware sample source.
+
+        Actions mirror how a real rider is exercised in testing: hold a
+        wattage, build progressively (ramp), burst (sprint), or hand control
+        back to the wandering demo (auto). Ignored while a real trainer
+        drives the session.
         """
-        self._virtual_power_w = power_w
+        self._virtual_effort = (action, power_w, duration_s)
         if self._fake_source is not None:
-            self._virtual_power_w = self._fake_source.set_manual_power(power_w)
+            self._fake_source.set_effort(action, power_w=power_w, duration_s=duration_s)
         return self.controller.snapshot()
 
     def start_fake_source(self) -> None:
@@ -212,8 +228,9 @@ class RideRuntime:
             snapshot_provider=self.controller.snapshot,
             interval_s=1.0,
         )
-        if self._virtual_power_w is not None:
-            self._fake_source.set_manual_power(self._virtual_power_w)
+        if self._virtual_effort is not None:
+            action, power_w, duration_s = self._virtual_effort
+            self._fake_source.set_effort(action, power_w=power_w, duration_s=duration_s)
         self._fake_source.start()
         logger.info("Started fake trainer sample source")
 

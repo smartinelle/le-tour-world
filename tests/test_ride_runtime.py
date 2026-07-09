@@ -237,13 +237,14 @@ def test_set_virtual_power_reaches_running_fake_source():
     runtime = RideRuntime(controller)
     with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource") as source:
         source.return_value.is_running = True
-        source.return_value.set_manual_power.return_value = 250.0
         runtime.start_session(RideMode.FREE)
 
         snapshot = runtime.set_virtual_power(250)
 
-        source.return_value.set_manual_power.assert_called_once_with(250)
-        assert runtime.virtual_power_w == 250.0
+        source.return_value.set_effort.assert_called_once_with(
+            "hold", power_w=250, duration_s=None
+        )
+        assert runtime.virtual_power_w == 250
         assert snapshot.active is True
 
 
@@ -257,4 +258,6 @@ def test_virtual_power_set_before_start_applies_on_fake_source_creation():
 
         runtime.start_session(RideMode.FREE)
 
-        source.return_value.set_manual_power.assert_called_once_with(180)
+        source.return_value.set_effort.assert_called_once_with(
+            "hold", power_w=180, duration_s=None
+        )

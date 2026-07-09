@@ -169,6 +169,51 @@ def test_ride3d_virtual_power_endpoint_accepts_auto_mode():
     runtime.set_virtual_power.assert_called_once_with(None)
 
 
+def test_ride3d_virtual_rider_endpoint_steers_effort():
+    """Ramp and sprint efforts reach the virtual rider."""
+    runtime = MagicMock()
+    runtime.set_virtual_effort.return_value = RideSnapshot(
+        session_state="active", active=True
+    )
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    response = TestClient(app).post(
+        "/api/ride/virtual-rider",
+        json={"action": "ramp", "watts": 320, "duration_s": 60},
+    )
+
+    assert response.status_code == 200
+    runtime.set_virtual_effort.assert_called_once_with(
+        "ramp", power_w=320.0, duration_s=60.0
+    )
+
+
+def test_ride3d_virtual_rider_endpoint_rejects_unknown_actions():
+    """Unknown rider actions return a 400 instead of reaching the domain."""
+    runtime = MagicMock()
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    response = TestClient(app).post(
+        "/api/ride/virtual-rider", json={"action": "teleport"}
+    )
+
+    assert response.status_code == 400
+    runtime.set_virtual_effort.assert_not_called()
+
+
+def test_ride3d_page_has_virtual_rider_effort_controls():
+    """Ramp, sprint, and auto are one click away next to the hold slider."""
+    assert 'id="virtual-ramp-short"' in RIDE3D_HTML
+    assert 'id="virtual-ramp-long"' in RIDE3D_HTML
+    assert 'id="virtual-sprint"' in RIDE3D_HTML
+    assert "sendVirtualRider" in RIDE3D_JS
+    assert "rideClient.setVirtualRider" in RIDE3D_JS
+    assert "setVirtualRider(action, watts = null, durationS = null)" in RIDE_CLIENT_JS
+    assert '"/api/ride/virtual-rider"' in RIDE_CLIENT_JS
+
+
 def test_ride3d_page_has_virtual_trainer_controls():
     """Ride feel is testable without hardware: live watts from the browser."""
     assert 'id="virtual-trainer"' in RIDE3D_HTML

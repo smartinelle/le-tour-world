@@ -414,13 +414,18 @@ RIDE3D_HTML = """<!doctype html>
       <button class="action" data-sim-delta="0.5">+0.5%</button>
     </div>
     <div id="virtual-trainer" class="virtual-trainer" hidden>
-      <span class="route-select-label">Virtual trainer · <span id="virtual-power-value">Auto</span></span>
-      <input id="virtual-power-slider" type="range" min="0" max="600" step="5" value="150" aria-label="Virtual trainer power">
+      <span class="route-select-label">Virtual rider · <span id="virtual-power-value">Auto</span></span>
+      <input id="virtual-power-slider" type="range" min="0" max="600" step="5" value="150" aria-label="Virtual rider power">
       <div class="actions">
         <button class="action" data-virtual-power="0">0W</button>
         <button class="action" data-virtual-power="150">150W</button>
         <button class="action" data-virtual-power="300">300W</button>
         <button class="action" data-virtual-power="500">500W</button>
+      </div>
+      <div class="actions" style="margin-top: 8px;">
+        <button id="virtual-ramp-short" class="action">Ramp 30s</button>
+        <button id="virtual-ramp-long" class="action">Ramp 2min</button>
+        <button id="virtual-sprint" class="action">Sprint</button>
         <button id="virtual-power-auto" class="action">Auto</button>
       </div>
     </div>
@@ -597,6 +602,24 @@ def attach_ride3d_routes(
         if watts is not None:
             watts = parse_delta(watts, "virtual power")
         return runtime_provider().set_virtual_power(watts).to_dict()
+
+    @web_app.post("/api/ride/virtual-rider")
+    async def set_virtual_rider(request: Request) -> dict[str, object]:
+        body = await request.json()
+        action = str(body.get("action") or "hold").lower()
+        if action not in {"auto", "hold", "ramp", "sprint"}:
+            raise HTTPException(status_code=400, detail="Unknown rider action")
+        watts = body.get("watts")
+        if watts is not None:
+            watts = parse_delta(watts, "virtual rider power")
+        duration_s = body.get("duration_s")
+        if duration_s is not None:
+            duration_s = parse_delta(duration_s, "virtual rider duration")
+        return (
+            runtime_provider()
+            .set_virtual_effort(action, power_w=watts, duration_s=duration_s)
+            .to_dict()
+        )
 
 
 __all__ = ["RIDE3D_HTML", "attach_ride3d_routes", "parse_delta", "parse_ride_mode"]

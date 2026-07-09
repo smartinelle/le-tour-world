@@ -107,6 +107,16 @@ from the sketch above:
   screenshots from fixed route distances checked into `docs/` (these become
   the baseline for the future eval loop).
 
+**Status: done (2026-07-09).** Col du Rivelet shipped: 17.2 km, 260 m gain,
+8% max, closes with zero bent turns and 107 m redistributed drift (turn
+angles tuned numerically). Terrain is a corridor grid - seeded value noise
+blended into the road with a smoothstep falloff and per-scenery character -
+rather than streamed chunks; props are InstancedMesh sharing the terrain
+height function; atmosphere is a camera-anchored skydome plus per-scenery
+fog depth. Verified by a full headless lap (zero frame errors); the
+screenshot baseline lives in `docs/screenshots/`. 60 FPS still needs a
+real-GPU check (dev container is software GL).
+
 ### M3 — Ride feel
 
 - **Grade smoothing:** constant-grade segments produce resistance steps in SIM

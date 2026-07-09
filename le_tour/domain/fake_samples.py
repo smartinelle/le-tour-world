@@ -41,25 +41,138 @@ class FakeTrainerSampleSource:
         self._cadence_rpm = 82.0
         self._speed_mps = 7.0
         self._hr_bpm = 112.0
-        self._manual_power_w: Optional[float] = None
+        # Virtual rider effort state machine (see set_effort).
+        self._effort_mode = "auto"
+        self._hold_power_w = 150.0
+        self._ramp: Optional[dict[str, float]] = None
+        self._sprint: Optional[dict[str, float]] = None
+        self._resume_mode = "auto"
+        self._pedal_phase = self._random.uniform(0.0, math.tau)
+
+    # -- Virtual rider effort -------------------------------------------------
+    #
+    # A real trainer never reports a flat line: rider power approaches a
+    # target over a second or two, every pedal stroke wobbles a few percent,
+    # and cadence follows effort. The effort modes mirror how a rider is
+    # actually driven in testing:
+    #   auto   - wandering demo effort (the original behavior)
+    #   hold   - settle onto a target wattage and sit on it
+    #   ramp   - build progressively from current power to a target
+    #   sprint - out-of-the-saddle burst: fast attack, fatigue decay, sit up
+
+    MAX_POWER_W = 1500.0
+    RIDER_RESPONSE = 0.55  # per-sample approach toward desired power
+    SPRINT_RESPONSE = 0.85
+    SPRINT_ATTACK_S = 1.2
+    SPRINT_FATIGUE = 0.18  # fraction of peak lost across the sprint
+    PEDAL_FLUCTUATION = 0.03  # stroke-to-stroke power wobble
+
+    @property
+    def effort(self) -> dict[str, object]:
+        """Current virtual rider effort for API echo and UIs."""
+        target: Optional[float] = None
+        if self._effort_mode == "hold":
+            target = self._hold_power_w
+        elif self._effort_mode == "ramp" and self._ramp is not None:
+            target = self._ramp["target_w"]
+        elif self._effort_mode == "sprint" and self._sprint is not None:
+            target = self._sprint["peak_w"]
+        return {"action": self._effort_mode, "target_w": target}
 
     @property
     def manual_power_w(self) -> Optional[float]:
-        """Rider-controlled power override, or None in auto demo mode."""
-        return self._manual_power_w
+        """Rider-controlled hold target, or None outside hold mode."""
+        return self._hold_power_w if self._effort_mode == "hold" else None
 
     def set_manual_power(self, power_w: Optional[float]) -> Optional[float]:
-        """Pin emitted power to a live rider-controlled value.
-
-        This turns the fake source into a virtual trainer: exact, immediate
-        power steps for testing ride feel without hardware. Pass None to
-        return to the wandering auto demo power.
-        """
+        """Back-compat wrapper: hold a wattage, or None for auto."""
         if power_w is None:
-            self._manual_power_w = None
+            self.set_effort("auto")
+            return None
+        self.set_effort("hold", power_w=power_w)
+        return self._hold_power_w
+
+    def set_effort(
+        self,
+        action: str,
+        power_w: Optional[float] = None,
+        duration_s: Optional[float] = None,
+    ) -> dict[str, object]:
+        """Steer the virtual rider. Returns the resulting effort state."""
+        clamped = (
+            None if power_w is None else max(0.0, min(self.MAX_POWER_W, float(power_w)))
+        )
+        if action == "auto":
+            self._effort_mode = "auto"
+            self._ramp = None
+            self._sprint = None
+        elif action == "hold":
+            self._effort_mode = "hold"
+            self._hold_power_w = clamped if clamped is not None else self._hold_power_w
+            self._ramp = None
+            self._sprint = None
+        elif action == "ramp":
+            self._effort_mode = "ramp"
+            self._ramp = {
+                "start_w": self._power_w,
+                "target_w": clamped if clamped is not None else self._hold_power_w,
+                "started_s": -1.0,  # initialized from the first sample timestamp
+                "duration_s": max(5.0, min(600.0, float(duration_s or 60.0))),
+            }
+            self._sprint = None
+        elif action == "sprint":
+            self._resume_mode = (
+                "hold" if self._effort_mode in {"hold", "ramp", "sprint"} else "auto"
+            )
+            self._effort_mode = "sprint"
+            self._sprint = {
+                "peak_w": clamped if clamped is not None else 650.0,
+                "started_s": -1.0,
+                "duration_s": max(3.0, min(30.0, float(duration_s or 10.0))),
+                "from_w": self._power_w,
+            }
+            self._ramp = None
         else:
-            self._manual_power_w = max(0.0, min(1500.0, float(power_w)))
-        return self._manual_power_w
+            raise ValueError(f"Unknown virtual rider action: {action}")
+        return self.effort
+
+    def _desired_power(self, ts: float) -> tuple[float, float]:
+        """Return (desired watts, response rate) for the manual effort modes."""
+        if self._effort_mode == "ramp" and self._ramp is not None:
+            ramp = self._ramp
+            if ramp["started_s"] < 0:
+                ramp["started_s"] = ts
+            progress = (ts - ramp["started_s"]) / ramp["duration_s"]
+            if progress >= 1.0:
+                self._hold_power_w = ramp["target_w"]
+                self._effort_mode = "hold"
+                self._ramp = None
+                return self._hold_power_w, self.RIDER_RESPONSE
+            desired = ramp["start_w"] + (ramp["target_w"] - ramp["start_w"]) * progress
+            return desired, self.RIDER_RESPONSE
+
+        if self._effort_mode == "sprint" and self._sprint is not None:
+            sprint = self._sprint
+            if sprint["started_s"] < 0:
+                sprint["started_s"] = ts
+            elapsed = ts - sprint["started_s"]
+            if elapsed >= sprint["duration_s"]:
+                self._effort_mode = self._resume_mode
+                self._sprint = None
+                return self._hold_power_w, self.RIDER_RESPONSE
+            if elapsed < self.SPRINT_ATTACK_S:
+                rise = elapsed / self.SPRINT_ATTACK_S
+                desired = (
+                    sprint["from_w"] + (sprint["peak_w"] - sprint["from_w"]) * rise
+                )
+            else:
+                fatigue = (elapsed - self.SPRINT_ATTACK_S) / max(
+                    0.1, sprint["duration_s"] - self.SPRINT_ATTACK_S
+                )
+                desired = sprint["peak_w"] * (1.0 - self.SPRINT_FATIGUE * fatigue)
+            return desired, self.SPRINT_RESPONSE
+
+        return self._hold_power_w, self.RIDER_RESPONSE
 
     @property
     def is_running(self) -> bool:
@@ -100,8 +213,8 @@ class FakeTrainerSampleSource:
 
     def next_bike_sample(self, snapshot: RideSnapshot, ts: float) -> BikeSample:
         """Return the next deterministic-ish bike sample."""
-        if self._manual_power_w is not None:
-            return self._manual_bike_sample(ts)
+        if self._effort_mode != "auto":
+            return self._rider_bike_sample(ts)
 
         elapsed_s = max(0.0, ts - (self._started_at_s or ts))
         wave = math.sin(elapsed_s / 18.0)
@@ -134,22 +247,46 @@ class FakeTrainerSampleSource:
             "speed_mps": max(0.0, min(16.0, self._speed_mps)),
         }
 
-    def _manual_bike_sample(self, ts: float) -> BikeSample:
-        """Exact rider-controlled power: deterministic step inputs for feel
-        testing — no wave, no noise."""
-        power_w = float(self._manual_power_w or 0.0)
-        # Track internal state so switching back to auto resumes smoothly.
-        self._power_w = power_w
-        self._cadence_rpm = (
-            0.0 if power_w <= 0 else min(130.0, max(60.0, 60.0 + power_w / 8.0))
-        )
-        desired_speed = 0.0 if power_w <= 0 else 3.2 + power_w / 38.0
+    def _rider_bike_sample(self, ts: float) -> BikeSample:
+        """One sample of steered rider effort, shaped like real trainer data:
+        power approaches the desired effort over ~1-2 s and every sample
+        carries stroke-to-stroke wobble; cadence tracks effort."""
+        desired_w, response = self._desired_power(ts)
+        if desired_w <= 1.0:
+            # Stopping pedaling reads as ~0 W within a sample or two - much
+            # faster than effort builds.
+            response = max(response, 0.9)
+        self._power_w += (desired_w - self._power_w) * response
+
+        # Pedal-stroke fluctuation: multiplicative so 0 W stays exactly 0.
+        self._pedal_phase += 2.3 + self._random.uniform(-0.3, 0.3)
+        wobble = self.PEDAL_FLUCTUATION * math.sin(
+            self._pedal_phase
+        ) + self._random.uniform(-0.02, 0.02)
+        emitted_w = max(0.0, self._power_w * (1.0 + wobble))
+
+        sprinting = self._effort_mode == "sprint"
+        if emitted_w < 15.0:
+            desired_cadence = 0.0
+        else:
+            desired_cadence = min(104.0, 58.0 + 30.0 * emitted_w / 300.0)
+            if sprinting:
+                desired_cadence = min(118.0, desired_cadence + 12.0)
+        # Legs stop instantly; effort changes settle over a couple of strokes.
+        cadence_response = 1.0 if desired_cadence == 0.0 else 0.45
+        self._cadence_rpm += (
+            desired_cadence
+            + (self._random.uniform(-1.5, 1.5) if desired_cadence else 0.0)
+            - self._cadence_rpm
+        ) * cadence_response
+
+        desired_speed = 0.0 if emitted_w <= 0 else 3.2 + emitted_w / 38.0
         self._speed_mps += (desired_speed - self._speed_mps) * 0.18
 
         return {
             "ts": ts,
-            "power_w": int(round(power_w)),
-            "cadence_rpm": int(round(self._cadence_rpm)),
+            "power_w": max(0, int(round(emitted_w))),
+            "cadence_rpm": max(0, int(round(self._cadence_rpm))),
             "speed_mps": max(0.0, min(16.0, self._speed_mps)),
         }
 

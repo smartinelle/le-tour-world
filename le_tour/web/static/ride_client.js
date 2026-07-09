@@ -7,6 +7,7 @@ export class RideApiClient {
     ergTargetUrl = "/api/ride/erg-target",
     simGradeUrl = "/api/ride/sim-grade",
     virtualPowerUrl = "/api/ride/virtual-power",
+    virtualRiderUrl = "/api/ride/virtual-rider",
     routesUrl = "/api/ride/routes",
     routeUrl = "/api/ride/route",
     devicesStatusUrl = "/api/devices/status",
@@ -19,6 +20,7 @@ export class RideApiClient {
     this.ergTargetUrl = ergTargetUrl;
     this.simGradeUrl = simGradeUrl;
     this.virtualPowerUrl = virtualPowerUrl;
+    this.virtualRiderUrl = virtualRiderUrl;
     this.routesUrl = routesUrl;
     this.routeUrl = routeUrl;
     this.devicesStatusUrl = devicesStatusUrl;
@@ -58,6 +60,14 @@ export class RideApiClient {
 
   setVirtualPower(watts) {
     return this.postJson(this.virtualPowerUrl, { watts });
+  }
+
+  setVirtualRider(action, watts = null, durationS = null) {
+    return this.postJson(this.virtualRiderUrl, {
+      action,
+      watts,
+      duration_s: durationS,
+    });
   }
 
   async getRoutes() {

@@ -362,13 +362,14 @@ function formatValue(value, fallback = "--") {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-// Virtual trainer: rider-controlled watts drive the demo source live, so
-// ride feel is testable end to end without hardware. Trailing-send keeps a
-// dragged slider from queueing stale values.
+// Virtual rider: steer the demo source with signals shaped like a real
+// trainer's - power settles onto targets over seconds, ramps build, sprints
+// attack and fade. Trailing-send keeps a dragged slider from queueing stale
+// values.
 async function sendVirtualPower(watts) {
   virtualPowerW = watts;
   hud.virtualPowerValue.textContent =
-    watts === null ? "Auto" : `${Math.round(watts)}W`;
+    watts === null ? "Auto" : `Hold ${Math.round(watts)}W`;
   if (virtualPowerBusy) return;
   virtualPowerBusy = true;
   try {
@@ -379,6 +380,15 @@ async function sendVirtualPower(watts) {
     } while (virtualPowerW !== sent);
   } finally {
     virtualPowerBusy = false;
+  }
+}
+
+async function sendVirtualRider(action, watts, durationS, label) {
+  hud.virtualPowerValue.textContent = label;
+  try {
+    await rideClient.setVirtualRider(action, watts, durationS);
+  } catch (error) {
+    hud.virtualPowerValue.textContent = `failed: ${error.message || error}`;
   }
 }
 
@@ -620,6 +630,21 @@ function attachControls() {
   hud.virtualPowerAuto.addEventListener("click", () => {
     sendVirtualPower(null);
     hud.virtualPowerAuto.blur();
+  });
+
+  document.querySelector("#virtual-ramp-short").addEventListener("click", () => {
+    const target = Number(hud.virtualPowerSlider.value);
+    sendVirtualRider("ramp", target, 30, `Ramp to ${target}W over 30s`);
+  });
+
+  document.querySelector("#virtual-ramp-long").addEventListener("click", () => {
+    const target = Number(hud.virtualPowerSlider.value);
+    sendVirtualRider("ramp", target, 120, `Ramp to ${target}W over 2min`);
+  });
+
+  document.querySelector("#virtual-sprint").addEventListener("click", () => {
+    const peak = Math.min(900, Math.max(500, Number(hud.virtualPowerSlider.value) * 2.2));
+    sendVirtualRider("sprint", peak, 10, `Sprint! ${Math.round(peak)}W`);
   });
 
   hud.trainerDeviceAction.addEventListener("click", async () => {
