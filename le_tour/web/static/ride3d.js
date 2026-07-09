@@ -1,8 +1,8 @@
 import * as THREE from "/static/vendor/three.module.js";
 import { RideApiClient } from "/static/ride_client.js?v=device-pairing";
-import { RideMotionModel } from "/static/ride_motion.js?v=m2";
-import { buildRoutePath } from "/static/route_path.js?v=m2";
-import { applyScenery, buildWorld, createSkydome } from "/static/world_builder.js?v=m2";
+import { RideMotionModel } from "/static/ride_motion.js?v=m4";
+import { buildRoutePath } from "/static/route_path.js?v=m4";
+import { applyScenery, buildWorld, createSkydome } from "/static/world_builder.js?v=m4";
 
 const CAMERA_HEIGHT_M = 3.6;
 const LOOK_AHEAD_M = 22;
@@ -101,6 +101,11 @@ camera.add(cockpitGroup);
 const hud = {
   statusPanel: document.querySelector(".status"),
   power: document.querySelector("#power"),
+  powerCard: document.querySelector("#power-card"),
+  rideTime: document.querySelector("#ride-time"),
+  avgPower: document.querySelector("#avg-power"),
+  npPower: document.querySelector("#np-power"),
+  grade: document.querySelector("#grade"),
   speed: document.querySelector("#speed"),
   cadence: document.querySelector("#cadence"),
   hr: document.querySelector("#heart-rate"),
@@ -252,10 +257,22 @@ function createElevationProfile(parent, route) {
   });
   elevationLine.setAttribute("points", pointString);
   elevationLine.setAttribute("fill", "none");
-  elevationLine.setAttribute("stroke", "var(--accent)");
+  elevationLine.setAttribute("stroke", "rgba(107, 114, 128, 0.4)");
   elevationLine.setAttribute("stroke-linecap", "round");
   elevationLine.setAttribute("stroke-linejoin", "round");
   elevationLine.setAttribute("stroke-width", "4");
+  // Completed portion: the same line in accent, clipped at the rider.
+  const clipPath = document.createElementNS(ns, "clipPath");
+  const clipRect = document.createElementNS(ns, "rect");
+  clipPath.setAttribute("id", "elevation-progress-clip");
+  clipRect.setAttribute("x", "0");
+  clipRect.setAttribute("y", "0");
+  clipRect.setAttribute("width", "10");
+  clipRect.setAttribute("height", "72");
+  clipPath.append(clipRect);
+  const completedLine = elevationLine.cloneNode();
+  completedLine.setAttribute("stroke", "var(--accent)");
+  completedLine.setAttribute("clip-path", "url(#elevation-progress-clip)");
   cursor.setAttribute("r", "4.5");
   cursor.setAttribute("fill", "#111827");
   cursor.setAttribute("stroke", "#ffffff");
@@ -275,7 +292,7 @@ function createElevationProfile(parent, route) {
     segmentLineGroup.append(marker);
   });
 
-  svg.append(segmentLineGroup, elevationLine, cursor);
+  svg.append(clipPath, segmentLineGroup, elevationLine, completedLine, cursor);
   panel.append(label, svg);
   parent.append(panel);
 
@@ -291,6 +308,7 @@ function createElevationProfile(parent, route) {
         }, 0) || 0;
       cursor.setAttribute("cx", String(xForDistance(routeDistanceM)));
       cursor.setAttribute("cy", String(yForElevation(currentElevationM)));
+      clipRect.setAttribute("width", String(xForDistance(routeDistanceM)));
       cursor.style.opacity = active ? "1" : "0.38";
     },
   };
@@ -360,6 +378,49 @@ function updateCockpit(sceneState, now) {
 
 function formatValue(value, fallback = "--") {
   return value === null || value === undefined ? fallback : String(value);
+}
+
+function formatElapsed(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "--";
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+// Coggan power zones as a fraction of FTP; colors the power card so effort
+// reads at a glance without doing watt math mid-ride.
+function powerZoneClass(powerW, ftpW) {
+  if (!ftpW || !Number.isFinite(powerW) || powerW <= 0) return "";
+  const ratio = powerW / ftpW;
+  if (ratio <= 0.55) return "zone-1";
+  if (ratio <= 0.75) return "zone-2";
+  if (ratio <= 0.9) return "zone-3";
+  if (ratio <= 1.05) return "zone-4";
+  if (ratio <= 1.5) return "zone-5";
+  return "zone-6";
+}
+
+const POWER_ZONE_CLASSES = [
+  "zone-1",
+  "zone-2",
+  "zone-3",
+  "zone-4",
+  "zone-5",
+  "zone-6",
+];
+
+function applyPowerZone(snapshot) {
+  if (!hud.powerCard) return;
+  const zone = snapshot.active
+    ? powerZoneClass(Number(snapshot.power_w), Number(snapshot.ftp_w))
+    : "";
+  POWER_ZONE_CLASSES.forEach((name) => {
+    hud.powerCard.classList.toggle(name, name === zone);
+  });
 }
 
 // Virtual rider: steer the demo source with signals shaped like a real
@@ -517,6 +578,21 @@ function updateHud(snapshot) {
     snapshot.active && snapshot.distance_m
       ? `${(snapshot.distance_m / 1000).toFixed(2)} km`
       : "--";
+  hud.rideTime.textContent = snapshot.active
+    ? formatElapsed(snapshot.elapsed_s)
+    : "--";
+  hud.avgPower.textContent =
+    snapshot.active && snapshot.avg_power_w != null
+      ? String(Math.round(snapshot.avg_power_w))
+      : "--";
+  hud.npPower.textContent =
+    snapshot.active && snapshot.normalized_power_w != null
+      ? String(Math.round(snapshot.normalized_power_w))
+      : "--";
+  hud.grade.textContent = snapshot.active
+    ? `${sceneState.gradePct.toFixed(1)}%`
+    : "--";
+  applyPowerZone(snapshot);
 
   const state = snapshot.session_state || "inactive";
   hud.state.textContent =

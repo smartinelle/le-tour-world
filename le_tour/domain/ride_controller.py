@@ -30,6 +30,51 @@ from .trainer_service import TrainerService
 logger = logging.getLogger(__name__)
 
 
+class _LivePowerStats:
+    """Incremental in-ride power analytics for the HUD.
+
+    Average power is a running mean; normalized power follows the standard
+    definition — fourth-root of the mean fourth power of the 30-sample
+    rolling average — computed incrementally so every snapshot can carry it.
+    """
+
+    ROLLING_WINDOW = 30
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._window: list[float] = []
+        self._window_sum = 0.0
+        self._power_sum = 0.0
+        self._count = 0
+        self._fourth_power_sum = 0.0
+        self._fourth_count = 0
+
+    def add(self, power_w: float) -> None:
+        self._power_sum += power_w
+        self._count += 1
+        self._window.append(power_w)
+        self._window_sum += power_w
+        if len(self._window) > self.ROLLING_WINDOW:
+            self._window_sum -= self._window.pop(0)
+        rolling_avg = self._window_sum / len(self._window)
+        self._fourth_power_sum += rolling_avg**4
+        self._fourth_count += 1
+
+    @property
+    def avg_power_w(self) -> Optional[float]:
+        if self._count == 0:
+            return None
+        return self._power_sum / self._count
+
+    @property
+    def normalized_power_w(self) -> Optional[float]:
+        if self._fourth_count == 0:
+            return None
+        return (self._fourth_power_sum / self._fourth_count) ** 0.25
+
+
 class RideController:
     """Coordinate ride state, metrics, devices, and persistence.
 
@@ -66,6 +111,7 @@ class RideController:
         self._sample_records: list[SampleModel] = []
         self._route_profile: Optional[RouteProfile] = None
         self._dynamics = self._build_dynamics()
+        self._live_power = _LivePowerStats()
         self._last_persistence_error: Optional[str] = None
 
         self.on_metrics_update: Optional[Callable[[RideMetrics], None]] = None
@@ -113,6 +159,7 @@ class RideController:
 
         trainer_info = self.trainer.device_info if self.trainer.is_connected else {}
         hr_info = self.hr_service.device_info if self.hr_service.is_connected else {}
+        config = get_config()
 
         return RideSnapshot(
             session_state=session_state,
@@ -130,6 +177,9 @@ class RideController:
             hr_bpm=self._metrics.hr_bpm,
             erg_target_w=self._metrics.erg_target_w,
             sim_grade_pct=self._metrics.sim_grade_pct,
+            avg_power_w=self._metrics.avg_power_w,
+            normalized_power_w=self._metrics.normalized_power_w,
+            ftp_w=config.user_ftp_w,
             trainer_connected=self.trainer.is_connected,
             trainer_name=trainer_info.get("name") or self._state.trainer_name,
             hr_connected=self.hr_service.is_connected,
@@ -172,6 +222,7 @@ class RideController:
         if mode is RideMode.SIM:
             self._sync_sim_grade_from_route(notify=False)
         self._dynamics = self._build_dynamics()
+        self._live_power.reset()
         self._started_monotonic = time.monotonic()
         self._paused_started_monotonic = None
         self._total_paused_s = 0.0
@@ -324,6 +375,11 @@ class RideController:
         self._metrics.power_w = sample.get("power_w")
         self._metrics.cadence_rpm = sample.get("cadence_rpm")
         self._metrics.trainer_speed_mps = trainer_speed_mps
+
+        if self._metrics.power_w is not None:
+            self._live_power.add(float(self._metrics.power_w))
+            self._metrics.avg_power_w = self._live_power.avg_power_w
+            self._metrics.normalized_power_w = self._live_power.normalized_power_w
 
         dt_s = self._sample_dt(sample_ts)
         if self._route_profile is not None:

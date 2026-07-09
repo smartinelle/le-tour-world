@@ -155,6 +155,16 @@ question:
 - FTP-zone coloring on the power card when an FTP is configured.
 - Verify pause/stop states and reconnect messaging are clean.
 
+**Status: done (2026-07-09).** The HUD grid gained time, average power,
+normalized power, and current-grade cards; avg/NP are computed incrementally
+in the controller (`_LivePowerStats`, 30-sample rolling fourth-power NP) and
+travel on every snapshot together with the configured FTP. The power card is
+colored by Coggan zone (Z1–Z6). Segment context ("Next Pine Rise in 302 m ·
+3.2%") had already landed with M1's route HUD; the elevation strip now fills
+the completed portion in accent color behind the rider marker. Pause/stop
+clear the cards, and control failures surface in the status line (dead-server
+hardening pass).
+
 ### M5 — Pre-ride and post-ride flow
 
 - **Home dashboard route cards:** distance, elevation gain, difficulty (all

@@ -147,6 +147,20 @@ RIDE3D_HTML = """<!doctype html>
       white-space: nowrap;
     }
 
+    /* FTP power zones color the power card when an FTP is configured. */
+    .metric.zone-1 { border-color: #94a3b8; }
+    .metric.zone-1 strong { color: #64748b; }
+    .metric.zone-2 { border-color: #3b82f6; }
+    .metric.zone-2 strong { color: #2563eb; }
+    .metric.zone-3 { border-color: #22c55e; }
+    .metric.zone-3 strong { color: #16a34a; }
+    .metric.zone-4 { border-color: #eab308; }
+    .metric.zone-4 strong { color: #ca8a04; }
+    .metric.zone-5 { border-color: #f97316; }
+    .metric.zone-5 strong { color: #ea580c; }
+    .metric.zone-6 { border-color: #ef4444; }
+    .metric.zone-6 strong { color: #dc2626; }
+
     .metric span,
     .status span {
       display: block;
@@ -389,11 +403,15 @@ RIDE3D_HTML = """<!doctype html>
   <div class="scene-fallback" aria-hidden="true"></div>
 
   <section class="hud" aria-label="Ride metrics">
-    <div class="metric"><strong id="power">--</strong><span>Watts</span></div>
+    <div id="power-card" class="metric"><strong id="power">--</strong><span>Watts</span></div>
     <div class="metric"><strong id="speed">--</strong><span>km/h</span></div>
     <div class="metric"><strong id="cadence">--</strong><span>RPM</span></div>
     <div class="metric"><strong id="heart-rate">--</strong><span>BPM</span></div>
     <div class="metric"><strong id="distance">--</strong><span>Distance</span></div>
+    <div class="metric"><strong id="ride-time">--</strong><span>Time</span></div>
+    <div class="metric"><strong id="avg-power">--</strong><span>Avg W</span></div>
+    <div class="metric"><strong id="np-power">--</strong><span>NP</span></div>
+    <div class="metric"><strong id="grade">--</strong><span>Grade</span></div>
   </section>
 
   <section class="status" aria-live="polite">
@@ -459,7 +477,7 @@ RIDE3D_HTML = """<!doctype html>
 
   <a class="back" href="/">Home</a>
 
-  <script type="module" src="/static/ride3d.js?v=m2"></script>
+  <script type="module" src="/static/ride3d.js?v=m4"></script>
 </body>
 </html>
 """

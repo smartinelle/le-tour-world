@@ -582,6 +582,83 @@ class TestSampleHandling:
         service.save_sample.assert_not_called()
 
 
+class TestLivePowerAnalytics:
+    """Live in-ride avg power / normalized power for the HUD (M4)."""
+
+    @staticmethod
+    def _feed(controller, powers, start_ts):
+        for i, power in enumerate(powers):
+            controller.handle_bike_sample(
+                {
+                    "ts": start_ts + i,
+                    "power_w": power,
+                    "cadence_rpm": 90,
+                    "speed_mps": 8.0,
+                }
+            )
+
+    def test_constant_power_avg_and_np_match_power(self):
+        """Steady effort: avg equals the power and NP converges onto it."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+
+        self._feed(controller, [200] * 40, time.time())
+
+        assert controller.metrics.avg_power_w == 200.0
+        assert abs(controller.metrics.normalized_power_w - 200.0) < 1.0
+
+    def test_variable_power_np_exceeds_avg(self):
+        """NP weights hard efforts: surges push NP above average power."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+
+        self._feed(controller, [100] * 60 + [500] * 60, time.time())
+
+        avg = controller.metrics.avg_power_w
+        np_w = controller.metrics.normalized_power_w
+        assert abs(avg - 300.0) < 1.0
+        assert np_w > avg + 20.0
+
+    def test_snapshot_exposes_live_power_analytics_and_ftp(self):
+        """Snapshot carries avg/NP and the configured FTP for zone coloring."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+        self._feed(controller, [250] * 5, time.time())
+
+        snapshot = controller.snapshot().to_dict()
+
+        assert snapshot["avg_power_w"] == 250.0
+        assert snapshot["normalized_power_w"] is not None
+        assert isinstance(snapshot["ftp_w"], int)
+        assert snapshot["ftp_w"] > 0
+
+    def test_new_session_resets_live_power_stats(self):
+        """A fresh session must not inherit the previous ride's analytics."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+        self._feed(controller, [400] * 10, time.time())
+
+        controller.stop_session()
+        controller.start_session(RideMode.FREE)
+
+        assert controller.metrics.avg_power_w is None
+        assert controller.metrics.normalized_power_w is None
+        self._feed(controller, [100] * 3, time.time() + 100)
+        assert controller.metrics.avg_power_w == 100.0
+
+    def test_powerless_samples_do_not_skew_stats(self):
+        """Samples without power (e.g. cadence-only) leave analytics alone."""
+        controller = RideController()
+        controller.start_session(RideMode.FREE)
+        start = time.time()
+        self._feed(controller, [200] * 3, start)
+        controller.handle_bike_sample(
+            {"ts": start + 3, "cadence_rpm": 90, "speed_mps": 8.0}
+        )
+
+        assert controller.metrics.avg_power_w == 200.0
+
+
 class TestCallbacks:
     """Event callback tests."""
 

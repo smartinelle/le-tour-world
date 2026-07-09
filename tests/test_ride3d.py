@@ -580,3 +580,34 @@ def test_parse_delta_rejects_invalid_values():
         parse_delta("watts", "test")
 
     assert exc_info.value.status_code == 400
+
+
+def test_ride3d_hud_shows_live_ride_analytics():
+    """M4 HUD: elapsed time, avg power, NP, and current grade cards."""
+    assert 'id="ride-time"' in RIDE3D_HTML
+    assert 'id="avg-power"' in RIDE3D_HTML
+    assert 'id="np-power"' in RIDE3D_HTML
+    assert 'id="grade"' in RIDE3D_HTML
+    assert "function formatElapsed(seconds)" in RIDE3D_JS
+    assert "snapshot.avg_power_w" in RIDE3D_JS
+    assert "snapshot.normalized_power_w" in RIDE3D_JS
+    assert "sceneState.gradePct.toFixed(1)" in RIDE3D_JS
+
+
+def test_ride3d_power_card_uses_ftp_zone_coloring():
+    """Power card is colored by Coggan FTP zone when an FTP is configured."""
+    assert 'id="power-card"' in RIDE3D_HTML
+    for zone in range(1, 7):
+        assert f".metric.zone-{zone}" in RIDE3D_HTML
+    assert "function powerZoneClass(powerW, ftpW)" in RIDE3D_JS
+    assert "snapshot.ftp_w" in RIDE3D_JS
+    assert "applyPowerZone(snapshot)" in RIDE3D_JS
+
+
+def test_ride3d_elevation_profile_fills_completed_portion():
+    """Elevation strip shows the completed portion in accent color."""
+    assert "elevation-progress-clip" in RIDE3D_JS
+    assert (
+        'clipRect.setAttribute("width", String(xForDistance(routeDistanceM)))'
+        in RIDE3D_JS
+    )

@@ -37,6 +37,9 @@ class RideMetrics:
     hr_bpm: Optional[int] = None
     erg_target_w: int = 150
     sim_grade_pct: float = 0.0
+    # Live in-ride analytics (HUD): running average and normalized power.
+    avg_power_w: Optional[float] = None
+    normalized_power_w: Optional[float] = None
 
     def to_dict(self) -> dict[str, object]:
         """Return a stable serializable snapshot for UIs and transports."""
@@ -51,6 +54,8 @@ class RideMetrics:
             "hr_bpm": self.hr_bpm,
             "erg_target_w": self.erg_target_w,
             "sim_grade_pct": self.sim_grade_pct,
+            "avg_power_w": self.avg_power_w,
+            "normalized_power_w": self.normalized_power_w,
         }
 
 
@@ -90,6 +95,9 @@ class RideSnapshot:
     hr_bpm: Optional[int] = None
     erg_target_w: int = 150
     sim_grade_pct: float = 0.0
+    avg_power_w: Optional[float] = None
+    normalized_power_w: Optional[float] = None
+    ftp_w: Optional[int] = None
     trainer_connected: bool = False
     trainer_name: Optional[str] = None
     hr_connected: bool = False
@@ -109,6 +117,9 @@ class RideSnapshot:
             "speed_mps": self.speed_mps,
             "trainer_speed_mps": self.trainer_speed_mps,
             "speed_source": self.speed_source,
+            "avg_power_w": self.avg_power_w,
+            "normalized_power_w": self.normalized_power_w,
+            "ftp_w": self.ftp_w,
             "distance_m": self.distance_m,
             "hr_bpm": self.hr_bpm,
             "erg_target_w": self.erg_target_w,
