@@ -94,7 +94,12 @@ def main() -> int:
                 flush=True,
             )
 
-        post_json(f"{base_url}/api/ride/stop")
+        # Stopping persists a ~20-minute session; give it time, and don't
+        # let a slow save invalidate captures that are already on disk.
+        try:
+            post_json(f"{base_url}/api/ride/stop", timeout_s=60.0)
+        except OSError as exc:
+            print(f"warning: stop/persist did not finish cleanly: {exc}")
         browser.close()
 
     print(json.dumps(shots, indent=2))
