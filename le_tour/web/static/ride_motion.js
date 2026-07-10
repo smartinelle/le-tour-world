@@ -26,7 +26,9 @@ export class RideMotionModel {
   constructor({
     dashSpacing = 7.8,
     maxDt = 0.06,
-    speedResponse = 7.5,
+    // Eased so the once-per-second snapshot speed step glides instead of
+    // surging: ~95% converged by the time the next snapshot lands.
+    speedResponse = 3.0,
     staleSnapshotMs = 3000,
     routeSegments = [],
   } = {}) {
@@ -205,7 +207,10 @@ export class RideMotionModel {
     this.roadOffset =
       (this.roadOffset + this.speedMps * boundedDt) % this.dashSpacing;
     this.roadPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
-    this.cameraBob = Math.sin(nowMs * 0.004) * 0.03 * Math.min(this.speedMps, 10);
+    // No camera bob: a rider's eyeline does not oscillate on smooth road,
+    // and any rhythmic vertical motion reads as the world bumping. Terrain
+    // height alone moves the camera vertically.
+    this.cameraBob = 0;
     this.cameraPitch = clamp(this.gradePct * 0.006, -0.08, 0.08);
     this.cameraRoll = clamp(-this.routeCurveStrength * 0.08, -0.08, 0.08);
     this.cameraLookX = clamp(this.routeCurveStrength * 4.5, -4.5, 4.5);

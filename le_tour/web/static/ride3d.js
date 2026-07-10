@@ -353,11 +353,7 @@ function updateCamera(sceneState, dtS) {
   const ahead = activePath.poseAt(distanceM + LOOK_AHEAD_M);
   if (!Number.isFinite(pose.x + pose.y + pose.z)) return;
 
-  camera.position.set(
-    pose.x,
-    pose.y + CAMERA_HEIGHT_M + sceneState.cameraBob,
-    pose.z,
-  );
+  camera.position.set(pose.x, pose.y + CAMERA_HEIGHT_M, pose.z);
 
   // Guard against a degenerate look target (coincident poses would give
   // lookAt an arbitrary direction); aim along the road heading instead.

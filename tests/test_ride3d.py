@@ -329,10 +329,12 @@ def test_ride3d_motion_model_owns_scene_motion():
     """3D scene reads render-friendly motion state, not raw snapshots."""
     assert "motion.updateFromSnapshot(snapshot)" in RIDE3D_JS
     assert "const sceneState = motion.advance(dt, now)" in RIDE3D_JS
-    assert "sceneState.cameraBob" in RIDE3D_JS
     assert "cameraFeel.rollRad" in RIDE3D_JS
     assert "targetSpeedMps" in RIDE_MOTION_JS
     assert "cameraPitch" in RIDE_MOTION_JS
+    # No rhythmic camera bob: vertical motion comes from terrain only.
+    assert "this.cameraBob = 0" in RIDE_MOTION_JS
+    assert "Math.sin(nowMs" not in RIDE_MOTION_JS
 
 
 def test_ride3d_motion_model_tracks_continuous_render_distance():
