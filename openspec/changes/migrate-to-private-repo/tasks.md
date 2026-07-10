@@ -7,6 +7,12 @@
 - [ ] 1.2 Cofounder (upstream author) signs a short IP consent/assignment
       for the venture covering his upstream work — belt-and-suspenders on
       top of the rewrite; template from counsel
+- [ ] 1.2b Establish the copyright policy the fork never had: named owner
+      (founders now, assigned to the company at incorporation), a
+      proprietary LICENSE ("Copyright © 2026 <owners>. All rights
+      reserved."), a NOTICE file inventorying third-party licenses
+      (three.js MIT, deps), and a CLA/DCO rule for any future outside
+      contributor
 - [ ] 1.3 Freeze the public fork: final push, README note that active
       development moved (no link needed), stop pushing new work there
 - [ ] 1.4 Add the new repo to the Claude session (`add_repo`) so migration
