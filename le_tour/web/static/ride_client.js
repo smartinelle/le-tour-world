@@ -12,6 +12,7 @@ export class RideApiClient {
     routeUrl = "/api/ride/route",
     devicesStatusUrl = "/api/devices/status",
     devicesUrl = "/api/devices",
+    healthUrl = "/api/health",
   } = {}) {
     this.snapshotUrl = snapshotUrl;
     this.startUrl = startUrl;
@@ -25,6 +26,15 @@ export class RideApiClient {
     this.routeUrl = routeUrl;
     this.devicesStatusUrl = devicesStatusUrl;
     this.devicesUrl = devicesUrl;
+    this.healthUrl = healthUrl;
+  }
+
+  async getHealth() {
+    const response = await fetch(this.healthUrl);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json();
   }
 
   connectSnapshots({ onSnapshot, onError }) {

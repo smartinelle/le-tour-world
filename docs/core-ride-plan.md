@@ -132,14 +132,18 @@ real-GPU check (dev container is software GL).
 - Exit criteria: a real ride on the flagship map with the KICKR CORE —
   resistance transitions feel gradual, no visual pops or camera jumps.
 
-**Status: partially done (2026-07-09).** Done ahead of schedule: physics
-speed authority with an inertia integrator (`RiderDynamics`, pulled forward
-from the assessment's F1/F2), grade ramping via `RideRoute.smoothed_grade_at`
-(same 30 m window as the renderer; feeds both the trainer and the physics),
-and pacers riding the compiled path (landed with M1). A virtual trainer
-panel on `/ride3d` (live watt slider, `/api/ride/virtual-power`) enables
-no-hardware feel testing. Remaining: camera tuning pass and the KICKR
-verification ride.
+**Status: done in software (2026-07-10).** Physics speed authority with an
+inertia integrator (`RiderDynamics`, pulled forward from the assessment's
+F1/F2), grade ramping via `RideRoute.smoothed_grade_at` (same 30 m window as
+the renderer; feeds both the trainer and the physics), and pacers riding the
+compiled path (landed with M1). A virtual trainer panel on `/ride3d` (watt
+slider plus hold/ramp/sprint rider model) enables no-hardware feel testing.
+The camera pass landed 2026-07-10: the look target is exponentially damped
+(5/s), lean follows the compiled path's local curvature scaled by speed
+(±0.09 rad, damped 4/s) instead of stepping per segment, and FOV eases from
+58° up to +7° with speed (1.2/s) — all framerate-independent
+(`1 - exp(-rate·dt)`), with grade pitch inherent to the world-fixed look-at.
+Remaining: the KICKR verification ride (hardware feel + real-GPU 60 FPS).
 
 ### M4 — In-ride dashboard (HUD)
 
@@ -175,6 +179,19 @@ hardening pass).
   these), with a link to ride history.
 - Make `/ride3d` the primary ride surface from the home dashboard; keep the 2D
   ride view as a fallback until parity is confirmed, then retire it.
+
+**Status: done (2026-07-10).** The home dashboard gained a full-width Routes
+panel: one card per bundled route with title, difficulty badge, elevation
+sparkline, and distance/gain/max-grade stats; clicking a card opens
+`/ride3d?route_id=…` with the route preselected. "Start Ride" now launches
+`/ride3d?mode=…` (plus route for SIM), which auto-starts the session — but
+never over one already running, so a mid-ride refresh is safe. A "2D view"
+button keeps the classic surface reachable until hardware parity is
+confirmed. Stopping on `/ride3d` shows a post-ride overlay (time, km, gain,
+avg W, NP, IF, TSS, saved state, history link); the summary prefers the
+persisted session's analytics and falls back to live snapshot stats for
+unsaved rides. Elevation gain is computed lap-aware from the authored
+segment grades.
 
 ### M6 — Hardening and baseline for what comes next
 

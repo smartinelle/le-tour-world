@@ -685,6 +685,55 @@ body {
     line-height: var(--leading-display);
 }
 
+/* ── Route cards (home) ──────────────────────────────────────── */
+
+.tr-home-routes-panel {
+    grid-column: 1 / -1;
+}
+
+.tr-route-cards {
+    display: grid;
+    gap: var(--spacing-16);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    width: 100%;
+}
+
+.tr-route-card {
+    background: var(--color-canvas-white);
+    border: 1px solid var(--color-steel-gray);
+    border-radius: var(--radius-cards);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-16);
+    padding: var(--spacing-16);
+    text-align: left;
+    transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.tr-route-card:hover,
+.tr-route-card:focus-visible {
+    border-color: var(--color-neon-zest);
+    transform: translateY(-1px);
+}
+
+.tr-route-card .tr-route-profile {
+    height: 72px;
+}
+
+.tr-route-card-head {
+    align-items: center;
+    display: flex;
+    gap: var(--spacing-8);
+    justify-content: space-between;
+    width: 100%;
+}
+
+.tr-route-card-title {
+    color: var(--color-obsidian-slate);
+    font-weight: 500;
+}
+
 /* ── Route profile ────────────────────────────────────────────── */
 
 .tr-route-profile {

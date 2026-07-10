@@ -558,6 +558,16 @@ class WebUI:
                 render_mode_setup()
 
         def start_selected() -> None:
+            # /ride3d is the primary ride surface: it starts the session
+            # itself from the mode/route in the query string.
+            path = f"/ride3d?mode={selected_mode['value']}"
+            if selected_mode["value"] == "sim":
+                path += f"&route_id={selected_route_id['value']}"
+            ui.navigate.to(path)
+
+        def start_selected_2d() -> None:
+            # Classic 2D ride view, kept as a fallback until 3D parity is
+            # confirmed on real hardware.
             path = f"/session/{selected_mode['value']}"
             if selected_mode["value"] == "sim":
                 path += f"?route_id={selected_route_id['value']}"
@@ -640,6 +650,36 @@ class WebUI:
                             meta_stat(f"{route.max_grade_pct:.1f}", "Max grade %")
                             meta_stat(str(len(route.segments)), "Segments")
 
+        def render_route_cards() -> None:
+            panel_header(
+                "Routes",
+                "Pick a map and ride it in 3D.",
+            )
+            with ui.element("div").classes("tr-route-cards"):
+                for route in available_routes():
+                    with (
+                        ui.element("button")
+                        .props("type=button")
+                        .classes("tr-route-card")
+                        .on(
+                            "click",
+                            lambda route_id=route.route_id: ui.navigate.to(
+                                f"/ride3d?route_id={route_id}"
+                            ),
+                        )
+                    ):
+                        with ui.element("div").classes("tr-route-card-head"):
+                            ui.label(route.title).classes("tr-route-card-title")
+                            ui.html(
+                                f'<span class="tr-state-badge">{route.difficulty}</span>',
+                                sanitize=False,
+                            )
+                        render_route_profile(route)
+                        with ui.element("div").classes("tr-meta-grid tr-route-stats"):
+                            meta_stat(f"{route.distance_m / 1000:.1f}", "km")
+                            meta_stat(f"{route.elevation_gain_m:.0f}", "Gain m")
+                            meta_stat(f"{route.max_grade_pct:.1f}", "Max %")
+
         def load_home_sessions() -> list[SessionModel]:
             try:
                 return get_session_service().list_sessions(limit=10_000)
@@ -706,10 +746,18 @@ class WebUI:
                             lambda: ui.navigate.to("/settings?tab=devices"),
                             variant="secondary",
                         )
+                        action_button(
+                            "2D view",
+                            start_selected_2d,
+                            variant="secondary",
+                        )
                         hero_button("Start Ride", start_selected)
 
                 with ui.column().classes("tr-panel p-6 gap-4"):
                     render_recent_rides(home_sessions)
+
+                with ui.column().classes("tr-panel tr-home-routes-panel p-6 gap-4"):
+                    render_route_cards()
 
                 render_activity(home_sessions)
 

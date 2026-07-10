@@ -12,7 +12,8 @@ from fastapi import HTTPException, Request
 from starlette.responses import FileResponse, HTMLResponse
 
 from le_tour.domain.routes import RouteSpecError, available_routes, route_by_id
-from le_tour.domain.ride_runtime import RideRuntime
+from le_tour.domain.ride_runtime import RideRuntime, RideStopResult
+from le_tour.domain.session_service import get_session_service
 from le_tour.domain.state import RideMode
 
 
@@ -376,7 +377,83 @@ RIDE3D_HTML = """<!doctype html>
       z-index: 2;
     }
 
+    .ride-summary {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(24, 27, 31, 0.35);
+      backdrop-filter: blur(6px);
+      z-index: 4;
+    }
+
+    .ride-summary-card {
+      width: min(520px, calc(100vw - 36px));
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 24px 60px rgba(24, 27, 31, 0.24);
+      padding: 22px;
+    }
+
+    .ride-summary-card > strong {
+      display: block;
+      color: var(--text);
+      font-size: 1.3rem;
+      font-weight: 800;
+    }
+
+    .ride-summary-route {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .ride-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .ride-summary-grid > div strong {
+      display: block;
+      color: var(--text);
+      font-size: 1.25rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+
+    .ride-summary-grid > div span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .ride-summary-saved {
+      display: block;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 650;
+    }
+
     @media (max-width: 760px) {
+      .ride-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .hud {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -475,12 +552,109 @@ RIDE3D_HTML = """<!doctype html>
     </div>
   </section>
 
+  <section id="ride-summary" class="ride-summary" hidden aria-label="Ride summary">
+    <div class="ride-summary-card">
+      <strong>Ride complete</strong>
+      <span id="ride-summary-route" class="ride-summary-route"></span>
+      <div class="ride-summary-grid">
+        <div><strong id="summary-duration">--</strong><span>Time</span></div>
+        <div><strong id="summary-distance">--</strong><span>km</span></div>
+        <div><strong id="summary-elevation">--</strong><span>Gain m</span></div>
+        <div><strong id="summary-avg">--</strong><span>Avg W</span></div>
+        <div><strong id="summary-np">--</strong><span>NP</span></div>
+        <div><strong id="summary-if">--</strong><span>IF</span></div>
+        <div><strong id="summary-tss">--</strong><span>TSS</span></div>
+      </div>
+      <span id="ride-summary-saved" class="ride-summary-saved"></span>
+      <div class="actions" style="margin-top: 16px;">
+        <a class="action" href="/history">Ride history</a>
+        <button id="ride-summary-close" class="action primary">Close</button>
+      </div>
+    </div>
+  </section>
+
   <a class="back" href="/">Home</a>
 
   <script type="module" src="/static/ride3d.js?v=m4"></script>
 </body>
 </html>
 """
+
+
+def route_elevation_gain_m(route: object, distance_m: float) -> float | None:
+    """Elevation climbed over the ridden distance, lap-aware.
+
+    Uses the authored (unsmoothed) segment grades: smoothing redistributes
+    where climbing happens, not how much of it there is.
+    """
+    segments = getattr(route, "segments", None)
+    route_length_m = float(getattr(route, "distance_m", 0) or 0)
+    if not segments or route_length_m <= 0 or distance_m <= 0:
+        return None
+
+    per_lap_gain_m = sum(
+        segment.length_m * segment.grade_pct / 100
+        for segment in segments
+        if segment.grade_pct > 0
+    )
+    laps = int(distance_m // route_length_m)
+    remainder_m = distance_m - laps * route_length_m
+    gain_m = laps * per_lap_gain_m
+    for segment in segments:
+        if remainder_m <= 0:
+            break
+        ridden_m = min(remainder_m, segment.length_m)
+        if segment.grade_pct > 0:
+            gain_m += ridden_m * segment.grade_pct / 100
+        remainder_m -= ridden_m
+    return gain_m
+
+
+def build_ride_summary(
+    runtime: RideRuntime, result: RideStopResult
+) -> dict[str, object] | None:
+    """Post-ride summary for the stop response, or None for empty rides.
+
+    Prefers the persisted session's analytics (NP/IF/TSS from the analytics
+    layer); falls back to the live snapshot so unsaved rides still get a
+    duration/distance/power recap.
+    """
+    if result.session_id is None or result.sample_count == 0:
+        return None
+
+    snapshot = result.snapshot
+    summary: dict[str, object] = {
+        "saved": result.saved,
+        "session_id": result.session_id,
+        "route_title": getattr(runtime.route_profile, "title", None),
+        "duration_s": snapshot.elapsed_s,
+        "distance_m": snapshot.distance_m,
+        "elevation_gain_m": route_elevation_gain_m(
+            runtime.route_profile, snapshot.distance_m
+        ),
+        "avg_power_w": snapshot.avg_power_w,
+        "normalized_power_w": snapshot.normalized_power_w,
+        "intensity_factor": None,
+        "training_stress_score": None,
+    }
+
+    if result.saved_session_id is not None:
+        try:
+            session = get_session_service().get_session(result.saved_session_id)
+        except Exception:
+            session = None
+        if session is not None:
+            summary.update(
+                {
+                    "duration_s": session.duration_s,
+                    "distance_m": session.total_distance_m,
+                    "avg_power_w": session.avg_power_w,
+                    "normalized_power_w": session.normalized_power_w,
+                    "intensity_factor": session.intensity_factor,
+                    "training_stress_score": session.training_stress_score,
+                }
+            )
+    return summary
 
 
 def parse_ride_mode(value: object) -> RideMode:
@@ -595,7 +769,11 @@ def attach_ride3d_routes(
 
     @web_app.post("/api/ride/stop")
     async def stop_ride() -> dict[str, object]:
-        return runtime_provider().stop_session().to_dict()
+        runtime = runtime_provider()
+        result = runtime.stop_session_result()
+        payload = result.snapshot.to_dict()
+        payload["ride_summary"] = build_ride_summary(runtime, result)
+        return payload
 
     @web_app.post("/api/ride/toggle-pause")
     async def toggle_pause() -> dict[str, object]:

@@ -131,6 +131,16 @@ const hud = {
   virtualPowerValue: document.querySelector("#virtual-power-value"),
   virtualPowerSlider: document.querySelector("#virtual-power-slider"),
   virtualPowerAuto: document.querySelector("#virtual-power-auto"),
+  rideSummary: document.querySelector("#ride-summary"),
+  rideSummaryRoute: document.querySelector("#ride-summary-route"),
+  rideSummarySaved: document.querySelector("#ride-summary-saved"),
+  summaryDuration: document.querySelector("#summary-duration"),
+  summaryDistance: document.querySelector("#summary-distance"),
+  summaryElevation: document.querySelector("#summary-elevation"),
+  summaryAvg: document.querySelector("#summary-avg"),
+  summaryNp: document.querySelector("#summary-np"),
+  summaryIf: document.querySelector("#summary-if"),
+  summaryTss: document.querySelector("#summary-tss"),
 };
 
 const rideClient = new RideApiClient();
@@ -314,7 +324,24 @@ function createElevationProfile(parent, route) {
   };
 }
 
-function updateCamera(sceneState) {
+// Ride-feel camera state (M3): the look target, lean, and FOV are damped
+// across frames so segment boundaries and curvature changes read as motion,
+// not snaps. Rates are 1/s time constants, framerate-independent.
+const BASE_FOV_DEG = 58;
+const cameraFeel = {
+  hasLook: false,
+  lookX: 0,
+  lookY: 0,
+  lookZ: 0,
+  rollRad: 0,
+  fovDeg: BASE_FOV_DEG,
+};
+
+function damp(current, target, ratePerS, dtS) {
+  return current + (target - current) * (1 - Math.exp(-ratePerS * dtS));
+}
+
+function updateCamera(sceneState, dtS) {
   // Self-heal from any non-finite distance (bad snapshot field, math bug):
   // fall back to the server's distance rather than freezing off-road.
   let distanceM = sceneState.renderDistanceM;
@@ -331,20 +358,58 @@ function updateCamera(sceneState) {
     pose.y + CAMERA_HEIGHT_M + sceneState.cameraBob,
     pose.z,
   );
+
   // Guard against a degenerate look target (coincident poses would give
   // lookAt an arbitrary direction); aim along the road heading instead.
   const aheadDx = ahead.x - pose.x;
   const aheadDz = ahead.z - pose.z;
+  let targetX;
+  let targetY;
+  let targetZ;
   if (aheadDx * aheadDx + aheadDz * aheadDz < 1.0) {
-    camera.lookAt(
-      pose.x + Math.sin(pose.headingRad) * LOOK_AHEAD_M,
-      pose.y + 0.9,
-      pose.z - Math.cos(pose.headingRad) * LOOK_AHEAD_M,
-    );
+    targetX = pose.x + Math.sin(pose.headingRad) * LOOK_AHEAD_M;
+    targetY = pose.y + 0.9;
+    targetZ = pose.z - Math.cos(pose.headingRad) * LOOK_AHEAD_M;
   } else {
-    camera.lookAt(ahead.x, ahead.y + 0.9, ahead.z);
+    targetX = ahead.x;
+    targetY = ahead.y + 0.9;
+    targetZ = ahead.z;
   }
-  camera.rotation.z += sceneState.cameraRoll;
+  if (!cameraFeel.hasLook) {
+    cameraFeel.lookX = targetX;
+    cameraFeel.lookY = targetY;
+    cameraFeel.lookZ = targetZ;
+    cameraFeel.hasLook = true;
+  } else {
+    cameraFeel.lookX = damp(cameraFeel.lookX, targetX, 5.0, dtS);
+    cameraFeel.lookY = damp(cameraFeel.lookY, targetY, 5.0, dtS);
+    cameraFeel.lookZ = damp(cameraFeel.lookZ, targetZ, 5.0, dtS);
+  }
+  camera.lookAt(cameraFeel.lookX, cameraFeel.lookY, cameraFeel.lookZ);
+
+  // Lean into turns like a rider: roll follows the road's local curvature
+  // (heading change over the next few meters) scaled by speed, so fast
+  // sweepers lean more than crawled switchbacks.
+  let turnAheadRad =
+    activePath.poseAt(distanceM + 8).headingRad - pose.headingRad;
+  turnAheadRad = Math.atan2(Math.sin(turnAheadRad), Math.cos(turnAheadRad));
+  const leanTarget = Math.max(
+    -0.09,
+    Math.min(0.09, -turnAheadRad * 0.03 * Math.min(sceneState.speedMps, 16)),
+  );
+  cameraFeel.rollRad = damp(cameraFeel.rollRad, leanTarget, 4.0, dtS);
+  camera.rotation.z += cameraFeel.rollRad;
+
+  // Mild speed-sensitive FOV: up to +7 degrees at speed for a sense of
+  // pace, eased slowly enough to be felt rather than seen.
+  const fovTarget =
+    BASE_FOV_DEG + 7 * Math.min(Math.max(sceneState.speedMps, 0), 18) / 18;
+  const nextFov = damp(cameraFeel.fovDeg, fovTarget, 1.2, dtS);
+  if (Math.abs(nextFov - cameraFeel.fovDeg) > 0.005) {
+    cameraFeel.fovDeg = nextFov;
+    camera.fov = nextFov;
+    camera.updateProjectionMatrix();
+  }
 }
 
 function updatePacerRiders(sceneState, now) {
@@ -370,7 +435,7 @@ function updatePacerRiders(sceneState, now) {
 
 function updateCockpit(sceneState, now) {
   cockpitGroup.visible = sceneState.active;
-  cockpitGroup.rotation.z = sceneState.cameraRoll * 1.8;
+  cockpitGroup.rotation.z = cameraFeel.rollRad * 1.8;
   cockpitGroup.position.x = -sceneState.cameraLookX * 0.018;
   frontWheel.rotation.x = now * 0.012 * Math.max(0.2, sceneState.speedMps);
   handlebar.rotation.z = sceneState.routeCurveStrength * -0.08;
@@ -618,6 +683,7 @@ function updateHud(snapshot) {
   elevationProfile.update(sceneState, snapshot.active);
   updateVirtualTrainerPanel(snapshot);
 
+  if (snapshot.active) hud.rideSummary.hidden = true;
   hud.startPanel.hidden = Boolean(snapshot.active);
   hud.activeControls.hidden = !snapshot.active;
   hud.pauseButton.textContent = snapshot.paused ? "Resume" : "Pause";
@@ -630,6 +696,36 @@ function updateHud(snapshot) {
       ? "--"
       : snapshot.sim_grade_pct.toFixed(1)
   }%`;
+}
+
+// Post-ride summary: the stop response carries a ride_summary built from
+// the persisted session's analytics (or the live snapshot for unsaved
+// rides); empty rides carry none and show nothing.
+function showRideSummary(summary) {
+  if (!summary) return;
+  const num = (value, format) => (value == null ? "--" : format(value));
+  hud.rideSummaryRoute.textContent = summary.route_title || "";
+  hud.summaryDuration.textContent = formatElapsed(summary.duration_s);
+  hud.summaryDistance.textContent = num(summary.distance_m, (v) =>
+    (v / 1000).toFixed(2),
+  );
+  hud.summaryElevation.textContent = num(summary.elevation_gain_m, (v) =>
+    String(Math.round(v)),
+  );
+  hud.summaryAvg.textContent = num(summary.avg_power_w, (v) =>
+    String(Math.round(v)),
+  );
+  hud.summaryNp.textContent = num(summary.normalized_power_w, (v) =>
+    String(Math.round(v)),
+  );
+  hud.summaryIf.textContent = num(summary.intensity_factor, (v) => v.toFixed(2));
+  hud.summaryTss.textContent = num(summary.training_stress_score, (v) =>
+    String(Math.round(v)),
+  );
+  hud.rideSummarySaved.textContent = summary.saved
+    ? "Saved to ride history."
+    : "Not saved - ride was too short or storage failed.";
+  hud.rideSummary.hidden = false;
 }
 
 // Session controls must never fail silently: a dead or restarted server
@@ -658,9 +754,19 @@ function attachControls() {
 
   const stopButton = document.querySelector("#stop-ride");
   stopButton.addEventListener("click", async () => {
-    await runRideAction("Stop", () => rideClient.stopRide());
+    await runRideAction("Stop", async () => {
+      const snapshot = await rideClient.stopRide();
+      showRideSummary(snapshot.ride_summary);
+      return snapshot;
+    });
     stopButton.blur();
   });
+
+  document
+    .querySelector("#ride-summary-close")
+    .addEventListener("click", () => {
+      hud.rideSummary.hidden = true;
+    });
 
   const pauseButton = document.querySelector("#pause-ride");
   pauseButton.addEventListener("click", async () => {
@@ -774,7 +880,7 @@ function frame(now) {
 
     const sceneState = motion.advance(dt, now);
     if (activePath) {
-      updateCamera(sceneState);
+      updateCamera(sceneState, dt);
       updatePacerRiders(sceneState, now);
     }
     updateCockpit(sceneState, now);
@@ -793,6 +899,8 @@ function frame(now) {
         y: camera.position.y,
         z: camera.position.z,
       },
+      cameraFovDeg: cameraFeel.fovDeg,
+      cameraRollRad: cameraFeel.rollRad,
       pathLengthM: activePath ? activePath.lengthM : null,
       frameErrorCount,
     };
@@ -836,6 +944,9 @@ async function loadRoute(routeId) {
   activePath = buildRoutePath(route);
   world = buildWorld(activePath);
   scene.add(world.group);
+  // A new world means a new pose: snap the damped look target rather than
+  // sweeping the camera across the map from the previous route.
+  cameraFeel.hasLook = false;
   console.info(
     `route path compiled: ${route.id}, ${activePath.samples.length} samples, ` +
       `loop closed with ${activePath.closure.extraTurns} extra turn(s), ` +
@@ -862,14 +973,38 @@ async function loadRoute(routeId) {
 }
 
 async function initializeRide3d() {
+  // The home dashboard opens this surface with a route (and optionally a
+  // mode) in the query string: route cards preselect, Start Ride launches.
+  const params = new URLSearchParams(window.location.search);
+  const requestedRouteId = params.get("route_id");
+  const requestedMode = (params.get("mode") || "").toLowerCase();
+
   const routes = await rideClient.getRoutes();
   populateRouteSelect(routes);
-  await loadRoute(routes[0]?.id ?? null);
+  const initialRouteId = routes.some((route) => route.id === requestedRouteId)
+    ? requestedRouteId
+    : (routes[0]?.id ?? null);
+  await loadRoute(initialRouteId);
   await refreshDeviceStatus();
   attachControls();
   resize();
   connectSnapshots();
   requestAnimationFrame(frame);
+
+  if (["free", "erg", "sim"].includes(requestedMode)) {
+    // Never restart over a live session (e.g. a mid-ride page refresh
+    // still carrying the launch params).
+    try {
+      const health = await rideClient.getHealth();
+      if (health.session_state === "inactive") {
+        await runRideAction("Start", () =>
+          rideClient.startRide(requestedMode, selectedRouteId),
+        );
+      }
+    } catch (error) {
+      hud.state.textContent = `Start failed: ${error.message || error}`;
+    }
+  }
 }
 
 initializeRide3d().catch((error) => {

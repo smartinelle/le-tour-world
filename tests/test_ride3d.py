@@ -318,7 +318,7 @@ def test_ride3d_page_has_route_selection_controls():
     assert 'id="route-select"' in RIDE3D_HTML
     assert 'id="route-hud"' in RIDE3D_HTML
     assert "populateRouteSelect(routes)" in RIDE3D_JS
-    assert "await loadRoute(routes[0]?.id ?? null)" in RIDE3D_JS
+    assert "await loadRoute(initialRouteId)" in RIDE3D_JS
     assert 'hud.routeSelect.addEventListener("change"' in RIDE3D_JS
     assert "selectedRouteId" in RIDE3D_JS
     assert "startRide(mode, routeId = null)" in RIDE_CLIENT_JS
@@ -330,7 +330,7 @@ def test_ride3d_motion_model_owns_scene_motion():
     assert "motion.updateFromSnapshot(snapshot)" in RIDE3D_JS
     assert "const sceneState = motion.advance(dt, now)" in RIDE3D_JS
     assert "sceneState.cameraBob" in RIDE3D_JS
-    assert "sceneState.cameraRoll" in RIDE3D_JS
+    assert "cameraFeel.rollRad" in RIDE3D_JS
     assert "targetSpeedMps" in RIDE_MOTION_JS
     assert "cameraPitch" in RIDE_MOTION_JS
 
@@ -490,11 +490,11 @@ def test_ride3d_scenery_palette_tracks_rider_position():
 
 def test_ride3d_camera_follows_route_path():
     """The camera moves through a fixed world along the compiled path."""
-    assert "function updateCamera(sceneState)" in RIDE3D_JS
+    assert "function updateCamera(sceneState, dtS)" in RIDE3D_JS
     assert "activePath.poseAt(distanceM)" in RIDE3D_JS
     assert "activePath.poseAt(distanceM + LOOK_AHEAD_M)" in RIDE3D_JS
-    assert "camera.lookAt(ahead.x" in RIDE3D_JS
-    assert "camera.rotation.z += sceneState.cameraRoll" in RIDE3D_JS
+    assert "camera.lookAt(cameraFeel.lookX" in RIDE3D_JS
+    assert "camera.rotation.z += cameraFeel.rollRad" in RIDE3D_JS
 
 
 def test_ride3d_render_loop_is_self_healing():
@@ -611,3 +611,145 @@ def test_ride3d_elevation_profile_fills_completed_portion():
         'clipRect.setAttribute("width", String(xForDistance(routeDistanceM)))'
         in RIDE3D_JS
     )
+
+
+def test_route_elevation_gain_is_lap_aware():
+    """Elevation gain integrates authored climbs across laps and partials."""
+    from le_tour.domain.routes import route_by_id
+    from le_tour.web.ride3d import route_elevation_gain_m
+
+    route = route_by_id(None)
+    lap_gain = route.elevation_gain_m
+
+    assert route_elevation_gain_m(route, 0) is None
+    assert route_elevation_gain_m(route, route.distance_m) == pytest.approx(lap_gain)
+    assert route_elevation_gain_m(route, 2 * route.distance_m) == pytest.approx(
+        2 * lap_gain
+    )
+    half = route_elevation_gain_m(route, route.distance_m / 2)
+    assert 0 <= half <= lap_gain
+
+
+def _stop_result(snapshot, session_id="sess-1", saved=None, sample_count=10):
+    from le_tour.domain.ride_runtime import RideStopResult
+
+    return RideStopResult(
+        snapshot=snapshot,
+        session_id=session_id,
+        saved_session_id=saved,
+        sample_count=sample_count,
+    )
+
+
+def test_stop_endpoint_includes_ride_summary():
+    """Stopping returns a post-ride summary alongside the snapshot."""
+    from le_tour.domain.routes import route_by_id
+
+    runtime = MagicMock()
+    runtime.route_profile = route_by_id(None)
+    runtime.stop_session_result.return_value = _stop_result(
+        RideSnapshot(
+            session_state="inactive",
+            elapsed_s=600.0,
+            distance_m=5000.0,
+            avg_power_w=200.0,
+            normalized_power_w=210.0,
+        )
+    )
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    payload = TestClient(app).post("/api/ride/stop").json()
+
+    summary = payload["ride_summary"]
+    assert summary["duration_s"] == 600.0
+    assert summary["distance_m"] == 5000.0
+    assert summary["avg_power_w"] == 200.0
+    assert summary["normalized_power_w"] == 210.0
+    assert summary["elevation_gain_m"] > 0
+    assert summary["saved"] is False
+    assert summary["route_title"] == runtime.route_profile.title
+
+
+def test_stop_endpoint_summary_is_none_for_empty_rides():
+    """No samples means nothing worth summarizing (or persisting)."""
+    runtime = MagicMock()
+    runtime.route_profile = None
+    runtime.stop_session_result.return_value = _stop_result(
+        RideSnapshot(session_state="inactive"), sample_count=0
+    )
+    app = FastAPI()
+    attach_ride3d_routes(app, lambda: runtime)
+
+    payload = TestClient(app).post("/api/ride/stop").json()
+
+    assert payload["ride_summary"] is None
+
+
+def test_build_ride_summary_prefers_saved_session_analytics(monkeypatch):
+    """A persisted ride reports the analytics layer's NP/IF/TSS."""
+    import le_tour.web.ride3d as ride3d_module
+    from le_tour.web.ride3d import build_ride_summary
+
+    session = MagicMock(
+        duration_s=1800.0,
+        total_distance_m=15000.0,
+        avg_power_w=190.0,
+        normalized_power_w=205.0,
+        intensity_factor=0.82,
+        training_stress_score=34.0,
+    )
+    service = MagicMock()
+    service.get_session.return_value = session
+    monkeypatch.setattr(ride3d_module, "get_session_service", lambda: service)
+
+    runtime = MagicMock()
+    runtime.route_profile = None
+    summary = build_ride_summary(
+        runtime,
+        _stop_result(RideSnapshot(session_state="inactive"), saved="sess-1"),
+    )
+
+    assert summary["saved"] is True
+    assert summary["duration_s"] == 1800.0
+    assert summary["intensity_factor"] == 0.82
+    assert summary["training_stress_score"] == 34.0
+
+
+def test_ride3d_shows_post_ride_summary_overlay():
+    """M5: stopping surfaces a summary overlay with a history link."""
+    assert 'id="ride-summary"' in RIDE3D_HTML
+    assert 'id="summary-duration"' in RIDE3D_HTML
+    assert 'id="summary-np"' in RIDE3D_HTML
+    assert 'id="summary-if"' in RIDE3D_HTML
+    assert 'id="summary-tss"' in RIDE3D_HTML
+    assert 'id="ride-summary-close"' in RIDE3D_HTML
+    assert 'href="/history"' in RIDE3D_HTML
+    assert "function showRideSummary(summary)" in RIDE3D_JS
+    assert "snapshot.ride_summary" in RIDE3D_JS
+    # A new session hides any lingering summary.
+    assert "if (snapshot.active) hud.rideSummary.hidden = true;" in RIDE3D_JS
+
+
+def test_ride3d_accepts_launch_query_params():
+    """M5: home dashboard launches /ride3d with route (and mode) params."""
+    assert 'params.get("route_id")' in RIDE3D_JS
+    assert 'params.get("mode")' in RIDE3D_JS
+    # Never restart over a live session on refresh.
+    assert 'health.session_state === "inactive"' in RIDE3D_JS
+    assert "getHealth()" in RIDE_CLIENT_JS
+    # Home dashboard points ride starts and route cards at /ride3d.
+    assert "/ride3d?mode=" in WEB_APP_PY
+    assert "/ride3d?route_id=" in WEB_APP_PY
+    assert "tr-route-cards" in WEB_APP_PY
+
+
+def test_ride3d_camera_feel_is_damped():
+    """M3: look target, lean, and FOV ease framerate-independently."""
+    assert "const cameraFeel" in RIDE3D_JS
+    assert "function damp(current, target, ratePerS, dtS)" in RIDE3D_JS
+    assert "Math.exp(-ratePerS * dtS)" in RIDE3D_JS
+    assert "camera.updateProjectionMatrix()" in RIDE3D_JS
+    assert "updateCamera(sceneState, dt)" in RIDE3D_JS
+    # Lean follows real path curvature at speed, not per-segment steps.
+    assert "poseAt(distanceM + 8).headingRad" in RIDE3D_JS
