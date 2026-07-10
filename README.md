@@ -22,6 +22,53 @@ installers yet; you run it from source with `uv`.
   Rivelet, a 17.2 km loop with 260 m of climbing. The home dashboard's route
   cards and Start Ride open it directly.
 
+## What this fork adds over le-tour
+
+This repo (`le-tour-world`) forked from upstream `le-tour` in May 2026 and
+turned the experimental 3D prototype into the primary ride experience. The
+delta, by area:
+
+**World and rendering** — the `/ride3d` treadmill prototype (geometry
+rebuilt around the rider every frame) was replaced by a world-fixed
+renderer: routes compile once into a dense arc-length-indexed path with
+loop-closure correction (`route_path.js`), and the world — corridor
+terrain from seeded noise, instanced props per scenery, per-scenery fog
+and skydome — is built once per route load (`world_builder.js`). three.js
+is vendored so the ride surface works offline. Flagship map **Col du
+Rivelet** (17.2 km, 260 m gain, geometrically closed loop) with a
+screenshot baseline in `docs/screenshots/`.
+
+**Ride feel** — app-computed speed is now the authority (upstream used
+trainer-reported wheel speed): measured power + route grade + rider
+profile drive an inertia integrator, so climbs, descents, and sprints
+behave the same on every trainer. Grade sent to the trainer is smoothed
+over 30 m so resistance ramps instead of stepping. The camera follows the
+road with a damped look target, leans into curves with speed, and eases
+FOV — no artificial bob.
+
+**Cockpit** — in-ride HUD with elapsed time, live average power and NP,
+current grade, FTP-zone-colored power card, segment context, and an
+elevation strip with completed-portion fill; post-ride summary overlay
+(time/km/gain/avg/NP/IF/TSS); home-dashboard route cards that launch
+`/ride3d` directly; hardened session flow (health endpoint, stale-stream
+coast-to-stop, self-healing frame loop, mid-ride trainer connect/reconnect
+recovery).
+
+**Development without hardware** — a virtual rider drives the demo source
+with trainer-shaped signals (hold/ramp/sprint with pedal wobble and
+realistic response), steerable live from the ride surface; an opt-in
+Playwright smoke harness rides the flagship map headless and enforces the
+perf budget (`tests/e2e/`, docs in `docs/development.md`).
+
+**Docs** — `docs/core-ride-plan.md` (the milestone plan this work
+followed, M1–M6 complete), `docs/technical-assessment.md` (feel benchmarks
+and the generative-fidelity analysis), `docs/app-landscape-notes.md`,
+`docs/weekend-test-guide.md` (first-hardware-test protocol).
+
+Upstream features carried unchanged: BLE FTMS/HR device layer, session
+store and analytics (NP/IF/TSS), 2D ride view (now a fallback), history,
+export, and the settings pages.
+
 Tested hardware so far:
 
 - Wahoo KICKR CORE 6043 on macOS.
