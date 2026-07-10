@@ -203,6 +203,18 @@ segment grades.
   draw-call and triangle budgets (architecture doc suggests ≤500k triangles).
 - Update README's `/ride3d` section to reflect its new primary status.
 
+**Status: done (2026-07-10).** The harness lives in `tests/e2e/`:
+`harness.py` (subprocess server + Chromium helpers + `__rideDebug` access),
+`test_ride_smoke.py` (opt-in via `LE_TOUR_E2E=1`, playwright in the `e2e`
+dependency group; rides Col du Rivelet, asserts HUD/frame/budget contracts,
+captures the 400 m artifact), and `capture_flagship_screenshots.py` (the
+checked-in `docs/screenshots/` baseline regenerator). The perf budget is
+documented with measured numbers — flagship renders 218,628 triangles in
+16 draw calls against budgets of ≤500k/≤200, enforced by the smoke test —
+and README now presents `/ride3d` as the primary surface. The two checks
+that need real hardware remain on the release checklist: 60 FPS on a real
+GPU and the KICKR feel ride.
+
 ## 4. Sequencing
 
 M1 → M2 → M3 can only go in that order (each builds on the last). M4 and M5

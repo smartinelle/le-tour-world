@@ -7,6 +7,10 @@ Use this as the manual release gate for early-access builds.
 - `uv run pytest -q`
 - `uv run black --check le_tour tests run_web.py examples`
 - `uv run ruff check le_tour tests run_web.py examples`
+- Browser smoke test (needs Chromium): `uv sync --group e2e` then
+  `LE_TOUR_E2E=1 uv run pytest tests/e2e -q` — rides the flagship map,
+  checks HUD updates, zero frame errors, and the perf budget from
+  [development.md](development.md).
 
 ## First-Run Smoke Test
 
@@ -27,6 +31,12 @@ For each launch-supported FTMS trainer:
 - ERG starts, sends initial target power, and responds to target changes.
 - SIM starts with a selected route and updates grade/segment context.
 - Stopping a ride persists a history session with samples.
+- On `/ride3d`: SIM resistance ramps smoothly across grade changes (no
+  steps), and the app-computed speed feels plausible against the trainer's
+  own reading (`speed_mps` vs `trainer_speed_mps` in the snapshot stream).
+- On `/ride3d` with a real GPU: frame pacing holds ~60 FPS with full
+  scenery on Col du Rivelet (`window.__rideDebug` has frame timestamps,
+  draw calls, and triangle counts).
 
 Current FTMS smoke status:
 
@@ -52,6 +62,5 @@ For each launch-supported BLE heart-rate strap:
 
 ## Known Non-MVP Surfaces
 
-- The `/ride3d` page remains an experimental prototype.
 - Web Bluetooth remains experimental and is not the default hardware path.
 - Hosted accounts and cloud sync are not part of the current early-access flow.

@@ -901,6 +901,9 @@ function frame(now) {
       },
       cameraFovDeg: cameraFeel.fovDeg,
       cameraRollRad: cameraFeel.rollRad,
+      // Per-frame render cost, for the perf budget in docs/development.md.
+      drawCalls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles,
       pathLengthM: activePath ? activePath.lengthM : null,
       frameErrorCount,
     };

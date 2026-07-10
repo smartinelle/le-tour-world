@@ -18,7 +18,15 @@ anchor set the future LLM judge is calibrated against.
 | `flagship_14200m.png` | 14.2 km | Mill Return — village run-out |
 | `flagship_15800m.png` | 15.8 km | River Flats |
 
-Regenerate after any renderer or map change (the capture script lives in
-the session scratchpad for now; M6 turns it into a checked-in Playwright
-harness). Note: CI containers render via SwiftShader (software GL), which
-differs subtly from real GPUs — compare like with like.
+Regenerate after any renderer or map change:
+
+```bash
+uv sync --group e2e
+uv run python tests/e2e/capture_flagship_screenshots.py
+```
+
+(Rides the full loop at 450 W — takes roughly 20 minutes.) The current set
+was captured 2026-07-10, after the M3 camera pass (speed-sensitive FOV and
+curvature lean), so views are slightly wider than the original M2 set.
+Note: CI containers render via SwiftShader (software GL), which differs
+subtly from real GPUs — compare like with like.

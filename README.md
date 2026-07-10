@@ -15,10 +15,12 @@ installers yet; you run it from source with `uv`.
 - Free Ride, ERG, and SIM modes.
 - Local ride history with session samples.
 - CSV export.
-- Three.js ride surface at `/ride3d`: a world-fixed 3D map with terrain,
-  physics-computed speed (rider mass/CdA/Crr + route grade), and a virtual
-  trainer panel for riding without hardware. Flagship route: Col du Rivelet,
-  a 17.2 km loop with 260 m of climbing.
+- Primary ride surface at `/ride3d`: a world-fixed 3D map with terrain,
+  physics-computed speed (rider mass/CdA/Crr + route grade), an in-ride HUD
+  with live avg power/NP and FTP-zone coloring, a post-ride summary, and a
+  virtual trainer panel for riding without hardware. Flagship route: Col du
+  Rivelet, a 17.2 km loop with 260 m of climbing. The home dashboard's route
+  cards and Start Ride open it directly.
 
 Tested hardware so far:
 
@@ -114,14 +116,17 @@ Manual scanning from the Devices page remains available without that flag.
 - **SIM:** grade-based simulation with bundled route profiles.
 - **History:** local sessions and samples stored on disk.
 - **Export:** per-session and summary CSV exports.
-- **3D prototype:** experimental Three.js surface at `/ride3d`.
+- **3D ride surface:** the primary ride cockpit at `/ride3d` — world-fixed
+  terrain, in-ride HUD, route progress, and post-ride summary. The classic
+  2D view stays available from the home dashboard as a fallback.
 
 ## Known Limitations
 
 - No packaged app or installer yet.
 - Hardware support is only lightly tested.
 - Browser-side Web Bluetooth is experimental and not the default hardware path.
-- The 3D ride surface is a prototype, not the primary ride cockpit.
+- The 3D ride surface's 60 FPS target and trainer resistance feel are not
+  yet verified on real hardware (dev environments render via software GL).
 - No login, hosted accounts, or cloud sync in the current early-access flow.
 - No FIT, TCX, Strava, Garmin, or Wahoo cloud integrations yet.
 - No multiplayer, racing, events, chat, clubs, or social features.
@@ -135,6 +140,13 @@ uv sync
 uv run pytest -q
 uv run black --check le_tour tests run_web.py examples
 uv run ruff check le_tour tests run_web.py examples
+```
+
+Optional browser smoke test (rides the flagship map in headless Chromium):
+
+```bash
+uv sync --group e2e
+LE_TOUR_E2E=1 uv run pytest tests/e2e -q
 ```
 
 Format before submitting changes:

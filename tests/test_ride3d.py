@@ -753,3 +753,10 @@ def test_ride3d_camera_feel_is_damped():
     assert "updateCamera(sceneState, dt)" in RIDE3D_JS
     # Lean follows real path curvature at speed, not per-segment steps.
     assert "poseAt(distanceM + 8).headingRad" in RIDE3D_JS
+
+
+def test_ride3d_debug_exposes_frame_cost():
+    """M6: the perf budget is observable per frame via __rideDebug."""
+    assert "drawCalls: renderer.info.render.calls" in RIDE3D_JS
+    assert "triangles: renderer.info.render.triangles" in RIDE3D_JS
+    assert "cameraFovDeg: cameraFeel.fovDeg" in RIDE3D_JS
