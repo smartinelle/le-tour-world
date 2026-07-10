@@ -261,3 +261,70 @@ def test_virtual_power_set_before_start_applies_on_fake_source_creation():
         source.return_value.set_effort.assert_called_once_with(
             "hold", power_w=180, duration_s=None
         )
+
+
+def test_disconnect_event_resets_sample_attachment():
+    """After a manual disconnect, the next session must re-subscribe.
+
+    Manual disconnects clear the BLE clients' notify state, so a sticky
+    attached-flag would leave the next session with a connected trainer
+    and no samples until app restart.
+    """
+    from le_tour.domain.events import DeviceDisconnected
+
+    controller = make_controller(trainer_connected=True, hr_connected=True)
+    runtime = RideRuntime(controller)
+    runtime._trainer_samples_attached = True
+    runtime._hr_samples_attached = True
+
+    runtime._on_trainer_event(DeviceDisconnected())
+    runtime._on_hr_event(DeviceDisconnected())
+
+    assert runtime._trainer_samples_attached is False
+    assert runtime._hr_samples_attached is False
+
+
+@pytest.mark.asyncio
+async def test_reconnect_then_new_session_resubscribes_samples():
+    """Disconnect + reconnect + new ride ends with live samples again."""
+    from le_tour.domain.events import DeviceDisconnected
+
+    controller = make_controller(trainer_connected=True)
+    runtime = RideRuntime(controller)
+    await runtime.prepare_hardware_session(RideMode.FREE)
+    assert controller.trainer.subscribe_samples.await_count == 1
+
+    runtime._on_trainer_event(DeviceDisconnected())
+    await runtime.prepare_hardware_session(RideMode.FREE)
+
+    assert controller.trainer.subscribe_samples.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_trainer_connect_mid_session_takes_over_from_demo_source():
+    """Pairing during an active ride hands the session to hardware."""
+    controller = make_controller(trainer_connected=False)
+    with patch("le_tour.domain.ride_runtime.FakeTrainerSampleSource"):
+        runtime = RideRuntime(controller)
+        runtime.start_session(RideMode.SIM)
+        assert runtime._fake_source is not None
+
+        controller.trainer.is_connected = True
+        await runtime._attach_trainer_mid_session()
+
+    assert runtime._fake_source is None
+    controller.trainer.subscribe_samples.assert_awaited_once()
+    controller.trainer.request_control.assert_awaited_once()
+    controller.trainer.set_simulation.assert_awaited_once()
+
+
+def test_connect_event_when_inactive_does_not_attach():
+    """Auto-connect at startup (no session) must not start hardware prep."""
+    from le_tour.domain.events import DeviceConnected
+
+    controller = make_controller(trainer_connected=True)
+    runtime = RideRuntime(controller)
+
+    runtime._on_trainer_event(DeviceConnected(name="KICKR"))
+
+    controller.trainer.subscribe_samples.assert_not_awaited()

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Optional
 
 from le_tour.devices.base import HrSample
 
+from .events import DeviceConnected, DeviceDisconnected, DomainEvent
 from .fake_samples import FakeTrainerSampleSource
 from .ride_controller import RideController
 from .routes import RouteProfile
@@ -50,6 +53,50 @@ class RideRuntime:
         )
         self._trainer_samples_attached = False
         self._hr_samples_attached = False
+        # Device connections outlive sessions: manual disconnects clear the
+        # BLE clients' notify subscriptions, so the attach flags must reset
+        # with them or the next session silently gets no samples. Connects
+        # during an active session hand the ride over to hardware.
+        self.controller.trainer.subscribe(self._on_trainer_event)
+        self.controller.hr_service.subscribe(self._on_hr_event)
+
+    def _on_trainer_event(self, event: DomainEvent) -> None:
+        if isinstance(event, DeviceDisconnected):
+            self._trainer_samples_attached = False
+        elif isinstance(event, DeviceConnected) and self.controller.is_active:
+            self._schedule(self._attach_trainer_mid_session())
+
+    def _on_hr_event(self, event: DomainEvent) -> None:
+        if isinstance(event, DeviceDisconnected):
+            self._hr_samples_attached = False
+        elif isinstance(event, DeviceConnected) and self.controller.is_active:
+            self._schedule(self._attach_hr_mid_session())
+
+    async def _attach_trainer_mid_session(self) -> None:
+        """Hand an active demo-driven ride over to freshly connected hardware."""
+        try:
+            self.stop_fake_source()
+            mode = self.controller.state.mode or RideMode.FREE
+            await self.prepare_hardware_session(mode)
+        except Exception as exc:
+            logger.warning("Mid-session trainer attach failed: %s", exc)
+
+    async def _attach_hr_mid_session(self) -> None:
+        """Use the real strap for HR; restart the demo source so it stops
+        emitting fake HR alongside it."""
+        try:
+            await self._attach_hr_stream()
+            if self.using_fake_source:
+                self.start_fake_source()
+        except Exception as exc:
+            logger.warning("Mid-session HR attach failed: %s", exc)
+
+    @staticmethod
+    def _schedule(coroutine: Coroutine[object, object, None]) -> None:
+        try:
+            asyncio.get_running_loop().create_task(coroutine)
+        except RuntimeError:
+            coroutine.close()
 
     def set_route_profile(self, route_profile: Optional[RouteProfile]) -> None:
         """Attach the route profile used by route-aware ride modes."""
